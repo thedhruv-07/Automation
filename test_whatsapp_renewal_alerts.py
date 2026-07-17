@@ -30,3 +30,15 @@ def test_format_expiry_raises_on_unparseable_value():
     import pytest as pytest_mod
     with pytest_mod.raises(ValueError):
         format_expiry("not-a-date")
+
+
+def test_format_expiry_from_yyyymmdd_string():
+    assert format_expiry("2026-07-24") == "24 July 2026"
+
+
+def test_format_expiry_from_ddmmyyyy_slash_string():
+    assert format_expiry("24/07/2026") == "24 July 2026"
+
+
+def test_format_expiry_strips_whitespace():
+    assert format_expiry("  24-07-2026  ") == "24 July 2026"
