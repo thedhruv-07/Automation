@@ -125,3 +125,70 @@ def send_message(payload: dict, token: str, phone_number_id: str, timeout: int =
     except (ValueError, KeyError):
         error_message = response.text
     return False, {"error": error_message}
+
+
+def run(
+    excel_path,
+    log_path,
+    token: str,
+    phone_number_id: str,
+    template_name: str,
+    template_lang: str,
+    dry_run: bool = False,
+    test_number: str | None = None,
+    today: str | None = None,
+    send_fn=send_message,
+) -> list[dict]:
+    today = today or datetime.now().strftime("%Y-%m-%d")
+    records = filter_alertable(read_clients(excel_path))
+    sent_log = load_sent_log(log_path)
+    persist_log = not dry_run and not test_number
+    log_dirty = False
+    results = []
+
+    for rec in records:
+        key = dedup_key(rec["client_id"], rec["status"], today)
+
+        if key in sent_log:
+            results.append({
+                "client_id": rec["client_id"], "name": rec["name"],
+                "status": rec["status"], "action": "skipped_duplicate",
+            })
+            continue
+
+        to_phone = normalize_phone(test_number) if test_number else normalize_phone(rec["phone"])
+        payload = build_payload(rec, to_phone, template_name, template_lang)
+
+        if dry_run:
+            results.append({
+                "client_id": rec["client_id"], "name": rec["name"],
+                "status": rec["status"], "action": "dry_run",
+                "to": to_phone, "payload": payload,
+            })
+            continue
+
+        ok, info = send_fn(payload, token, phone_number_id)
+        if ok:
+            results.append({
+                "client_id": rec["client_id"], "name": rec["name"],
+                "status": rec["status"], "action": "sent",
+                "to": to_phone, "message_id": info.get("message_id"),
+            })
+            if persist_log:
+                sent_log[key] = {
+                    "sent_at": datetime.now().isoformat(),
+                    "message_id": info.get("message_id"),
+                    "phone": to_phone,
+                }
+                log_dirty = True
+        else:
+            results.append({
+                "client_id": rec["client_id"], "name": rec["name"],
+                "status": rec["status"], "action": "failed",
+                "to": to_phone, "error": info.get("error"),
+            })
+
+    if persist_log and log_dirty:
+        save_sent_log(log_path, sent_log)
+
+    return results

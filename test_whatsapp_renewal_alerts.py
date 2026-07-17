@@ -200,3 +200,80 @@ def test_send_message_success_status_with_malformed_body_returns_failure():
 
     assert ok is False
     assert info == {"error": "Invalid response structure from API"}
+
+
+from whatsapp_renewal_alerts import run
+
+ONE_CRITICAL_ROW = [
+    ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+     "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026",
+     "https://x/renew?id=ISO-1", "CRITICAL"],
+]
+
+
+def test_run_dry_run_makes_no_calls_and_no_log_writes(tmp_path):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
+    log_path = tmp_path / "sent_log.json"
+    send_fn = Mock()
+
+    results = run(
+        excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+        template_name="cert_renewal_alert", template_lang="en_US",
+        dry_run=True, today="2026-07-17", send_fn=send_fn,
+    )
+
+    assert len(results) == 1
+    assert results[0]["action"] == "dry_run"
+    send_fn.assert_not_called()
+    assert not log_path.exists()
+
+
+def test_run_live_sends_and_dedups_on_second_call(tmp_path):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
+    log_path = tmp_path / "sent_log.json"
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    first = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+                template_name="cert_renewal_alert", template_lang="en_US",
+                today="2026-07-17", send_fn=send_fn)
+    assert first[0]["action"] == "sent"
+    assert send_fn.call_count == 1
+    assert log_path.exists()
+
+    second = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+                 template_name="cert_renewal_alert", template_lang="en_US",
+                 today="2026-07-17", send_fn=send_fn)
+    assert second[0]["action"] == "skipped_duplicate"
+    assert send_fn.call_count == 1
+
+
+def test_run_test_number_overrides_phone_and_skips_log_write(tmp_path):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
+    log_path = tmp_path / "sent_log.json"
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    results = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+                  template_name="cert_renewal_alert", template_lang="en_US",
+                  test_number="+919999999999", today="2026-07-17", send_fn=send_fn)
+
+    assert results[0]["action"] == "sent"
+    assert results[0]["to"] == "919999999999"
+    assert not log_path.exists()
+
+
+def test_run_failed_send_does_not_write_log(tmp_path):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
+    log_path = tmp_path / "sent_log.json"
+    send_fn = Mock(return_value=(False, {"error": "Invalid parameter"}))
+
+    results = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+                  template_name="cert_renewal_alert", template_lang="en_US",
+                  today="2026-07-17", send_fn=send_fn)
+
+    assert results[0]["action"] == "failed"
+    assert results[0]["error"] == "Invalid parameter"
+    assert not log_path.exists()
