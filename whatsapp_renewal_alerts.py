@@ -1,4 +1,5 @@
 """WhatsApp Cloud API renewal-alert sender for Absolute Veritas."""
+import argparse
 import json
 import re
 import sys
@@ -200,3 +201,21 @@ def run(
         save_sent_log(log_path, sent_log)
 
     return results
+
+
+SCRIPT_DIR = Path(__file__).parent
+DEFAULT_EXCEL_PATH = SCRIPT_DIR / "clients_certifications.xlsx"
+DEFAULT_LOG_PATH = SCRIPT_DIR / "sent_log.json"
+DEFAULT_TEXT_LOG_PATH = SCRIPT_DIR / "whatsapp_automation.log"
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Send WhatsApp renewal alerts via Meta Cloud API.")
+    parser.add_argument("--dry-run", action="store_true", help="Print what would be sent without calling the API.")
+    parser.add_argument("--test-number", default=None, help="Redirect all sends to this number instead of real client numbers.")
+    parser.add_argument("--excel", default=str(DEFAULT_EXCEL_PATH), help="Path to clients_certifications.xlsx")
+    return parser
+
+
+def parse_args(argv=None):
+    return build_arg_parser().parse_args(argv)

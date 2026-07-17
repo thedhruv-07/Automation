@@ -308,3 +308,19 @@ def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path)
     saved = load_sent_log(log_path)
     assert "CLT001|CRITICAL|2026-07-17" in saved
     assert "CLT002|URGENT|2026-07-17" in saved
+
+
+from whatsapp_renewal_alerts import parse_args, DEFAULT_EXCEL_PATH
+
+
+def test_parse_args_defaults():
+    args = parse_args([])
+    assert args.dry_run is False
+    assert args.test_number is None
+    assert args.excel == str(DEFAULT_EXCEL_PATH)
+
+
+def test_parse_args_dry_run_and_test_number():
+    args = parse_args(["--dry-run", "--test-number", "919999999999"])
+    assert args.dry_run is True
+    assert args.test_number == "919999999999"
