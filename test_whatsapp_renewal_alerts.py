@@ -324,3 +324,31 @@ def test_parse_args_dry_run_and_test_number():
     args = parse_args(["--dry-run", "--test-number", "919999999999"])
     assert args.dry_run is True
     assert args.test_number == "919999999999"
+
+
+from whatsapp_renewal_alerts import format_result_line, append_text_log
+
+
+def test_format_result_line_sent():
+    result = {"action": "sent", "client_id": "CLT001", "name": "Rahul Sharma",
+              "status": "CRITICAL", "message_id": "wamid.ABC"}
+    assert format_result_line(result) == "✅ SENT | CLT001 Rahul Sharma | CRITICAL | msg_id=wamid.ABC"
+
+
+def test_format_result_line_failed():
+    result = {"action": "failed", "client_id": "CLT001", "name": "Rahul Sharma",
+              "status": "CRITICAL", "error": "Invalid parameter"}
+    assert format_result_line(result) == "❌ FAIL | CLT001 Rahul Sharma | CRITICAL | Invalid parameter"
+
+
+def test_format_result_line_skipped():
+    result = {"action": "skipped_duplicate", "client_id": "CLT001",
+              "name": "Rahul Sharma", "status": "CRITICAL"}
+    assert format_result_line(result) == "⏭ SKIP | CLT001 Rahul Sharma | CRITICAL"
+
+
+def test_append_text_log_writes_lines(tmp_path):
+    log_path = tmp_path / "log.txt"
+    append_text_log(log_path, ["✅ SENT | CLT001 Rahul Sharma | CRITICAL | msg_id=wamid.ABC"])
+    content = log_path.read_text(encoding="utf-8")
+    assert "✅ SENT | CLT001 Rahul Sharma | CRITICAL | msg_id=wamid.ABC" in content

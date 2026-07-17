@@ -219,3 +219,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def parse_args(argv=None):
     return build_arg_parser().parse_args(argv)
+
+
+def format_result_line(result: dict) -> str:
+    icons = {"sent": "✅ SENT", "skipped_duplicate": "⏭ SKIP",
+              "failed": "❌ FAIL", "dry_run": "🧪 DRY-RUN"}
+    label = icons[result["action"]]
+    line = f"{label} | {result['client_id']} {result['name']} | {result['status']}"
+    if result["action"] == "failed":
+        line += f" | {result['error']}"
+    if result["action"] == "sent":
+        line += f" | msg_id={result['message_id']}"
+    return line
+
+
+def append_text_log(path, lines: list[str]) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        timestamp = datetime.now().isoformat(timespec="seconds")
+        for line in lines:
+            f.write(f"[{timestamp}] {line}\n")
