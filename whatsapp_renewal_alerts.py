@@ -5,6 +5,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import openpyxl
+
 sys.stdout.reconfigure(encoding="utf-8")  # Windows console defaults to cp1252, which crashes on emoji output
 
 
@@ -43,3 +45,28 @@ def load_sent_log(path) -> dict:
 def save_sent_log(path, log: dict) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2)
+
+
+ALERT_STATUSES = {"CRITICAL", "URGENT", "DUE SOON"}
+
+RECORD_FIELDS = [
+    "client_id", "name", "company", "email", "phone", "cert_name",
+    "cert_id", "issue_date", "expiry_date", "renewal_link", "status",
+]
+
+
+def read_clients(xlsx_path) -> list[dict]:
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    ws = wb.active
+    rows = ws.iter_rows(values_only=True)
+    next(rows)  # skip header row
+    records = []
+    for row in rows:
+        if row[0] is None:
+            continue
+        records.append(dict(zip(RECORD_FIELDS, row)))
+    return records
+
+
+def filter_alertable(records: list[dict]) -> list[dict]:
+    return [r for r in records if r["status"] in ALERT_STATUSES]

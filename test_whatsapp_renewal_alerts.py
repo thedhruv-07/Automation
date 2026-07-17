@@ -60,3 +60,52 @@ def test_save_and_load_sent_log_round_trip(tmp_path):
     save_sent_log(path, {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.ABC"}})
     result = load_sent_log(path)
     assert result == {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.ABC"}}
+
+
+import openpyxl
+from whatsapp_renewal_alerts import read_clients, filter_alertable
+
+HEADERS = [
+    "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
+    "Certification Name", "Certification ID", "Issue Date",
+    "Expiry Date", "Renewal Link", "Status",
+]
+
+
+def _write_xlsx(path, rows):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(HEADERS)
+    for row in rows:
+        ws.append(row)
+    wb.save(path)
+
+
+def test_read_clients_and_filter_alertable(tmp_path):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026",
+         "https://x/renew?id=ISO-1", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026",
+         "https://x/renew?id=OSHA-1", "URGENT"],
+        ["CLT003", "Amit Verma", "HealthFirst", "a@x.com", "919898765432",
+         "GMP", "GMP-1", "01-01-2025", "10-09-2026",
+         "https://x/renew?id=GMP-1", "DUE SOON"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026",
+         "https://x/renew?id=ISO27-1", "ACTIVE"],
+        ["CLT005", "Rajesh Nair", "Logistics Plus", "raj@x.com", "919654321098",
+         "HACCP", "HACCP-1", "01-01-2025", "12-07-2026",
+         "https://x/renew?id=HACCP-1", "EXPIRED"],
+    ])
+
+    records = read_clients(xlsx_path)
+    assert len(records) == 5
+    assert records[0]["client_id"] == "CLT001"
+    assert records[0]["cert_id"] == "ISO-1"
+    assert records[0]["status"] == "CRITICAL"
+
+    alertable = filter_alertable(records)
+    assert [r["client_id"] for r in alertable] == ["CLT001", "CLT002", "CLT003"]
