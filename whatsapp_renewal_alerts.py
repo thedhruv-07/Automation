@@ -269,7 +269,7 @@ def main(argv=None) -> int:
     lines = [format_result_line(r) for r in results]
     for line in lines:
         print(line)
-    if lines:
+    if lines and not args.dry_run:
         append_text_log(DEFAULT_TEXT_LOG_PATH, lines)
 
     sent = sum(1 for r in results if r["action"] == "sent")
