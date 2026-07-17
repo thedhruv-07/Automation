@@ -1,4 +1,3 @@
-# test_whatsapp_renewal_alerts.py
 from whatsapp_renewal_alerts import normalize_phone
 
 
