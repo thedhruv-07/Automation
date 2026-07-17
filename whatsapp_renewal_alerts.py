@@ -6,8 +6,11 @@ from datetime import datetime
 from pathlib import Path
 
 import openpyxl
+import requests
 
 sys.stdout.reconfigure(encoding="utf-8")  # Windows console defaults to cp1252, which crashes on emoji output
+
+API_VERSION = "v23.0"
 
 
 def normalize_phone(raw: str | int) -> str:
@@ -100,3 +103,22 @@ def build_payload(record: dict, to_phone: str, template_name: str, template_lang
             ],
         },
     }
+
+
+def send_message(payload: dict, token: str, phone_number_id: str, timeout: int = 10):
+    url = f"https://graph.facebook.com/{API_VERSION}/{phone_number_id}/messages"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+    except requests.RequestException as exc:
+        return False, {"error": str(exc)}
+
+    if response.status_code == 200:
+        data = response.json()
+        return True, {"message_id": data["messages"][0]["id"]}
+
+    try:
+        error_message = response.json()["error"]["message"]
+    except (ValueError, KeyError):
+        error_message = response.text
+    return False, {"error": error_message}

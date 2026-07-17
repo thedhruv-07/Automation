@@ -154,3 +154,39 @@ def test_build_payload_structure_and_placeholder_order():
     assert button["type"] == "button"
     assert button["sub_type"] == "url"
     assert button["parameters"] == [{"type": "text", "text": "ISO-2021-4521"}]
+
+
+from unittest.mock import patch, Mock
+import requests
+from whatsapp_renewal_alerts import send_message
+
+
+def test_send_message_success():
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {"messages": [{"id": "wamid.ABC"}]}
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response) as mock_post:
+        ok, info = send_message({"to": "919876543210"}, "tok", "pid123")
+
+    assert ok is True
+    assert info == {"message_id": "wamid.ABC"}
+    mock_post.assert_called_once()
+    called_url = mock_post.call_args.args[0]
+    assert called_url == "https://graph.facebook.com/v23.0/pid123/messages"
+
+
+def test_send_message_api_error():
+    mock_response = Mock(status_code=400)
+    mock_response.json.return_value = {"error": {"message": "Invalid parameter"}}
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        ok, info = send_message({"to": "919876543210"}, "tok", "pid123")
+
+    assert ok is False
+    assert info == {"error": "Invalid parameter"}
+
+
+def test_send_message_network_error():
+    with patch("whatsapp_renewal_alerts.requests.post", side_effect=requests.exceptions.ConnectionError("boom")):
+        ok, info = send_message({"to": "919876543210"}, "tok", "pid123")
+
+    assert ok is False
+    assert "boom" in info["error"]
