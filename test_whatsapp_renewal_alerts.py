@@ -352,3 +352,29 @@ def test_append_text_log_writes_lines(tmp_path):
     append_text_log(log_path, ["✅ SENT | CLT001 Rahul Sharma | CRITICAL | msg_id=wamid.ABC"])
     content = log_path.read_text(encoding="utf-8")
     assert "✅ SENT | CLT001 Rahul Sharma | CRITICAL | msg_id=wamid.ABC" in content
+
+
+def test_format_result_line_dry_run():
+    payload = {
+        "template": {
+            "components": [
+                {"type": "body", "parameters": [
+                    {"type": "text", "text": "Rahul Sharma"},
+                    {"type": "text", "text": "TechCorp India Pvt Ltd"},
+                    {"type": "text", "text": "ISO-2021-4521"},
+                    {"type": "text", "text": "ISO 9001:2015 Quality Management"},
+                    {"type": "text", "text": "24 July 2026"},
+                ]},
+                {"type": "button", "sub_type": "url", "index": "0",
+                 "parameters": [{"type": "text", "text": "ISO-2021-4521"}]},
+            ]
+        }
+    }
+    result = {"action": "dry_run", "client_id": "CLT001", "name": "Rahul Sharma",
+              "status": "CRITICAL", "to": "919876543210", "payload": payload}
+    line = format_result_line(result)
+    assert line == (
+        "🧪 DRY-RUN | CLT001 Rahul Sharma | CRITICAL | to=919876543210 | "
+        "body=[Rahul Sharma | TechCorp India Pvt Ltd | ISO-2021-4521 | "
+        "ISO 9001:2015 Quality Management | 24 July 2026]"
+    )

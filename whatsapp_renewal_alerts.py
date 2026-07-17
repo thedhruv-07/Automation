@@ -232,6 +232,10 @@ def format_result_line(result: dict) -> str:
         line += f" | {result['error']}"
     if result["action"] == "sent":
         line += f" | msg_id={result['message_id']}"
+    if result["action"] == "dry_run":
+        params = result["payload"]["template"]["components"][0]["parameters"]
+        body_text = " | ".join(p["text"] for p in params)
+        line += f" | to={result['to']} | body=[{body_text}]"
     return line
 
 
