@@ -42,3 +42,21 @@ def test_format_expiry_from_ddmmyyyy_slash_string():
 
 def test_format_expiry_strips_whitespace():
     assert format_expiry("  24-07-2026  ") == "24 July 2026"
+
+
+from whatsapp_renewal_alerts import dedup_key, load_sent_log, save_sent_log
+
+
+def test_dedup_key_format():
+    assert dedup_key("CLT001", "CRITICAL", "2026-07-17") == "CLT001|CRITICAL|2026-07-17"
+
+
+def test_load_sent_log_missing_file_returns_empty_dict(tmp_path):
+    assert load_sent_log(tmp_path / "missing.json") == {}
+
+
+def test_save_and_load_sent_log_round_trip(tmp_path):
+    path = tmp_path / "sent_log.json"
+    save_sent_log(path, {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.ABC"}})
+    result = load_sent_log(path)
+    assert result == {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.ABC"}}
