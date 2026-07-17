@@ -123,3 +123,34 @@ def test_read_clients_skips_blank_rows(tmp_path):
     records = read_clients(xlsx_path)
     assert len(records) == 2
     assert [r["client_id"] for r in records] == ["CLT001", "CLT002"]
+
+
+from whatsapp_renewal_alerts import build_payload
+
+
+def test_build_payload_structure_and_placeholder_order():
+    record = {
+        "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp India Pvt Ltd",
+        "cert_name": "ISO 9001:2015 Quality Management", "cert_id": "ISO-2021-4521",
+        "expiry_date": "24-07-2026", "status": "CRITICAL",
+    }
+
+    payload = build_payload(record, "919876543210", "cert_renewal_alert", "en_US")
+
+    assert payload["messaging_product"] == "whatsapp"
+    assert payload["to"] == "919876543210"
+    assert payload["type"] == "template"
+    assert payload["template"]["name"] == "cert_renewal_alert"
+    assert payload["template"]["language"] == {"code": "en_US"}
+
+    body_params = payload["template"]["components"][0]["parameters"]
+    assert body_params[0] == {"type": "text", "text": "Rahul Sharma"}
+    assert body_params[1] == {"type": "text", "text": "TechCorp India Pvt Ltd"}
+    assert body_params[2] == {"type": "text", "text": "ISO-2021-4521"}
+    assert body_params[3] == {"type": "text", "text": "ISO 9001:2015 Quality Management"}
+    assert body_params[4] == {"type": "text", "text": "24 July 2026"}
+
+    button = payload["template"]["components"][1]
+    assert button["type"] == "button"
+    assert button["sub_type"] == "url"
+    assert button["parameters"] == [{"type": "text", "text": "ISO-2021-4521"}]

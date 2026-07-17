@@ -70,3 +70,33 @@ def read_clients(xlsx_path) -> list[dict]:
 
 def filter_alertable(records: list[dict]) -> list[dict]:
     return [r for r in records if r["status"] in ALERT_STATUSES]
+
+
+def build_payload(record: dict, to_phone: str, template_name: str, template_lang: str) -> dict:
+    return {
+        "messaging_product": "whatsapp",
+        "to": to_phone,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": template_lang},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": record["name"]},
+                        {"type": "text", "text": record["company"]},
+                        {"type": "text", "text": record["cert_id"]},
+                        {"type": "text", "text": record["cert_name"]},
+                        {"type": "text", "text": format_expiry(record["expiry_date"])},
+                    ],
+                },
+                {
+                    "type": "button",
+                    "sub_type": "url",
+                    "index": "0",
+                    "parameters": [{"type": "text", "text": record["cert_id"]}],
+                },
+            ],
+        },
+    }
