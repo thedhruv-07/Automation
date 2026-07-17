@@ -109,3 +109,17 @@ def test_read_clients_and_filter_alertable(tmp_path):
 
     alertable = filter_alertable(records)
     assert [r["client_id"] for r in alertable] == ["CLT001", "CLT002", "CLT003"]
+
+
+def test_read_clients_skips_blank_rows(tmp_path):
+    xlsx_path = tmp_path / "test.xlsx"
+    _write_xlsx(xlsx_path, [
+        ["CLT001", "Name", "Co", "e@x.com", "919876543210", "Cert", "C-1",
+         "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        [None, None, None, None, None, None, None, None, None, None, None],
+        ["CLT002", "Name2", "Co2", "e2@x.com", "919876543211", "Cert2", "C-2",
+         "01-01-2025", "24-07-2026", "https://x", "URGENT"],
+    ])
+    records = read_clients(xlsx_path)
+    assert len(records) == 2
+    assert [r["client_id"] for r in records] == ["CLT001", "CLT002"]
