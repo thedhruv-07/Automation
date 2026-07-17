@@ -148,44 +148,52 @@ def run(
 
     for rec in records:
         key = dedup_key(rec["client_id"], rec["status"], today)
+        to_phone = normalize_phone(test_number) if test_number else normalize_phone(rec["phone"])
 
         if key in sent_log:
             results.append({
                 "client_id": rec["client_id"], "name": rec["name"],
                 "status": rec["status"], "action": "skipped_duplicate",
+                "to": to_phone,
             })
             continue
 
-        to_phone = normalize_phone(test_number) if test_number else normalize_phone(rec["phone"])
-        payload = build_payload(rec, to_phone, template_name, template_lang)
+        try:
+            payload = build_payload(rec, to_phone, template_name, template_lang)
 
-        if dry_run:
-            results.append({
-                "client_id": rec["client_id"], "name": rec["name"],
-                "status": rec["status"], "action": "dry_run",
-                "to": to_phone, "payload": payload,
-            })
-            continue
+            if dry_run:
+                results.append({
+                    "client_id": rec["client_id"], "name": rec["name"],
+                    "status": rec["status"], "action": "dry_run",
+                    "to": to_phone, "payload": payload,
+                })
+                continue
 
-        ok, info = send_fn(payload, token, phone_number_id)
-        if ok:
-            results.append({
-                "client_id": rec["client_id"], "name": rec["name"],
-                "status": rec["status"], "action": "sent",
-                "to": to_phone, "message_id": info.get("message_id"),
-            })
-            if persist_log:
-                sent_log[key] = {
-                    "sent_at": datetime.now().isoformat(),
-                    "message_id": info.get("message_id"),
-                    "phone": to_phone,
-                }
-                log_dirty = True
-        else:
+            ok, info = send_fn(payload, token, phone_number_id)
+            if ok:
+                results.append({
+                    "client_id": rec["client_id"], "name": rec["name"],
+                    "status": rec["status"], "action": "sent",
+                    "to": to_phone, "message_id": info.get("message_id"),
+                })
+                if persist_log:
+                    sent_log[key] = {
+                        "sent_at": datetime.now().isoformat(),
+                        "message_id": info.get("message_id"),
+                        "phone": to_phone,
+                    }
+                    log_dirty = True
+            else:
+                results.append({
+                    "client_id": rec["client_id"], "name": rec["name"],
+                    "status": rec["status"], "action": "failed",
+                    "to": to_phone, "error": info.get("error"),
+                })
+        except Exception as exc:
             results.append({
                 "client_id": rec["client_id"], "name": rec["name"],
                 "status": rec["status"], "action": "failed",
-                "to": to_phone, "error": info.get("error"),
+                "to": to_phone, "error": str(exc),
             })
 
     if persist_log and log_dirty:
