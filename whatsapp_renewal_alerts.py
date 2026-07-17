@@ -1,6 +1,7 @@
 """WhatsApp Cloud API renewal-alert sender for Absolute Veritas."""
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -8,6 +9,7 @@ from pathlib import Path
 
 import openpyxl
 import requests
+from dotenv import load_dotenv
 
 sys.stdout.reconfigure(encoding="utf-8")  # Windows console defaults to cp1252, which crashes on emoji output
 
@@ -238,3 +240,45 @@ def append_text_log(path, lines: list[str]) -> None:
         timestamp = datetime.now().isoformat(timespec="seconds")
         for line in lines:
             f.write(f"[{timestamp}] {line}\n")
+
+
+def main(argv=None) -> int:
+    load_dotenv(SCRIPT_DIR / ".env")
+    args = parse_args(argv)
+
+    token = os.environ.get("WHATSAPP_TOKEN")
+    phone_number_id = os.environ.get("PHONE_NUMBER_ID")
+    if not args.dry_run and (not token or not phone_number_id):
+        print("❌ WHATSAPP_TOKEN and PHONE_NUMBER_ID must be set in .env (not required for --dry-run).")
+        return 1
+
+    template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
+    template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en_US")
+
+    results = run(
+        excel_path=args.excel,
+        log_path=DEFAULT_LOG_PATH,
+        token=token,
+        phone_number_id=phone_number_id,
+        template_name=template_name,
+        template_lang=template_lang,
+        dry_run=args.dry_run,
+        test_number=args.test_number,
+    )
+
+    lines = [format_result_line(r) for r in results]
+    for line in lines:
+        print(line)
+    if lines:
+        append_text_log(DEFAULT_TEXT_LOG_PATH, lines)
+
+    sent = sum(1 for r in results if r["action"] == "sent")
+    skipped = sum(1 for r in results if r["action"] == "skipped_duplicate")
+    failed = sum(1 for r in results if r["action"] == "failed")
+    dry = sum(1 for r in results if r["action"] == "dry_run")
+    print(f"\nSummary: {sent} sent, {skipped} skipped (duplicate), {failed} failed, {dry} dry-run.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
