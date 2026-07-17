@@ -114,8 +114,11 @@ def send_message(payload: dict, token: str, phone_number_id: str, timeout: int =
         return False, {"error": str(exc)}
 
     if response.status_code == 200:
-        data = response.json()
-        return True, {"message_id": data["messages"][0]["id"]}
+        try:
+            data = response.json()
+            return True, {"message_id": data["messages"][0]["id"]}
+        except (ValueError, KeyError, IndexError):
+            return False, {"error": "Invalid response structure from API"}
 
     try:
         error_message = response.json()["error"]["message"]

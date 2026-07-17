@@ -190,3 +190,13 @@ def test_send_message_network_error():
 
     assert ok is False
     assert "boom" in info["error"]
+
+
+def test_send_message_success_status_with_malformed_body_returns_failure():
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {}
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        ok, info = send_message({"to": "919876543210"}, "tok", "pid123")
+
+    assert ok is False
+    assert info == {"error": "Invalid response structure from API"}
