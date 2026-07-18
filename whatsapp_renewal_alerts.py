@@ -63,15 +63,18 @@ RECORD_FIELDS = [
 
 def read_clients(xlsx_path) -> list[dict]:
     wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    ws = wb.active
-    rows = ws.iter_rows(values_only=True)
-    next(rows)  # skip header row
-    records = []
-    for row in rows:
-        if row[0] is None:
-            continue
-        records.append(dict(zip(RECORD_FIELDS, row)))
-    return records
+    try:
+        ws = wb.active
+        rows = ws.iter_rows(values_only=True)
+        next(rows)  # skip header row
+        records = []
+        for row in rows:
+            if row[0] is None:
+                continue
+            records.append(dict(zip(RECORD_FIELDS, row)))
+        return records
+    finally:
+        wb.close()
 
 
 def filter_alertable(records: list[dict]) -> list[dict]:
