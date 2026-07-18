@@ -203,3 +203,72 @@ def test_send_alert_skipped_duplicate_from_send_one_alert_returns_409(tmp_path, 
     response = client.post("/api/send/CLT001")
     assert response.status_code == 409
     assert "already sent today" in response.json()["detail"]
+
+
+def test_send_all_alerts_success(tmp_path, monkeypatch):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+    ])
+    log_path = tmp_path / "sent_log.json"
+    log_path.write_text("{}")
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid123")
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_LANG", "en")
+    monkeypatch.delenv("DASHBOARD_TEST_NUMBER", raising=False)
+
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-all")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2  # only CRITICAL/URGENT are alertable; ACTIVE excluded
+    actions = {r["client_id"]: r["action"] for r in data}
+    assert actions == {"CLT001": "sent", "CLT002": "sent"}
+
+
+def test_send_all_alerts_uses_test_number_override(tmp_path, monkeypatch):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    log_path = tmp_path / "sent_log.json"
+    log_path.write_text("{}")
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid123")
+    monkeypatch.setenv("DASHBOARD_TEST_NUMBER", "919000000000")
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.TEST"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response) as mock_post:
+        response = client.post("/api/send-all")
+    assert response.status_code == 200
+    sent_payload = mock_post.call_args.kwargs["json"]
+    assert sent_payload["to"] == "919000000000"
+
+
+def test_send_all_alerts_blocks_concurrent_calls(tmp_path, monkeypatch):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [])
+    log_path = tmp_path / "sent_log.json"
+    log_path.write_text("{}")
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    monkeypatch.setattr(main_module, "_bulk_in_progress", True)
+    response = client.post("/api/send-all")
+    assert response.status_code == 409

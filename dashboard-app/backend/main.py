@@ -17,7 +17,7 @@ from datetime import datetime  # noqa: E402
 
 from whatsapp_renewal_alerts import (  # noqa: E402
     read_clients, ALERT_STATUSES, dedup_key, load_sent_log, save_sent_log,
-    send_one_alert, DEFAULT_EXCEL_PATH, DEFAULT_LOG_PATH,
+    send_one_alert, run, DEFAULT_EXCEL_PATH, DEFAULT_LOG_PATH,
 )
 
 load_dotenv(REPO_ROOT / ".env")
@@ -31,6 +31,9 @@ app = FastAPI(title="Absolute Veritas Renewal Dashboard API")
 
 _send_lock = threading.Lock()
 _pending_sends: set[str] = set()
+
+_bulk_lock = threading.Lock()
+_bulk_in_progress = False
 
 app.add_middleware(
     CORSMiddleware,
@@ -115,6 +118,30 @@ def send_alert(client_id: str):
     finally:
         with _send_lock:
             _pending_sends.discard(client_id)
+
+
+@app.post("/api/send-all")
+def send_all_alerts():
+    global _bulk_in_progress
+    with _bulk_lock:
+        if _bulk_in_progress:
+            raise HTTPException(status_code=409, detail="A bulk send is already in progress")
+        _bulk_in_progress = True
+
+    try:
+        token = os.environ["WHATSAPP_TOKEN"]
+        phone_number_id = os.environ["PHONE_NUMBER_ID"]
+        template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
+        template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
+        test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
+
+        return run(
+            DEFAULT_EXCEL_PATH, DEFAULT_LOG_PATH, token, phone_number_id,
+            template_name, template_lang, dry_run=False, test_number=test_number,
+        )
+    finally:
+        with _bulk_lock:
+            _bulk_in_progress = False
 
 
 from fastapi.staticfiles import StaticFiles  # noqa: E402
