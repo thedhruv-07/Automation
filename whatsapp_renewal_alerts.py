@@ -251,7 +251,7 @@ def main(argv=None) -> int:
         return 1
 
     template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
-    template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en_US")
+    template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
 
     results = run(
         excel_path=args.excel,
