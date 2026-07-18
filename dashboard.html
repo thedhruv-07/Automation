@@ -29,6 +29,7 @@
       <th>Certification</th>
       <th>Cert ID</th>
       <th>Expiry Date</th>
+      <th>Days Left</th>
       <th>Status</th>
     </tr>
   </thead>
@@ -67,6 +68,22 @@ document.getElementById("xlsxInput").addEventListener("change", function (e) {
   reader.readAsArrayBuffer(file);
 });
 
+function parseDate(str) {
+  const [d, m, y] = String(str).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function computeDaysLeft(expiryStr) {
+  const expiry = parseDate(expiryStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  expiry.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((expiry - today) / 86400000);
+  if (diffDays === 0) return "today";
+  if (diffDays > 0) return `in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
+  return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ago`;
+}
+
 function render() {
   const tbody = document.getElementById("clientTableBody");
   tbody.innerHTML = "";
@@ -79,6 +96,7 @@ function render() {
       <td>${c.cert_name}</td>
       <td>${c.cert_id}</td>
       <td>${c.expiry_date}</td>
+      <td>${computeDaysLeft(c.expiry_date)}</td>
       <td>${c.status}</td>
     `;
     tbody.appendChild(tr);
