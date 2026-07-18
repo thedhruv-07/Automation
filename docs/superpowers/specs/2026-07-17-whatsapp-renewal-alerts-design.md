@@ -49,18 +49,15 @@ Footer (static):
 Absolute Veritas Certification Services
 
 Buttons:
-[Visit Website] -> Dynamic URL
-  Base: https://yourcertificationportal.com/renew?id=
-  Sample suffix: ISO13-2021-6634
+[Visit Website] -> Static URL
+  URL: https://www.manakonline.in/MANAK/login
 ```
 
 Placeholder fill order: `{{1}}`=client name, `{{2}}`=company,
 `{{3}}`=certification ID, `{{4}}`=certification name, `{{5}}`=expiry date
-(formatted `DD Month YYYY`). The button's dynamic suffix reuses `{{3}}`
-(certification ID) — assumes the real renewal portal accepts
-`?id=<certification_id>`. If the production renewal URLs don't follow that
-pattern, the button design must be revisited (Meta allows only one dynamic
-suffix per URL button).
+(formatted `DD Month YYYY`). The button is a Static URL (same renewal portal
+login page for every client), not a per-client dynamic link, so
+`build_payload()` sends only a body component — no button parameter.
 
 ## Script: `whatsapp_renewal_alerts.py`
 
