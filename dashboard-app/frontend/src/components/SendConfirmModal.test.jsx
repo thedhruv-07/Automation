@@ -33,4 +33,15 @@ describe("SendConfirmModal", () => {
     fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it("only calls onConfirm once when Confirm Send is clicked twice in quick succession", () => {
+    const onConfirm = vi.fn();
+    render(
+      <SendConfirmModal client={{ name: "Rahul Sharma", company: "TechCorp" }} onConfirm={onConfirm} onCancel={() => {}} />
+    );
+    const confirmButton = screen.getByText("Confirm Send");
+    fireEvent.click(confirmButton);
+    fireEvent.click(confirmButton);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
 });
