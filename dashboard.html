@@ -10,7 +10,7 @@
   .controls { margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
   th, td { border: 1px solid #ddd; padding: 8px 10px; font-size: 14px; text-align: left; }
-  th { background: #1F4E79; color: #fff; }
+  th { background: #1F4E79; color: #fff; cursor: pointer; user-select: none; }
   .badge { padding: 3px 10px; border-radius: 12px; color: #fff; font-weight: bold; font-size: 12px; }
   .tabs button { padding: 6px 14px; border: 1px solid #1F4E79; background: #fff; color: #1F4E79; cursor: pointer; border-radius: 4px; margin-right: 4px; }
   .tabs button.active { background: #1F4E79; color: #fff; }
@@ -39,14 +39,14 @@
 <table id="clientTable">
   <thead>
     <tr>
-      <th>Client ID</th>
-      <th>Full Name</th>
-      <th>Company</th>
-      <th>Certification</th>
-      <th>Cert ID</th>
-      <th>Expiry Date</th>
-      <th>Days Left</th>
-      <th>Status</th>
+      <th data-key="client_id">Client ID</th>
+      <th data-key="name">Full Name</th>
+      <th data-key="company">Company</th>
+      <th data-key="cert_name">Certification</th>
+      <th data-key="cert_id">Cert ID</th>
+      <th data-key="expiry_date">Expiry Date</th>
+      <th data-key="days_left">Days Left</th>
+      <th data-key="status">Status</th>
     </tr>
   </thead>
   <tbody id="clientTableBody"></tbody>
@@ -67,6 +67,8 @@ const STATUS_COLORS = {
 let clients = [];
 let activeStatus = "ALL";
 let searchTerm = "";
+let sortKey = null;
+let sortAsc = true;
 
 document.getElementById("statusTabs").addEventListener("click", function (e) {
   if (e.target.tagName !== "BUTTON") return;
@@ -79,6 +81,19 @@ document.getElementById("statusTabs").addEventListener("click", function (e) {
 document.getElementById("searchBox").addEventListener("input", function (e) {
   searchTerm = e.target.value.toLowerCase();
   render();
+});
+
+document.querySelectorAll("#clientTable th").forEach((th) => {
+  th.addEventListener("click", function () {
+    const key = th.dataset.key;
+    if (sortKey === key) {
+      sortAsc = !sortAsc;
+    } else {
+      sortKey = key;
+      sortAsc = true;
+    }
+    render();
+  });
 });
 
 document.getElementById("xlsxInput").addEventListener("change", function (e) {
@@ -109,12 +124,16 @@ function parseDate(str) {
   return new Date(y, m - 1, d);
 }
 
-function computeDaysLeft(expiryStr) {
+function daysUntil(expiryStr) {
   const expiry = parseDate(expiryStr);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   expiry.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((expiry - today) / 86400000);
+  return Math.round((expiry - today) / 86400000);
+}
+
+function computeDaysLeft(expiryStr) {
+  const diffDays = daysUntil(expiryStr);
   if (diffDays === 0) return "today";
   if (diffDays > 0) return `in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ago`;
@@ -131,6 +150,18 @@ function render() {
     rows = rows.filter(
       (c) => c.name.toLowerCase().includes(searchTerm) || c.company.toLowerCase().includes(searchTerm)
     );
+  }
+  if (sortKey) {
+    rows.sort((a, b) => {
+      if (sortKey === "days_left") {
+        const av = daysUntil(a.expiry_date);
+        const bv = daysUntil(b.expiry_date);
+        return sortAsc ? av - bv : bv - av;
+      }
+      const av = String(a[sortKey] ?? "");
+      const bv = String(b[sortKey] ?? "");
+      return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
   }
   rows.forEach((c) => {
     const tr = document.createElement("tr");
