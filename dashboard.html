@@ -158,6 +158,11 @@ function render() {
         const bv = daysUntil(b.expiry_date);
         return sortAsc ? av - bv : bv - av;
       }
+      if (sortKey === "expiry_date") {
+        const av = parseDate(a.expiry_date);
+        const bv = parseDate(b.expiry_date);
+        return sortAsc ? av - bv : bv - av;
+      }
       const av = String(a[sortKey] ?? "");
       const bv = String(b[sortKey] ?? "");
       return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
