@@ -122,3 +122,5 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 FRONTEND_DIST = REPO_ROOT / "dashboard-app" / "frontend" / "dist"
 if FRONTEND_DIST.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+else:
+    print(f"Frontend not built — run 'npm run build' in {FRONTEND_DIST.parent} before starting the server.")
