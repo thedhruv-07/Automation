@@ -11,6 +11,7 @@
   table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
   th, td { border: 1px solid #ddd; padding: 8px 10px; font-size: 14px; text-align: left; }
   th { background: #1F4E79; color: #fff; cursor: pointer; user-select: none; }
+  th:not([data-key]) { cursor: default; }
   .badge { padding: 3px 10px; border-radius: 12px; color: #fff; font-weight: bold; font-size: 12px; }
   .tabs button { padding: 6px 14px; border: 1px solid #1F4E79; background: #fff; color: #1F4E79; cursor: pointer; border-radius: 4px; margin-right: 4px; }
   .tabs button.active { background: #1F4E79; color: #fff; }
@@ -87,7 +88,7 @@ document.getElementById("searchBox").addEventListener("input", function (e) {
   render();
 });
 
-document.querySelectorAll("#clientTable th").forEach((th) => {
+document.querySelectorAll("#clientTable th[data-key]").forEach((th) => {
   th.addEventListener("click", function () {
     const key = th.dataset.key;
     if (sortKey === key) {
