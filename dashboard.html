@@ -14,6 +14,7 @@
   .badge { padding: 3px 10px; border-radius: 12px; color: #fff; font-weight: bold; font-size: 12px; }
   .tabs button { padding: 6px 14px; border: 1px solid #1F4E79; background: #fff; color: #1F4E79; cursor: pointer; border-radius: 4px; margin-right: 4px; }
   .tabs button.active { background: #1F4E79; color: #fff; }
+  input[type="text"] { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; min-width: 220px; }
 </style>
 </head>
 <body>
@@ -32,6 +33,7 @@
     <button data-status="ACTIVE">Active</button>
     <button data-status="EXPIRED">Expired</button>
   </div>
+  <input type="text" id="searchBox" placeholder="Search name or company...">
 </div>
 
 <table id="clientTable">
@@ -64,12 +66,18 @@ const STATUS_COLORS = {
 
 let clients = [];
 let activeStatus = "ALL";
+let searchTerm = "";
 
 document.getElementById("statusTabs").addEventListener("click", function (e) {
   if (e.target.tagName !== "BUTTON") return;
   activeStatus = e.target.dataset.status;
   document.querySelectorAll("#statusTabs button").forEach((b) => b.classList.remove("active"));
   e.target.classList.add("active");
+  render();
+});
+
+document.getElementById("searchBox").addEventListener("input", function (e) {
+  searchTerm = e.target.value.toLowerCase();
   render();
 });
 
@@ -118,6 +126,11 @@ function render() {
   let rows = clients.slice();
   if (activeStatus !== "ALL") {
     rows = rows.filter((c) => c.status === activeStatus);
+  }
+  if (searchTerm) {
+    rows = rows.filter(
+      (c) => c.name.toLowerCase().includes(searchTerm) || c.company.toLowerCase().includes(searchTerm)
+    );
   }
   rows.forEach((c) => {
     const tr = document.createElement("tr");
