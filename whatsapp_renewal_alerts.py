@@ -199,6 +199,15 @@ def run(
 
     for rec in records:
         to_phone = normalize_phone(test_number) if test_number else normalize_phone(rec["phone"])
+        key = dedup_key(rec["client_id"], rec["status"], today)
+
+        if key in sent_log:
+            results.append({
+                "client_id": rec["client_id"], "name": rec["name"],
+                "status": rec["status"], "action": "skipped_duplicate",
+                "to": to_phone,
+            })
+            continue
 
         if dry_run:
             payload = build_payload(rec, to_phone, template_name, template_lang)

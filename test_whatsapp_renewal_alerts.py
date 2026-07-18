@@ -226,6 +226,31 @@ def test_run_dry_run_makes_no_calls_and_no_log_writes(tmp_path):
     assert not log_path.exists()
 
 
+def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [
+        ["CLT001", "Already Sent", "Co1", "a@x.com", "919111111111",
+         "Cert1", "C-1", "01-01-2025", "24-07-2026",
+         "https://x/renew?id=C-1", "CRITICAL"],
+        ["CLT002", "Not Sent Yet", "Co2", "b@x.com", "919222222222",
+         "Cert2", "C-2", "01-01-2025", "24-07-2026",
+         "https://x/renew?id=C-2", "URGENT"],
+    ])
+    log_path = tmp_path / "sent_log.json"
+    save_sent_log(log_path, {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.OLD"}})
+    send_fn = Mock()
+
+    results = run(
+        excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+        template_name="cert_renewal_alert", template_lang="en_US",
+        dry_run=True, today="2026-07-17", send_fn=send_fn,
+    )
+
+    assert results[0]["action"] == "skipped_duplicate"
+    assert results[1]["action"] == "dry_run"
+    send_fn.assert_not_called()
+
+
 def test_run_live_sends_and_dedups_on_second_call(tmp_path):
     xlsx_path = tmp_path / "clients.xlsx"
     _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
