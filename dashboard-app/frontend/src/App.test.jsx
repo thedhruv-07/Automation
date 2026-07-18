@@ -60,4 +60,24 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByTestId("load-error")).toBeInTheDocument());
   });
+
+  it("does not send-all until the bulk confirmation modal is accepted", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    expect(screen.getByTestId("send-all-confirm-modal")).toBeInTheDocument();
+    expect(api.sendAllAlerts).not.toHaveBeenCalled();
+  });
+
+  it("sends all and shows a summary toast after confirming", async () => {
+    api.sendAllAlerts.mockResolvedValue([
+      { client_id: "CLT001", name: "Rahul Sharma", status: "CRITICAL", action: "sent", message_id: "wamid.ABC" },
+    ]);
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() => expect(api.sendAllAlerts).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("1 sent, 0 already sent, 0 failed")).toBeInTheDocument());
+  });
 });
