@@ -12,3 +12,12 @@ export async function sendAlert(clientId) {
   }
   return data;
 }
+
+export async function sendAllAlerts() {
+  const res = await fetch("/api/send-all", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Send-all failed: ${res.status}`);
+  }
+  return data;
+}

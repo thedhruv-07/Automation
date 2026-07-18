@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getClients, sendAlert } from "./api";
+import { getClients, sendAlert, sendAllAlerts } from "./api";
 
 beforeEach(() => {
   global.fetch = vi.fn();
@@ -42,5 +42,26 @@ describe("sendAlert", () => {
     await expect(sendAlert("CLT001")).rejects.toThrow(
       "Alert already sent today for this client/status"
     );
+  });
+});
+
+describe("sendAllAlerts", () => {
+  it("returns parsed JSON array on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => [{ client_id: "CLT001", action: "sent" }],
+    });
+    const result = await sendAllAlerts();
+    expect(result).toEqual([{ client_id: "CLT001", action: "sent" }]);
+    expect(global.fetch).toHaveBeenCalledWith("/api/send-all", { method: "POST" });
+  });
+
+  it("throws the backend's detail message on failure", async () => {
+    global.fetch.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: "A bulk send is already in progress" }),
+    });
+    await expect(sendAllAlerts()).rejects.toThrow("A bulk send is already in progress");
   });
 });
