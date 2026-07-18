@@ -5,3 +5,5 @@ scheduler_output.log
 __pycache__/
 *.pyc
 .pytest_cache/
+dashboard-app/frontend/node_modules/
+dashboard-app/frontend/dist/
