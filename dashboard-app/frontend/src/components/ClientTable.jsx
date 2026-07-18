@@ -44,9 +44,11 @@ export default function ClientTable({
             <th
               key={col.key}
               onClick={() => onSort(col.key)}
+              aria-sort={sortKey === col.key ? (sortAsc ? "ascending" : "descending") : "none"}
               className="px-3 py-2 text-left cursor-pointer select-none"
             >
               {col.label}
+              {sortKey === col.key ? (sortAsc ? " ▲" : " ▼") : ""}
             </th>
           ))}
           <th className="px-3 py-2 text-left">Action</th>
