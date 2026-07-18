@@ -12,6 +12,8 @@
   th, td { border: 1px solid #ddd; padding: 8px 10px; font-size: 14px; text-align: left; }
   th { background: #1F4E79; color: #fff; }
   .badge { padding: 3px 10px; border-radius: 12px; color: #fff; font-weight: bold; font-size: 12px; }
+  .tabs button { padding: 6px 14px; border: 1px solid #1F4E79; background: #fff; color: #1F4E79; cursor: pointer; border-radius: 4px; margin-right: 4px; }
+  .tabs button.active { background: #1F4E79; color: #fff; }
 </style>
 </head>
 <body>
@@ -19,6 +21,17 @@
 
 <div class="controls">
   <label>Clients file: <input type="file" id="xlsxInput" accept=".xlsx"></label>
+</div>
+
+<div class="controls">
+  <div class="tabs" id="statusTabs">
+    <button data-status="ALL" class="active">All</button>
+    <button data-status="CRITICAL">Critical</button>
+    <button data-status="URGENT">Urgent</button>
+    <button data-status="DUE SOON">Due Soon</button>
+    <button data-status="ACTIVE">Active</button>
+    <button data-status="EXPIRED">Expired</button>
+  </div>
 </div>
 
 <table id="clientTable">
@@ -50,6 +63,15 @@ const STATUS_COLORS = {
 };
 
 let clients = [];
+let activeStatus = "ALL";
+
+document.getElementById("statusTabs").addEventListener("click", function (e) {
+  if (e.target.tagName !== "BUTTON") return;
+  activeStatus = e.target.dataset.status;
+  document.querySelectorAll("#statusTabs button").forEach((b) => b.classList.remove("active"));
+  e.target.classList.add("active");
+  render();
+});
 
 document.getElementById("xlsxInput").addEventListener("change", function (e) {
   const file = e.target.files[0];
@@ -93,7 +115,11 @@ function computeDaysLeft(expiryStr) {
 function render() {
   const tbody = document.getElementById("clientTableBody");
   tbody.innerHTML = "";
-  clients.forEach((c) => {
+  let rows = clients.slice();
+  if (activeStatus !== "ALL") {
+    rows = rows.filter((c) => c.status === activeStatus);
+  }
+  rows.forEach((c) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${c.client_id}</td>
