@@ -12,7 +12,7 @@
   th, td { border: 1px solid #ddd; padding: 8px 10px; font-size: 14px; text-align: left; }
   th { background: #1F4E79; color: #fff; cursor: pointer; user-select: none; }
   th:not([data-key]) { cursor: default; }
-  .badge { padding: 3px 10px; border-radius: 12px; color: #fff; font-weight: bold; font-size: 12px; }
+  .badge { padding: 3px 10px; border-radius: 12px; font-weight: bold; font-size: 12px; }
   .tabs button { padding: 6px 14px; border: 1px solid #1F4E79; background: #fff; color: #1F4E79; cursor: pointer; border-radius: 4px; margin-right: 4px; }
   .tabs button.active { background: #1F4E79; color: #fff; }
   input[type="text"] { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; min-width: 220px; }
@@ -65,6 +65,11 @@ const RECORD_KEYS = {
 const STATUS_COLORS = {
   EXPIRED: "#FF0000", CRITICAL: "#FF6600", URGENT: "#FFA500",
   "DUE SOON": "#FFD700", ACTIVE: "#00B050",
+};
+
+const STATUS_TEXT_COLORS = {
+  EXPIRED: "#fff", CRITICAL: "#fff", URGENT: "#1F4E79",
+  "DUE SOON": "#1F4E79", ACTIVE: "#fff",
 };
 
 let clients = [];
@@ -208,7 +213,7 @@ function render() {
       <td>${c.cert_id}</td>
       <td>${c.expiry_date}</td>
       <td>${computeDaysLeft(c.expiry_date)}</td>
-      <td><span class="badge" style="background:${STATUS_COLORS[c.status] || "#999"}">${c.status}</span></td>
+      <td><span class="badge" style="background:${STATUS_COLORS[c.status] || "#999"};color:${STATUS_TEXT_COLORS[c.status] || "#fff"}">${c.status}</span></td>
       <td>${alertSentLabel(c)}</td>
     `;
     tbody.appendChild(tr);
