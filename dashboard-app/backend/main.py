@@ -32,7 +32,6 @@ app = FastAPI(title="Absolute Veritas Renewal Dashboard API")
 _send_lock = threading.Lock()
 _pending_sends: set[str] = set()
 
-_bulk_lock = threading.Lock()
 _bulk_in_progress = False
 
 app.add_middleware(
@@ -91,6 +90,11 @@ def send_alert(client_id: str):
                 status_code=409,
                 detail="A send for this client is already in progress",
             )
+        if _bulk_in_progress:
+            raise HTTPException(
+                status_code=409,
+                detail="A bulk send is in progress; try again after it completes",
+            )
         _pending_sends.add(client_id)
 
     try:
@@ -123,9 +127,14 @@ def send_alert(client_id: str):
 @app.post("/api/send-all")
 def send_all_alerts():
     global _bulk_in_progress
-    with _bulk_lock:
+    with _send_lock:
         if _bulk_in_progress:
             raise HTTPException(status_code=409, detail="A bulk send is already in progress")
+        if _pending_sends:
+            raise HTTPException(
+                status_code=409,
+                detail="One or more per-client sends are in progress; try again shortly",
+            )
         _bulk_in_progress = True
 
     try:
@@ -140,7 +149,7 @@ def send_all_alerts():
             template_name, template_lang, dry_run=False, test_number=test_number,
         )
     finally:
-        with _bulk_lock:
+        with _send_lock:
             _bulk_in_progress = False
 
 

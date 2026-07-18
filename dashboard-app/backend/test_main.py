@@ -272,3 +272,25 @@ def test_send_all_alerts_blocks_concurrent_calls(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "_bulk_in_progress", True)
     response = client.post("/api/send-all")
     assert response.status_code == 409
+
+
+def test_send_alert_blocked_while_bulk_in_progress(tmp_path, monkeypatch):
+    _setup_one_client(tmp_path, monkeypatch)
+    monkeypatch.setattr(main_module, "_bulk_in_progress", True)
+    response = client.post("/api/send/CLT001")
+    assert response.status_code == 409
+
+
+def test_send_all_alerts_blocked_while_per_client_send_in_progress(tmp_path, monkeypatch):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [])
+    log_path = tmp_path / "sent_log.json"
+    log_path.write_text("{}")
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    main_module._pending_sends.add("CLT999")
+    try:
+        response = client.post("/api/send-all")
+        assert response.status_code == 409
+    finally:
+        main_module._pending_sends.discard("CLT999")
