@@ -115,3 +115,10 @@ def send_alert(client_id: str):
     finally:
         with _send_lock:
             _pending_sends.discard(client_id)
+
+
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+FRONTEND_DIST = REPO_ROOT / "dashboard-app" / "frontend" / "dist"
+if FRONTEND_DIST.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
