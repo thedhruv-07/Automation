@@ -8,6 +8,9 @@
   body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f9; }
   h1 { color: #1F4E79; }
   .controls { margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  th, td { border: 1px solid #ddd; padding: 8px 10px; font-size: 14px; text-align: left; }
+  th { background: #1F4E79; color: #fff; }
 </style>
 </head>
 <body>
@@ -16,6 +19,21 @@
 <div class="controls">
   <label>Clients file: <input type="file" id="xlsxInput" accept=".xlsx"></label>
 </div>
+
+<table id="clientTable">
+  <thead>
+    <tr>
+      <th>Client ID</th>
+      <th>Full Name</th>
+      <th>Company</th>
+      <th>Certification</th>
+      <th>Cert ID</th>
+      <th>Expiry Date</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody id="clientTableBody"></tbody>
+</table>
 
 <script>
 const RECORD_KEYS = {
@@ -44,10 +62,28 @@ document.getElementById("xlsxInput").addEventListener("change", function (e) {
         }
         return rec;
       });
-    console.log("Parsed clients:", clients);
+    render();
   };
   reader.readAsArrayBuffer(file);
 });
+
+function render() {
+  const tbody = document.getElementById("clientTableBody");
+  tbody.innerHTML = "";
+  clients.forEach((c) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${c.client_id}</td>
+      <td>${c.name}</td>
+      <td>${c.company}</td>
+      <td>${c.cert_name}</td>
+      <td>${c.cert_id}</td>
+      <td>${c.expiry_date}</td>
+      <td>${c.status}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
 </script>
 </body>
 </html>
