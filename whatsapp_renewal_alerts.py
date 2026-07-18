@@ -97,12 +97,6 @@ def build_payload(record: dict, to_phone: str, template_name: str, template_lang
                         {"type": "text", "text": format_expiry(record["expiry_date"])},
                     ],
                 },
-                {
-                    "type": "button",
-                    "sub_type": "url",
-                    "index": "0",
-                    "parameters": [{"type": "text", "text": record["cert_id"]}],
-                },
             ],
         },
     }

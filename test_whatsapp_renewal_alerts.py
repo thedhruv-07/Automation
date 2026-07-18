@@ -143,17 +143,14 @@ def test_build_payload_structure_and_placeholder_order():
     assert payload["template"]["name"] == "cert_renewal_alert"
     assert payload["template"]["language"] == {"code": "en_US"}
 
+    assert len(payload["template"]["components"]) == 1
+
     body_params = payload["template"]["components"][0]["parameters"]
     assert body_params[0] == {"type": "text", "text": "Rahul Sharma"}
     assert body_params[1] == {"type": "text", "text": "TechCorp India Pvt Ltd"}
     assert body_params[2] == {"type": "text", "text": "ISO-2021-4521"}
     assert body_params[3] == {"type": "text", "text": "ISO 9001:2015 Quality Management"}
     assert body_params[4] == {"type": "text", "text": "24 July 2026"}
-
-    button = payload["template"]["components"][1]
-    assert button["type"] == "button"
-    assert button["sub_type"] == "url"
-    assert button["parameters"] == [{"type": "text", "text": "ISO-2021-4521"}]
 
 
 from unittest.mock import patch, Mock
@@ -365,8 +362,6 @@ def test_format_result_line_dry_run():
                     {"type": "text", "text": "ISO 9001:2015 Quality Management"},
                     {"type": "text", "text": "24 July 2026"},
                 ]},
-                {"type": "button", "sub_type": "url", "index": "0",
-                 "parameters": [{"type": "text", "text": "ISO-2021-4521"}]},
             ]
         }
     }
