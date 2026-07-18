@@ -11,6 +11,7 @@
   table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
   th, td { border: 1px solid #ddd; padding: 8px 10px; font-size: 14px; text-align: left; }
   th { background: #1F4E79; color: #fff; }
+  .badge { padding: 3px 10px; border-radius: 12px; color: #fff; font-weight: bold; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -41,6 +42,11 @@ const RECORD_KEYS = {
   "Client ID": "client_id", "Full Name": "name", "Company": "company",
   "Certification Name": "cert_name", "Certification ID": "cert_id",
   "Expiry Date": "expiry_date", "Status": "status",
+};
+
+const STATUS_COLORS = {
+  EXPIRED: "#FF0000", CRITICAL: "#FF6600", URGENT: "#FFA500",
+  "DUE SOON": "#FFD700", ACTIVE: "#00B050",
 };
 
 let clients = [];
@@ -97,7 +103,7 @@ function render() {
       <td>${c.cert_id}</td>
       <td>${c.expiry_date}</td>
       <td>${computeDaysLeft(c.expiry_date)}</td>
-      <td>${c.status}</td>
+      <td><span class="badge" style="background:${STATUS_COLORS[c.status] || "#999"}">${c.status}</span></td>
     `;
     tbody.appendChild(tr);
   });
