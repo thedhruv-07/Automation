@@ -7,10 +7,12 @@ REPO_ROOT = BACKEND_DIR.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import os  # noqa: E402
+import shutil  # noqa: E402
 import threading  # noqa: E402
 
+import openpyxl  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi import FastAPI, HTTPException, File, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from datetime import datetime  # noqa: E402
@@ -33,6 +35,12 @@ _send_lock = threading.Lock()
 _pending_sends: set[str] = set()
 
 _bulk_in_progress = False
+
+REQUIRED_HEADERS = [
+    "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
+    "Certification Name", "Certification ID", "Issue Date", "Expiry Date",
+    "Renewal Link", "Status",
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -151,6 +159,46 @@ def send_all_alerts():
     finally:
         with _send_lock:
             _bulk_in_progress = False
+
+
+@app.post("/api/upload-clients")
+async def upload_clients(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
+
+    contents = await file.read()
+    tmp_path = DEFAULT_EXCEL_PATH.parent / "_upload_tmp.xlsx"
+    tmp_path.write_bytes(contents)
+
+    try:
+        wb = openpyxl.load_workbook(tmp_path, read_only=True, data_only=True)
+        try:
+            header_row = next(wb.active.iter_rows(values_only=True))
+        finally:
+            wb.close()
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read the uploaded file as a valid .xlsx spreadsheet",
+        )
+
+    actual_headers = list(header_row[: len(REQUIRED_HEADERS)])
+    if actual_headers != REQUIRED_HEADERS:
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Column headers don't match the expected format. Expected: {', '.join(REQUIRED_HEADERS)}",
+        )
+
+    if DEFAULT_EXCEL_PATH.exists():
+        backup_path = DEFAULT_EXCEL_PATH.parent / "clients_certifications.backup.xlsx"
+        shutil.copyfile(DEFAULT_EXCEL_PATH, backup_path)
+
+    shutil.move(str(tmp_path), str(DEFAULT_EXCEL_PATH))
+
+    row_count = len(read_clients(DEFAULT_EXCEL_PATH))
+    return {"status": "ok", "row_count": row_count}
 
 
 from fastapi.staticfiles import StaticFiles  # noqa: E402

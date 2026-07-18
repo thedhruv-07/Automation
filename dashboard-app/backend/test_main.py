@@ -294,3 +294,81 @@ def test_send_all_alerts_blocked_while_per_client_send_in_progress(tmp_path, mon
         assert response.status_code == 409
     finally:
         main_module._pending_sends.discard("CLT999")
+
+
+def test_upload_clients_success(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "upload.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("clients.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "row_count": 1}
+    assert excel_path.exists()
+
+
+def test_upload_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    response = client.post(
+        "/api/upload-clients",
+        files={"file": ("clients.csv", b"not,a,real,xlsx", "text/csv")},
+    )
+    assert response.status_code == 400
+
+
+def test_upload_clients_rejects_wrong_headers(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "bad.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Wrong", "Headers", "Here"])
+    ws.append(["a", "b", "c"])
+    wb.save(upload_path)
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("bad.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 400
+    assert not excel_path.exists()
+
+
+def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    _write_xlsx(excel_path, [
+        ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
+         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "new.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("new.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+
+    backup_path = excel_path.parent / "clients_certifications.backup.xlsx"
+    assert backup_path.exists()
