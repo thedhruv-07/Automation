@@ -22,6 +22,7 @@
 
 <div class="controls">
   <label>Clients file: <input type="file" id="xlsxInput" accept=".xlsx"></label>
+  <label>Sent log (optional): <input type="file" id="logInput" accept=".json"></label>
 </div>
 
 <div class="controls">
@@ -47,6 +48,7 @@
       <th data-key="expiry_date">Expiry Date</th>
       <th data-key="days_left">Days Left</th>
       <th data-key="status">Status</th>
+      <th>Alert Sent Today</th>
     </tr>
   </thead>
   <tbody id="clientTableBody"></tbody>
@@ -69,6 +71,8 @@ let activeStatus = "ALL";
 let searchTerm = "";
 let sortKey = null;
 let sortAsc = true;
+let sentLog = null;
+const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON"]);
 
 document.getElementById("statusTabs").addEventListener("click", function (e) {
   if (e.target.tagName !== "BUTTON") return;
@@ -119,6 +123,17 @@ document.getElementById("xlsxInput").addEventListener("change", function (e) {
   reader.readAsArrayBuffer(file);
 });
 
+document.getElementById("logInput").addEventListener("change", function (e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (evt) {
+    sentLog = JSON.parse(evt.target.result);
+    render();
+  };
+  reader.readAsText(file);
+});
+
 function parseDate(str) {
   const [d, m, y] = String(str).split("-").map(Number);
   return new Date(y, m - 1, d);
@@ -137,6 +152,20 @@ function computeDaysLeft(expiryStr) {
   if (diffDays === 0) return "today";
   if (diffDays > 0) return `in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ago`;
+}
+
+function todayStr() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+function alertSentLabel(client) {
+  if (!ALERT_ELIGIBLE_STATUSES.has(client.status)) return "—";
+  if (!sentLog) return "—";
+  const key = `${client.client_id}|${client.status}|${todayStr()}`;
+  return sentLog[key] ? "✅ Sent" : "Not sent";
 }
 
 function render() {
@@ -179,6 +208,7 @@ function render() {
       <td>${c.expiry_date}</td>
       <td>${computeDaysLeft(c.expiry_date)}</td>
       <td><span class="badge" style="background:${STATUS_COLORS[c.status] || "#999"}">${c.status}</span></td>
+      <td>${alertSentLabel(c)}</td>
     `;
     tbody.appendChild(tr);
   });
