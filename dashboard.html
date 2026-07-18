@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Absolute Veritas — Renewal Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f9; }
+  h1 { color: #1F4E79; }
+  .controls { margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<h1>Absolute Veritas — Certification Renewal Dashboard</h1>
+
+<div class="controls">
+  <label>Clients file: <input type="file" id="xlsxInput" accept=".xlsx"></label>
+</div>
+
+<script>
+const RECORD_KEYS = {
+  "Client ID": "client_id", "Full Name": "name", "Company": "company",
+  "Certification Name": "cert_name", "Certification ID": "cert_id",
+  "Expiry Date": "expiry_date", "Status": "status",
+};
+
+let clients = [];
+
+document.getElementById("xlsxInput").addEventListener("change", function (e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (evt) {
+    const data = new Uint8Array(evt.target.result);
+    const workbook = XLSX.read(data, { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    clients = rows
+      .filter((r) => r["Client ID"])
+      .map((r) => {
+        const rec = {};
+        for (const [col, key] of Object.entries(RECORD_KEYS)) {
+          rec[key] = r[col];
+        }
+        return rec;
+      });
+    console.log("Parsed clients:", clients);
+  };
+  reader.readAsArrayBuffer(file);
+});
+</script>
+</body>
+</html>
