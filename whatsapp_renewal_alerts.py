@@ -124,6 +124,60 @@ def send_message(payload: dict, token: str, phone_number_id: str, timeout: int =
     return False, {"error": error_message}
 
 
+def send_one_alert(
+    record: dict,
+    sent_log: dict,
+    today: str,
+    token: str,
+    phone_number_id: str,
+    template_name: str,
+    template_lang: str,
+    to_phone_override: str | None = None,
+    send_fn=send_message,
+) -> dict:
+    """Send (or skip if already sent today) one alert-eligible client's WhatsApp
+    renewal message. Mutates sent_log in place on a successful send. Returns a
+    result dict with action one of 'sent' / 'skipped_duplicate' / 'failed'."""
+    key = dedup_key(record["client_id"], record["status"], today)
+    to_phone = (
+        normalize_phone(to_phone_override) if to_phone_override
+        else normalize_phone(record["phone"])
+    )
+
+    if key in sent_log:
+        return {
+            "client_id": record["client_id"], "name": record["name"],
+            "status": record["status"], "action": "skipped_duplicate",
+            "to": to_phone,
+        }
+
+    try:
+        payload = build_payload(record, to_phone, template_name, template_lang)
+        ok, info = send_fn(payload, token, phone_number_id)
+        if ok:
+            sent_log[key] = {
+                "sent_at": datetime.now().isoformat(),
+                "message_id": info.get("message_id"),
+                "phone": to_phone,
+            }
+            return {
+                "client_id": record["client_id"], "name": record["name"],
+                "status": record["status"], "action": "sent",
+                "to": to_phone, "message_id": info.get("message_id"),
+            }
+        return {
+            "client_id": record["client_id"], "name": record["name"],
+            "status": record["status"], "action": "failed",
+            "to": to_phone, "error": info.get("error"),
+        }
+    except Exception as exc:
+        return {
+            "client_id": record["client_id"], "name": record["name"],
+            "status": record["status"], "action": "failed",
+            "to": to_phone, "error": str(exc),
+        }
+
+
 def run(
     excel_path,
     log_path,
@@ -144,54 +198,25 @@ def run(
     results = []
 
     for rec in records:
-        key = dedup_key(rec["client_id"], rec["status"], today)
         to_phone = normalize_phone(test_number) if test_number else normalize_phone(rec["phone"])
 
-        if key in sent_log:
+        if dry_run:
+            payload = build_payload(rec, to_phone, template_name, template_lang)
             results.append({
                 "client_id": rec["client_id"], "name": rec["name"],
-                "status": rec["status"], "action": "skipped_duplicate",
-                "to": to_phone,
+                "status": rec["status"], "action": "dry_run",
+                "to": to_phone, "payload": payload,
             })
             continue
 
-        try:
-            payload = build_payload(rec, to_phone, template_name, template_lang)
-
-            if dry_run:
-                results.append({
-                    "client_id": rec["client_id"], "name": rec["name"],
-                    "status": rec["status"], "action": "dry_run",
-                    "to": to_phone, "payload": payload,
-                })
-                continue
-
-            ok, info = send_fn(payload, token, phone_number_id)
-            if ok:
-                results.append({
-                    "client_id": rec["client_id"], "name": rec["name"],
-                    "status": rec["status"], "action": "sent",
-                    "to": to_phone, "message_id": info.get("message_id"),
-                })
-                if persist_log:
-                    sent_log[key] = {
-                        "sent_at": datetime.now().isoformat(),
-                        "message_id": info.get("message_id"),
-                        "phone": to_phone,
-                    }
-                    log_dirty = True
-            else:
-                results.append({
-                    "client_id": rec["client_id"], "name": rec["name"],
-                    "status": rec["status"], "action": "failed",
-                    "to": to_phone, "error": info.get("error"),
-                })
-        except Exception as exc:
-            results.append({
-                "client_id": rec["client_id"], "name": rec["name"],
-                "status": rec["status"], "action": "failed",
-                "to": to_phone, "error": str(exc),
-            })
+        result = send_one_alert(
+            rec, sent_log, today, token, phone_number_id,
+            template_name, template_lang,
+            to_phone_override=test_number, send_fn=send_fn,
+        )
+        results.append(result)
+        if result["action"] == "sent":
+            log_dirty = True
 
     if persist_log and log_dirty:
         save_sent_log(log_path, sent_log)

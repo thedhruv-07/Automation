@@ -307,6 +307,79 @@ def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path)
     assert "CLT002|URGENT|2026-07-17" in saved
 
 
+from whatsapp_renewal_alerts import send_one_alert
+
+
+def test_send_one_alert_success_updates_log_in_place():
+    record = {
+        "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1",
+        "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
+    }
+    sent_log = {}
+
+    def fake_send(payload, token, phone_number_id):
+        return True, {"message_id": "wamid.ABC"}
+
+    result = send_one_alert(
+        record, sent_log, "2026-07-18", "tok", "pid123",
+        "cert_renewal_alert", "en", send_fn=fake_send,
+    )
+
+    assert result == {
+        "client_id": "CLT001", "name": "Rahul Sharma", "status": "CRITICAL",
+        "action": "sent", "to": "919876543210", "message_id": "wamid.ABC",
+    }
+    assert "CLT001|CRITICAL|2026-07-18" in sent_log
+    assert sent_log["CLT001|CRITICAL|2026-07-18"]["message_id"] == "wamid.ABC"
+
+
+def test_send_one_alert_skips_when_already_in_log():
+    record = {
+        "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1",
+        "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
+    }
+    sent_log = {"CLT001|CRITICAL|2026-07-18": {"message_id": "wamid.OLD"}}
+
+    def fake_send(payload, token, phone_number_id):
+        raise AssertionError("should not be called when already sent")
+
+    result = send_one_alert(
+        record, sent_log, "2026-07-18", "tok", "pid123",
+        "cert_renewal_alert", "en", send_fn=fake_send,
+    )
+
+    assert result == {
+        "client_id": "CLT001", "name": "Rahul Sharma", "status": "CRITICAL",
+        "action": "skipped_duplicate", "to": "919876543210",
+    }
+
+
+def test_send_one_alert_uses_override_phone_and_reports_failure():
+    record = {
+        "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1",
+        "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
+    }
+    sent_log = {}
+
+    def fake_send(payload, token, phone_number_id):
+        return False, {"error": "Invalid parameter"}
+
+    result = send_one_alert(
+        record, sent_log, "2026-07-18", "tok", "pid123",
+        "cert_renewal_alert", "en", to_phone_override="919000000000",
+        send_fn=fake_send,
+    )
+
+    assert result == {
+        "client_id": "CLT001", "name": "Rahul Sharma", "status": "CRITICAL",
+        "action": "failed", "to": "919000000000", "error": "Invalid parameter",
+    }
+    assert sent_log == {}
+
+
 from whatsapp_renewal_alerts import parse_args, DEFAULT_EXCEL_PATH
 
 
