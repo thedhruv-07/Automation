@@ -7,6 +7,7 @@ REPO_ROOT = BACKEND_DIR.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import os  # noqa: E402
+import threading  # noqa: E402
 
 from dotenv import load_dotenv  # noqa: E402
 from fastapi import FastAPI, HTTPException  # noqa: E402
@@ -27,6 +28,9 @@ def _today_str() -> str:
 
 
 app = FastAPI(title="Absolute Veritas Renewal Dashboard API")
+
+_send_lock = threading.Lock()
+_pending_sends: set[str] = set()
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,19 +82,36 @@ def send_alert(client_id: str):
             detail="Alert already sent today for this client/status",
         )
 
-    token = os.environ["WHATSAPP_TOKEN"]
-    phone_number_id = os.environ["PHONE_NUMBER_ID"]
-    template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
-    template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
-    test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
+    with _send_lock:
+        if client_id in _pending_sends:
+            raise HTTPException(
+                status_code=409,
+                detail="A send for this client is already in progress",
+            )
+        _pending_sends.add(client_id)
 
-    result = send_one_alert(
-        record, sent_log, today, token, phone_number_id,
-        template_name, template_lang, to_phone_override=test_number,
-    )
+    try:
+        token = os.environ["WHATSAPP_TOKEN"]
+        phone_number_id = os.environ["PHONE_NUMBER_ID"]
+        template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
+        template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
+        test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
 
-    if result["action"] == "sent":
-        save_sent_log(DEFAULT_LOG_PATH, sent_log)
-        return {"status": "sent", "message_id": result["message_id"]}
+        result = send_one_alert(
+            record, sent_log, today, token, phone_number_id,
+            template_name, template_lang, to_phone_override=test_number,
+        )
 
-    raise HTTPException(status_code=502, detail=result.get("error", "Unknown error"))
+        if result["action"] == "sent":
+            if not test_number:
+                save_sent_log(DEFAULT_LOG_PATH, sent_log)
+            return {"status": "sent", "message_id": result["message_id"]}
+        if result["action"] == "skipped_duplicate":
+            raise HTTPException(
+                status_code=409,
+                detail="Alert already sent today for this client/status",
+            )
+        raise HTTPException(status_code=502, detail=result.get("error", "Unknown error"))
+    finally:
+        with _send_lock:
+            _pending_sends.discard(client_id)

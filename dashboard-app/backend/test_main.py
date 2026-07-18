@@ -151,3 +151,55 @@ def test_send_alert_uses_dashboard_test_number_override(tmp_path, monkeypatch):
     assert response.status_code == 200
     sent_payload = mock_post.call_args.kwargs["json"]
     assert sent_payload["to"] == "919000000000"
+
+
+def test_send_alert_with_test_number_does_not_persist_dedup_log(tmp_path, monkeypatch):
+    """Bug 1: a send redirected to DASHBOARD_TEST_NUMBER must NOT write the
+    real client's dedup key to sent_log.json, or the real 9:30 AM CLI run
+    (and future dashboard sends) would wrongly believe the client was already
+    alerted today."""
+    log_path = _setup_one_client(tmp_path, monkeypatch)
+    original_log_contents = log_path.read_text()
+    monkeypatch.setenv("DASHBOARD_TEST_NUMBER", "919000000000")
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.TEST"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send/CLT001")
+    assert response.status_code == 200
+    assert response.json() == {"status": "sent", "message_id": "wamid.TEST"}
+
+    # The log file on disk must be untouched: no dedup key was persisted.
+    assert log_path.read_text() == original_log_contents
+    on_disk_log = json.loads(log_path.read_text())
+    assert "CLT001|CRITICAL|2026-07-18" not in on_disk_log
+
+
+def test_send_alert_concurrent_send_in_progress_returns_409(tmp_path, monkeypatch):
+    """Bug 3: if a send for this client_id is already marked in-progress
+    (e.g. an overlapping request got there first), a second request must be
+    rejected with 409 rather than double-sending."""
+    _setup_one_client(tmp_path, monkeypatch)
+    main_module._pending_sends.add("CLT001")
+    try:
+        response = client.post("/api/send/CLT001")
+    finally:
+        main_module._pending_sends.discard("CLT001")
+    assert response.status_code == 409
+    assert "already in progress" in response.json()["detail"]
+
+
+def test_send_alert_skipped_duplicate_from_send_one_alert_returns_409(tmp_path, monkeypatch):
+    """Bug 2: if send_one_alert() itself reports skipped_duplicate (e.g. its
+    internal dedup logic diverges from the endpoint's own pre-check in the
+    future), the endpoint must still surface a 409, not a bogus 502."""
+    _setup_one_client(tmp_path, monkeypatch)
+
+    def fake_send_one_alert(*args, **kwargs):
+        return {"action": "skipped_duplicate"}
+
+    monkeypatch.setattr(main_module, "send_one_alert", fake_send_one_alert)
+    response = client.post("/api/send/CLT001")
+    assert response.status_code == 409
+    assert "already sent today" in response.json()["detail"]
