@@ -32,7 +32,11 @@ export default function Toast({ toast, onDismiss }) {
           role="alert"
           aria-live="assertive"
           className={`fixed bottom-6 right-6 px-5 py-3 rounded-xl shadow-lg text-sm font-medium text-white ${
-            toast.type === "error" ? "bg-rose-500" : "bg-emerald-500"
+            toast.type === "error"
+              ? "bg-status-critical"
+              : toast.type === "info"
+              ? "bg-ink-secondary"
+              : "bg-status-good"
           }`}
         >
           {toast.message}

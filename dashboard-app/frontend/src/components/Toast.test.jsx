@@ -15,7 +15,7 @@ describe("Toast", () => {
 
   it("applies the error background class for error-type toasts", () => {
     render(<Toast toast={{ type: "error", message: "Something failed" }} onDismiss={() => {}} />);
-    expect(screen.getByTestId("toast")).toHaveClass("bg-rose-500");
+    expect(screen.getByTestId("toast")).toHaveClass("bg-status-critical");
   });
 
   it("calls onDismiss after 4000ms", () => {

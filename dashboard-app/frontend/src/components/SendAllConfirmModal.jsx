@@ -49,11 +49,11 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
       aria-modal="true"
       aria-labelledby="send-all-confirm-title"
     >
-      <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full">
-        <h3 id="send-all-confirm-title" className="text-lg font-bold text-slate-800 mb-2">
+      <div className="bg-surface rounded-2xl shadow-xl p-6 max-w-sm w-full border border-line">
+        <h3 id="send-all-confirm-title" className="text-lg font-bold text-ink-primary mb-2">
           Send bulk renewal alerts?
         </h3>
-        <p className="text-sm text-slate-600 mb-6">
+        <p className="text-sm text-ink-secondary mb-6">
           Send a real WhatsApp renewal alert to all <strong>{eligibleCount}</strong> eligible
           client{eligibleCount === 1 ? "" : "s"} (Critical, Urgent, or Due Soon, not yet sent today)?
         </p>
@@ -62,7 +62,7 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
             ref={cancelButtonRef}
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-full text-sm font-semibold text-slate-600 border border-slate-200"
+            className="px-4 py-2 rounded-full text-sm font-semibold text-ink-secondary border border-line hover:text-ink-primary transition-colors"
           >
             Cancel
           </button>
@@ -71,7 +71,7 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
             type="button"
             onClick={handleConfirmClick}
             disabled={confirming}
-            className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-sky-500 to-indigo-500 disabled:opacity-50"
+            className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors disabled:opacity-50"
           >
             Confirm Send All
           </button>

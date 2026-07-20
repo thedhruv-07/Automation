@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { daysUntil, formatDaysLeft, sortClients } from "./sortUtils";
+import { daysUntil, formatDaysLeft, sortClients, monthlyGroups, initialsFor } from "./sortUtils";
 
 function futureDateStr(offsetDays) {
   const d = new Date();
@@ -62,5 +62,37 @@ describe("sortClients", () => {
   it("returns original order unchanged when sortKey is null", () => {
     const sorted = sortClients(clients, null, true);
     expect(sorted.map((c) => c.client_id)).toEqual(["A", "B", "C"]);
+  });
+});
+
+describe("initialsFor", () => {
+  it("takes the first letter of each of two space-separated words", () => {
+    expect(initialsFor("BuildRight Construction")).toBe("BC");
+  });
+
+  it("splits a single camelCase word into pseudo-words", () => {
+    expect(initialsFor("TechCorp")).toBe("TC");
+  });
+
+  it("returns an empty string for empty input", () => {
+    expect(initialsFor("")).toBe("");
+    expect(initialsFor(undefined)).toBe("");
+  });
+});
+
+describe("monthlyGroups", () => {
+  it("buckets clients by expiry month/year, sorted chronologically, with counts", () => {
+    const clients = [
+      { expiry_date: "24-07-2026" },
+      { expiry_date: "02-07-2026" },
+      { expiry_date: "13-01-2027" },
+      { expiry_date: "15-09-2026" },
+    ];
+    const groups = monthlyGroups(clients);
+    expect(groups).toEqual([
+      { key: "2026-6", label: "Jul 2026", year: 2026, month: 6, count: 2 },
+      { key: "2026-8", label: "Sep 2026", year: 2026, month: 8, count: 1 },
+      { key: "2027-0", label: "Jan 2027", year: 2027, month: 0, count: 1 },
+    ]);
   });
 });

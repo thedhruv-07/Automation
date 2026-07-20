@@ -2,6 +2,9 @@
 sent_log.json
 whatsapp_automation.log
 scheduler_output.log
+output/
+clients_certifications.xlsx
+clients_certifications.backup.xlsx
 __pycache__/
 *.pyc
 .pytest_cache/

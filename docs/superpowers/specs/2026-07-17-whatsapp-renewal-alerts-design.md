@@ -20,7 +20,7 @@ Certification ID, Issue Date, Expiry Date, Renewal Link, Status`
   automation does not recompute urgency from dates, it just filters on the
   `Status` value.
 - `Phone (WhatsApp)` is stored as bare digits including country code (e.g.
-  `919354567496`), no `+` — matches Cloud API's expected `to` format
+  `919876543210`), no `+` — matches Cloud API's expected `to` format
   directly.
 
 ## WhatsApp Message Template (submit in Meta dashboard)

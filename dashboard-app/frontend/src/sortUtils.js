@@ -1,3 +1,14 @@
+export function initialsFor(company) {
+  const str = String(company || "").trim();
+  if (!str) return "";
+  let words = str.split(/\s+/).filter(Boolean);
+  if (words.length === 1) {
+    const camelParts = str.match(/[A-Z][a-z0-9]*|[a-z0-9]+/g);
+    if (camelParts && camelParts.length > 1) words = camelParts;
+  }
+  return words.slice(0, 2).map((word) => word[0].toUpperCase()).join("");
+}
+
 export function parseDate(str) {
   const [d, m, y] = String(str).split("-").map(Number);
   return new Date(y, m - 1, d);
@@ -16,6 +27,31 @@ export function formatDaysLeft(expiryStr) {
   if (diffDays === 0) return "today";
   if (diffDays > 0) return `in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
   return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} ago`;
+}
+
+const MONTH_LABELS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+export function monthlyGroups(clients) {
+  const buckets = new Map();
+  for (const c of clients) {
+    const d = parseDate(c.expiry_date);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        key,
+        label: `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`,
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        count: 0,
+      });
+    }
+    buckets.get(key).count += 1;
+  }
+  return Array.from(buckets.values()).sort((a, b) => a.year - b.year || a.month - b.month);
 }
 
 export function sortClients(clients, sortKey, sortAsc) {

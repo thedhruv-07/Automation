@@ -1,3 +1,4 @@
+import io
 import json
 import openpyxl
 import main as main_module
@@ -75,6 +76,98 @@ def test_get_clients_alert_eligible_not_yet_sent(tmp_path, monkeypatch):
     assert data[0]["alert_sent_today"] is False
 
 
+def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+
+    response = client.get("/api/email-preview/CLT001")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["subject"] == "[Action Required] Renew ISO 9001 — TechCorp"
+    assert "Rahul Sharma" in data["html"]
+    assert "Absolute Veritas" in data["html"]
+    assert "24 July 2026" in data["html"]
+
+
+def test_email_preview_unknown_client_returns_404(tmp_path, monkeypatch):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [])
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+
+    response = client.get("/api/email-preview/NOPE")
+    assert response.status_code == 404
+
+
+def test_settings_info_reflects_env_and_never_exposes_token(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_TOKEN", "super-secret-token")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid123")
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_LANG", "en")
+
+    response = client.get("/api/settings-info")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["template_name"] == "cert_renewal_alert"
+    assert data["template_lang"] == "en"
+    assert data["phone_number_id"] == "pid123"
+    assert data["critical_days"] == 7
+    assert data["urgent_days"] == 30
+    assert "super-secret-token" not in response.text
+    assert "token" not in data
+
+
+def test_message_log_returns_entries_joined_with_client_data(tmp_path, monkeypatch):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    log_path = tmp_path / "sent_log.json"
+    log_path.write_text(json.dumps({
+        "CLT001|CRITICAL|2026-07-18": {
+            "sent_at": "2026-07-18T10:00:00", "message_id": "wamid.OLD", "phone": "919876543210",
+        },
+        "CLT001|CRITICAL|2026-07-19": {
+            "sent_at": "2026-07-19T10:00:00", "message_id": "wamid.NEW", "phone": "919876543210",
+        },
+    }))
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+
+    response = client.get("/api/message-log")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    # newest first
+    assert data[0]["message_id"] == "wamid.NEW"
+    assert data[0]["name"] == "Rahul Sharma"
+    assert data[0]["company"] == "TechCorp"
+    assert data[0]["status_tier"] == "CRITICAL"
+    assert data[0]["phone"] == "919876543210"
+
+
+def test_message_log_handles_client_no_longer_in_roster(tmp_path, monkeypatch):
+    xlsx_path = tmp_path / "clients.xlsx"
+    _write_xlsx(xlsx_path, [])
+    log_path = tmp_path / "sent_log.json"
+    log_path.write_text(json.dumps({
+        "CLT999|CRITICAL|2026-07-18": {
+            "sent_at": "2026-07-18T10:00:00", "message_id": "wamid.OLD", "phone": "919999999999",
+        },
+    }))
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+
+    response = client.get("/api/message-log")
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["name"] == "Unknown"
+
+
 def _setup_one_client(tmp_path, monkeypatch, status="CRITICAL"):
     xlsx_path = tmp_path / "clients.xlsx"
     _write_xlsx(xlsx_path, [
@@ -140,7 +233,7 @@ def test_send_alert_api_failure_returns_502(tmp_path, monkeypatch):
 
 
 def test_send_alert_uses_dashboard_test_number_override(tmp_path, monkeypatch):
-    log_path = _setup_one_client(tmp_path, monkeypatch)
+    _setup_one_client(tmp_path, monkeypatch)
     monkeypatch.setenv("DASHBOARD_TEST_NUMBER", "919000000000")
     mock_response = type("Resp", (), {
         "status_code": 200,
@@ -294,6 +387,20 @@ def test_send_all_alerts_blocked_while_per_client_send_in_progress(tmp_path, mon
         assert response.status_code == 409
     finally:
         main_module._pending_sends.discard("CLT999")
+
+
+def test_client_template_returns_header_only_xlsx():
+    response = client.get("/api/client-template")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert "attachment" in response.headers["content-disposition"]
+
+    wb = openpyxl.load_workbook(io.BytesIO(response.content))
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    assert rows == [tuple(HEADERS)]
 
 
 def test_upload_clients_success(tmp_path, monkeypatch):
