@@ -39,6 +39,13 @@ def test_due_soon_tier_for_many_days_left():
     assert "#fab219" in html  # status-warning color
 
 
+def test_active_tier_for_many_days_left():
+    html = build_email_html(make_rec(90))
+    assert "ACTIVE" in html
+    assert "#0ca30c" in html  # status-good color
+    assert "DUE SOON" not in html
+
+
 def test_expired_tier_for_negative_days_left():
     html = build_email_html(make_rec(-3))
     assert "EXPIRED" in html

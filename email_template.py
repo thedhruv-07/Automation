@@ -14,6 +14,7 @@ LINE = "#e1e0d9"
 STATUS_CRITICAL = "#d03b3b"
 STATUS_SERIOUS = "#ec835a"
 STATUS_WARNING = "#fab219"
+STATUS_GOOD = "#0ca30c"
 
 
 def _tier(days_left: int) -> tuple[str, str, str, str]:
@@ -27,7 +28,9 @@ def _tier(days_left: int) -> tuple[str, str, str, str]:
         return ("CRITICAL", STATUS_CRITICAL, f"Expires in {days_left} day{'s' if days_left != 1 else ''}", "DAYS REMAINING")
     if days_left <= 30:
         return ("URGENT", STATUS_SERIOUS, f"Expires in {days_left} days", "DAYS REMAINING")
-    return ("DUE SOON", STATUS_WARNING, f"Expires in {days_left} days", "DAYS REMAINING")
+    if days_left <= 60:
+        return ("DUE SOON", STATUS_WARNING, f"Expires in {days_left} days", "DAYS REMAINING")
+    return ("ACTIVE", STATUS_GOOD, f"Expires in {days_left} days — no action needed yet", "DAYS REMAINING")
 
 
 def build_email_html(

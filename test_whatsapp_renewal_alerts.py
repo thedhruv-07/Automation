@@ -108,7 +108,7 @@ def test_read_clients_and_filter_alertable(tmp_path):
     assert records[0]["status"] == "CRITICAL"
 
     alertable = filter_alertable(records)
-    assert [r["client_id"] for r in alertable] == ["CLT001", "CLT002", "CLT003"]
+    assert [r["client_id"] for r in alertable] == ["CLT001", "CLT002", "CLT003", "CLT005"]
 
 
 def test_read_clients_skips_blank_rows(tmp_path):

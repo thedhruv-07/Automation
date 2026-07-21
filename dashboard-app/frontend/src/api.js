@@ -51,6 +51,17 @@ export async function uploadClientsFile(file) {
   return data;
 }
 
+export async function mergeClientsFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/merge-clients", { method: "POST", body: formData });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Merge failed: ${res.status}`);
+  }
+  return data;
+}
+
 export function downloadClientTemplate() {
   const link = document.createElement("a");
   link.href = "/api/client-template";

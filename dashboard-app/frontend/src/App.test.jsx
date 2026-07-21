@@ -143,6 +143,25 @@ describe("App", () => {
     expect(api.getClients).toHaveBeenCalledTimes(2);
   });
 
+  it("navigates to Excel Sync and merges a file, refreshing the client list", async () => {
+    api.mergeClientsFile.mockResolvedValue({
+      status: "ok", row_count: 9, added: 2, skipped_duplicates: 1, format: "roster", stats: null,
+    });
+    render(<App />);
+    await waitFor(() => screen.getByText("Rahul Sharma"));
+    fireEvent.click(screen.getByText("Excel Sync"));
+
+    const file = new File(["dummy"], "clients.xlsx");
+    fireEvent.change(screen.getByLabelText("Upload client spreadsheet"), { target: { files: [file] } });
+    fireEvent.click(screen.getByText("Upload and Merge with Existing Data"));
+
+    await waitFor(() => expect(api.mergeClientsFile).toHaveBeenCalledWith(file));
+    await waitFor(() =>
+      expect(screen.getByText("Merged — added 2 new clients, skipped 1 already on file (9 total).")).toBeInTheDocument()
+    );
+    expect(api.getClients).toHaveBeenCalledTimes(2);
+  });
+
   it("navigates to Message Log and displays fetched entries", async () => {
     api.getMessageLog.mockResolvedValue([
       { client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", cert_name: "ISO 9001",

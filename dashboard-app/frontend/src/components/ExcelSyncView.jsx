@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { downloadClientTemplate } from "../api";
 
-export default function ExcelSyncView({ onUpload }) {
+export default function ExcelSyncView({ onUpload, onMerge }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [dragActive, setDragActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [runningAction, setRunningAction] = useState(null); // "replace" | "merge" | null
   const [result, setResult] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -22,15 +22,32 @@ export default function ExcelSyncView({ onUpload }) {
 
   async function handleUploadClick() {
     if (!selectedFile) return;
-    setUploading(true);
+    setRunningAction("replace");
     try {
       const res = await onUpload(selectedFile);
-      setResult({ type: "success", rowCount: res.row_count });
+      setResult({ type: "success", mode: "replace", rowCount: res.row_count, format: res.format, stats: res.stats });
       setSelectedFile(null);
     } catch (err) {
       setResult({ type: "error", message: err.message });
     } finally {
-      setUploading(false);
+      setRunningAction(null);
+    }
+  }
+
+  async function handleMergeClick() {
+    if (!selectedFile) return;
+    setRunningAction("merge");
+    try {
+      const res = await onMerge(selectedFile);
+      setResult({
+        type: "success", mode: "merge", rowCount: res.row_count, format: res.format,
+        stats: res.stats, added: res.added, skippedDuplicates: res.skipped_duplicates,
+      });
+      setSelectedFile(null);
+    } catch (err) {
+      setResult({ type: "error", message: err.message });
+    } finally {
+      setRunningAction(null);
     }
   }
 
@@ -40,7 +57,7 @@ export default function ExcelSyncView({ onUpload }) {
         <div>
           <h2 className="text-2xl font-bold text-ink-primary">Excel Sync</h2>
           <p className="text-ink-secondary text-sm mt-1">
-            Replace the client roster by uploading an updated spreadsheet.
+            Replace the client roster, or merge in new clients from an updated spreadsheet.
           </p>
         </div>
         <button
@@ -71,7 +88,9 @@ export default function ExcelSyncView({ onUpload }) {
           {selectedFile ? selectedFile.name : "Drag and drop your .xlsx file here, or click to browse"}
         </p>
         <p className="text-xs text-ink-muted">
-          Must match the column headers in the downloadable template exactly.
+          Accepts either the roster template above, or a raw BIS ISI licence export
+          (one sheet per IS standard, with Licence No / Firm Name / Email / Validity Date columns) —
+          it's converted automatically.
         </p>
         <input
           ref={fileInputRef}
@@ -84,19 +103,46 @@ export default function ExcelSyncView({ onUpload }) {
       </div>
 
       {selectedFile && (
-        <button
-          type="button"
-          onClick={handleUploadClick}
-          disabled={uploading}
-          className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors disabled:opacity-50"
-        >
-          {uploading ? "Uploading…" : "Upload and Replace Client Data"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            disabled={runningAction !== null}
+            className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors disabled:opacity-50"
+          >
+            {runningAction === "replace" ? "Uploading…" : "Upload and Replace Client Data"}
+          </button>
+          <button
+            type="button"
+            onClick={handleMergeClick}
+            disabled={runningAction !== null}
+            className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/5 transition-colors disabled:opacity-50"
+          >
+            {runningAction === "merge" ? "Merging…" : "Upload and Merge with Existing Data"}
+          </button>
+        </div>
       )}
 
       {result?.type === "success" && (
         <div className="bg-status-good/10 border border-status-good/30 rounded-lg px-4 py-2 text-sm text-ink-primary">
-          Import succeeded — {result.rowCount} row{result.rowCount === 1 ? "" : "s"} loaded.
+          {result.mode === "merge" ? (
+            <>
+              Merged{result.format === "bis_isi" ? " (converted BIS ISI licence export)" : ""} —{" "}
+              added {result.added} new client{result.added === 1 ? "" : "s"}, skipped{" "}
+              {result.skippedDuplicates} already on file ({result.rowCount} total now).
+            </>
+          ) : result.format === "bis_isi" ? (
+            <>
+              Converted BIS ISI licence export — {result.rowCount} row{result.rowCount === 1 ? "" : "s"} loaded
+              from {result.stats?.sheets_used} sheet{result.stats?.sheets_used === 1 ? "" : "s"}
+              {result.stats?.sheets_empty ? `, ${result.stats.sheets_empty} sheet(s) skipped (empty)` : ""}
+              {result.stats?.rows_skipped_missing_key
+                ? `, ${result.stats.rows_skipped_missing_key} row(s) skipped (missing licence no / validity date)`
+                : ""}.
+            </>
+          ) : (
+            <>Import succeeded — {result.rowCount} row{result.rowCount === 1 ? "" : "s"} loaded.</>
+          )}
         </div>
       )}
       {result?.type === "error" && (

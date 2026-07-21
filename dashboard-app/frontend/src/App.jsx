@@ -14,15 +14,16 @@ import SendSelectedConfirmModal from "./components/SendSelectedConfirmModal";
 import EmailPreviewModal from "./components/EmailPreviewModal";
 import Toast from "./components/Toast";
 import {
-  getClients, sendAlert, sendAllAlerts, uploadClientsFile, getMessageLog, getSettingsInfo,
-  getEmailPreview,
+  getClients, sendAlert, sendAllAlerts, uploadClientsFile, mergeClientsFile, getMessageLog,
+  getSettingsInfo, getEmailPreview,
 } from "./api";
 
-const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON"]);
+const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
 
 export default function App() {
   const [activeView, setActiveView] = useState("clientData");
   const [clients, setClients] = useState([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [activeStatus, setActiveStatus] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -40,12 +41,14 @@ export default function App() {
   const [previewClientId, setPreviewClientId] = useState(null);
 
   const loadClients = useCallback(() => {
-    getClients()
+    setClientsLoading(true);
+    return getClients()
       .then((data) => {
         setClients(data);
         setLoadError(null);
       })
-      .catch((err) => setLoadError(err.message));
+      .catch((err) => setLoadError(err.message))
+      .finally(() => setClientsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -59,8 +62,7 @@ export default function App() {
 
   function handleRefreshClick() {
     setRefreshing(true);
-    loadClients();
-    setTimeout(() => setRefreshing(false), 600);
+    loadClients().finally(() => setRefreshing(false));
   }
 
   function handleClearAllFilters() {
@@ -147,6 +149,22 @@ export default function App() {
       setToast({
         type: "success",
         message: `Imported ${result.row_count} client${result.row_count === 1 ? "" : "s"}.`,
+      });
+      loadClients();
+      return result;
+    } catch (err) {
+      setToast({ type: "error", message: err.message });
+      throw err;
+    }
+  }
+
+  async function handleMergeClients(file) {
+    try {
+      const result = await mergeClientsFile(file);
+      setToast({
+        type: "success",
+        message: `Merged — added ${result.added} new client${result.added === 1 ? "" : "s"}, `
+          + `skipped ${result.skipped_duplicates} already on file (${result.row_count} total).`,
       });
       loadClients();
       return result;
@@ -248,6 +266,7 @@ export default function App() {
               />
               <ClientTable
                 clients={clients}
+                loading={clientsLoading}
                 activeStatus={activeStatus}
                 searchTerm={searchTerm}
                 certType={certType}
@@ -262,7 +281,9 @@ export default function App() {
             </>
           )}
 
-          {activeView === "excelSync" && <ExcelSyncView onUpload={handleUploadClients} />}
+          {activeView === "excelSync" && (
+            <ExcelSyncView onUpload={handleUploadClients} onMerge={handleMergeClients} />
+          )}
 
           {activeView === "messageLog" && <MessageLogView fetchLog={getMessageLog} />}
 

@@ -40,4 +40,30 @@ describe("ExcelSyncView", () => {
       expect(screen.getByText("Import failed: Column headers don't match")).toBeInTheDocument()
     );
   });
+
+  it("calls onMerge with the chosen file and shows an added/skipped summary", async () => {
+    const onMerge = vi.fn().mockResolvedValue({
+      status: "ok", row_count: 5, added: 2, skipped_duplicates: 3, format: "roster", stats: null,
+    });
+    render(<ExcelSyncView onUpload={vi.fn()} onMerge={onMerge} />);
+    const input = screen.getByLabelText("Upload client spreadsheet");
+    const file = makeFile();
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByText("Upload and Merge with Existing Data"));
+    await waitFor(() => expect(onMerge).toHaveBeenCalledWith(file));
+    await waitFor(() =>
+      expect(screen.getByText(/added 2 new clients, skipped 3 already on file \(5 total now\)/)).toBeInTheDocument()
+    );
+  });
+
+  it("shows an inline error message when the merge fails", async () => {
+    const onMerge = vi.fn().mockRejectedValue(new Error("File must be an .xlsx spreadsheet"));
+    render(<ExcelSyncView onUpload={vi.fn()} onMerge={onMerge} />);
+    const input = screen.getByLabelText("Upload client spreadsheet");
+    fireEvent.change(input, { target: { files: [makeFile()] } });
+    fireEvent.click(screen.getByText("Upload and Merge with Existing Data"));
+    await waitFor(() =>
+      expect(screen.getByText("Import failed: File must be an .xlsx spreadsheet")).toBeInTheDocument()
+    );
+  });
 });

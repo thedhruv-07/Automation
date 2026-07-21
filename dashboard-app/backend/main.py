@@ -21,10 +21,14 @@ from fastapi.responses import StreamingResponse  # noqa: E402
 from datetime import datetime  # noqa: E402
 
 from whatsapp_renewal_alerts import (  # noqa: E402
-    read_clients, ALERT_STATUSES, dedup_key, load_sent_log, save_sent_log,
+    read_clients, find_client_by_id, ALERT_STATUSES, dedup_key, load_sent_log, save_sent_log,
     send_one_alert, run, DEFAULT_EXCEL_PATH, DEFAULT_LOG_PATH,
 )
 from email_template import build_email_html  # noqa: E402
+from import_bis_isi_data import (  # noqa: E402
+    looks_like_bis_isi_workbook, import_bis_isi_workbook, RowCollector,
+    OUTPUT_HEADERS as BIS_OUTPUT_HEADERS,
+)
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -106,8 +110,7 @@ def get_clients():
 
 @app.get("/api/email-preview/{client_id}")
 def email_preview(client_id: str):
-    records = read_clients(DEFAULT_EXCEL_PATH)
-    record = next((r for r in records if r["client_id"] == client_id), None)
+    record = find_client_by_id(DEFAULT_EXCEL_PATH, client_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Unknown client_id: {client_id}")
 
@@ -167,8 +170,7 @@ def message_log():
 @app.post("/api/send/{client_id}")
 def send_alert(client_id: str):
     today = _today_str()
-    records = read_clients(DEFAULT_EXCEL_PATH)
-    record = next((r for r in records if r["client_id"] == client_id), None)
+    record = find_client_by_id(DEFAULT_EXCEL_PATH, client_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Unknown client_id: {client_id}")
     if record["status"] not in ALERT_STATUSES:
@@ -280,10 +282,13 @@ async def upload_clients(file: UploadFile = File(...)):
 
     try:
         wb = openpyxl.load_workbook(tmp_path, read_only=True, data_only=True)
+        active_title = wb.active.title
         try:
             header_row = next(wb.active.iter_rows(values_only=True))
-        finally:
-            wb.close()
+        except StopIteration:
+            header_row = None
+    except HTTPException:
+        raise
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(
@@ -291,22 +296,176 @@ async def upload_clients(file: UploadFile = File(...)):
             detail="Could not read the uploaded file as a valid .xlsx spreadsheet",
         )
 
-    actual_headers = list(header_row[: len(REQUIRED_HEADERS)])
-    if actual_headers != REQUIRED_HEADERS:
+    actual_headers = list(header_row[: len(REQUIRED_HEADERS)]) if header_row else None
+
+    if actual_headers == REQUIRED_HEADERS:
+        wb.close()
+        if DEFAULT_EXCEL_PATH.exists():
+            backup_path = DEFAULT_EXCEL_PATH.parent / "clients_certifications.backup.xlsx"
+            shutil.copyfile(DEFAULT_EXCEL_PATH, backup_path)
+        shutil.move(str(tmp_path), str(DEFAULT_EXCEL_PATH))
+        row_count = len(read_clients(DEFAULT_EXCEL_PATH))
+        return {"status": "ok", "row_count": row_count, "format": "roster"}
+
+    if looks_like_bis_isi_workbook(wb):
+        out_wb = openpyxl.Workbook()
+        out_ws = out_wb.active
+        out_ws.append(BIS_OUTPUT_HEADERS)
+        stats = import_bis_isi_workbook(wb, out_ws)
+        wb.close()
         tmp_path.unlink(missing_ok=True)
+
+        if stats["rows_written"] == 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recognized this as a BIS ISI licence file, but no rows had both a "
+                    "licence number and a validity date to import."
+                ),
+            )
+
+        if DEFAULT_EXCEL_PATH.exists():
+            backup_path = DEFAULT_EXCEL_PATH.parent / "clients_certifications.backup.xlsx"
+            shutil.copyfile(DEFAULT_EXCEL_PATH, backup_path)
+        out_wb.save(DEFAULT_EXCEL_PATH)
+
+        row_count = len(read_clients(DEFAULT_EXCEL_PATH))
+        return {"status": "ok", "row_count": row_count, "format": "bis_isi", "stats": stats}
+
+    wb.close()
+    tmp_path.unlink(missing_ok=True)
+
+    if header_row is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"The active sheet ('{active_title}') has no rows. If this file has "
+                "multiple sheets, make sure the one with your client data is the sheet "
+                "selected/visible when the file was last saved."
+            ),
+        )
+    raise HTTPException(
+        status_code=400,
+        detail=f"Column headers don't match the expected format. Expected: {', '.join(REQUIRED_HEADERS)}",
+    )
+
+
+@app.post("/api/merge-clients")
+async def merge_clients(file: UploadFile = File(...)):
+    """Adds rows from the uploaded spreadsheet to the existing roster instead
+    of replacing it. Client IDs already present in the roster are left
+    untouched — only genuinely new Client IDs get appended."""
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
+
+    contents = await file.read()
+    tmp_path = DEFAULT_EXCEL_PATH.parent / "_merge_upload_tmp.xlsx"
+    tmp_path.write_bytes(contents)
+
+    try:
+        wb = openpyxl.load_workbook(tmp_path, read_only=True, data_only=True)
+        active_title = wb.active.title
+        try:
+            header_row = next(wb.active.iter_rows(values_only=True))
+        except StopIteration:
+            header_row = None
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read the uploaded file as a valid .xlsx spreadsheet",
+        )
+
+    actual_headers = list(header_row[: len(REQUIRED_HEADERS)]) if header_row else None
+    stats = None
+
+    if actual_headers == REQUIRED_HEADERS:
+        rows_iter = wb.active.iter_rows(values_only=True)
+        next(rows_iter)  # header
+        new_rows = [row[:len(REQUIRED_HEADERS)] for row in rows_iter if row and row[0] is not None]
+        wb.close()
+        upload_format = "roster"
+    elif looks_like_bis_isi_workbook(wb):
+        collector = RowCollector()
+        stats = import_bis_isi_workbook(wb, collector)
+        new_rows = collector.rows
+        wb.close()
+        upload_format = "bis_isi"
+        if stats["rows_written"] == 0:
+            tmp_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Recognized this as a BIS ISI licence file, but no rows had both a "
+                    "licence number and a validity date to import."
+                ),
+            )
+    else:
+        wb.close()
+        tmp_path.unlink(missing_ok=True)
+        if header_row is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"The active sheet ('{active_title}') has no rows. If this file has "
+                    "multiple sheets, make sure the one with your client data is the sheet "
+                    "selected/visible when the file was last saved."
+                ),
+            )
         raise HTTPException(
             status_code=400,
             detail=f"Column headers don't match the expected format. Expected: {', '.join(REQUIRED_HEADERS)}",
         )
 
+    tmp_path.unlink(missing_ok=True)
+
+    existing_rows = []
+    existing_ids = set()
+    if DEFAULT_EXCEL_PATH.exists():
+        existing_wb = openpyxl.load_workbook(DEFAULT_EXCEL_PATH, read_only=True, data_only=True)
+        try:
+            erows = existing_wb.active.iter_rows(values_only=True)
+            next(erows)  # header
+            for row in erows:
+                if not row or row[0] is None:
+                    continue
+                existing_rows.append(row)
+                existing_ids.add(str(row[0]).strip())
+        finally:
+            existing_wb.close()
+
+    merged_rows = list(existing_rows)
+    added = 0
+    skipped_duplicates = 0
+    for row in new_rows:
+        client_id = str(row[0]).strip() if row[0] is not None else None
+        if client_id and client_id in existing_ids:
+            skipped_duplicates += 1
+            continue
+        merged_rows.append(row)
+        if client_id:
+            existing_ids.add(client_id)
+        added += 1
+
     if DEFAULT_EXCEL_PATH.exists():
         backup_path = DEFAULT_EXCEL_PATH.parent / "clients_certifications.backup.xlsx"
         shutil.copyfile(DEFAULT_EXCEL_PATH, backup_path)
 
-    shutil.move(str(tmp_path), str(DEFAULT_EXCEL_PATH))
+    out_wb = openpyxl.Workbook()
+    out_ws = out_wb.active
+    out_ws.append(REQUIRED_HEADERS)
+    for row in merged_rows:
+        out_ws.append(list(row))
+    out_wb.save(DEFAULT_EXCEL_PATH)
 
-    row_count = len(read_clients(DEFAULT_EXCEL_PATH))
-    return {"status": "ok", "row_count": row_count}
+    return {
+        "status": "ok",
+        "row_count": len(merged_rows),
+        "added": added,
+        "skipped_duplicates": skipped_duplicates,
+        "format": upload_format,
+        "stats": stats,
+    }
 
 
 from fastapi.staticfiles import StaticFiles  # noqa: E402

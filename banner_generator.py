@@ -23,6 +23,7 @@ ACCENT = "#2a78d6"
 STATUS_CRITICAL = "#d03b3b"
 STATUS_SERIOUS = "#ec835a"
 STATUS_WARNING = "#fab219"
+STATUS_GOOD = "#0ca30c"
 
 FONT_CANDIDATES = {
     False: [
@@ -57,7 +58,9 @@ def _tier(days_left):
         return (STATUS_CRITICAL, f"CRITICAL — EXPIRES IN {days_left} DAY{'S' if days_left != 1 else ''}", str(days_left), "DAYS REMAINING")
     if days_left <= 30:
         return (STATUS_SERIOUS, f"URGENT — EXPIRES IN {days_left} DAYS", str(days_left), "DAYS REMAINING")
-    return (STATUS_WARNING, f"EXPIRES IN {days_left} DAYS", str(days_left), "DAYS REMAINING")
+    if days_left <= 60:
+        return (STATUS_WARNING, f"EXPIRES IN {days_left} DAYS", str(days_left), "DAYS REMAINING")
+    return (STATUS_GOOD, f"ACTIVE — EXPIRES IN {days_left} DAYS", str(days_left), "DAYS REMAINING")
 
 
 def _draw_checkmark(draw, center, size, color, width=4):

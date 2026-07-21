@@ -10,7 +10,7 @@ const STATUS_DOT = {
   ACTIVE: "bg-status-good",
 };
 
-const ALERT_ELIGIBLE = new Set(["CRITICAL", "URGENT", "DUE SOON"]);
+const ALERT_ELIGIBLE = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
 
 const COLUMNS = [
   { key: "client_id", label: "Client ID" },
@@ -26,7 +26,7 @@ const COLUMNS = [
 const PAGE_SIZE = 8;
 
 export default function ClientTable({
-  clients, activeStatus, searchTerm, certType = "ALL", expiryBefore = "",
+  clients, loading = false, activeStatus, searchTerm, certType = "ALL", expiryBefore = "",
   sortKey, sortAsc, onSort, onSendClick, onSendSelected, onPreviewEmail,
 }) {
   const [page, setPage] = useState(1);
@@ -146,6 +146,13 @@ export default function ClientTable({
           </tr>
         </thead>
         <tbody>
+          {loading && clients.length === 0 && (
+            <tr>
+              <td colSpan={COLUMNS.length + 2} className="px-3 py-10 text-center text-ink-secondary">
+                Loading clients…
+              </td>
+            </tr>
+          )}
           {pageRows.map((c) => {
             const dot = STATUS_DOT[c.status] || "bg-ink-muted";
             return (
@@ -198,7 +205,7 @@ export default function ClientTable({
                         Send Alert
                       </button>
                     )}
-                    {ALERT_ELIGIBLE.has(c.status) && c.email && (
+                    {c.email && (
                       <button
                         type="button"
                         onClick={() => onPreviewEmail(c.client_id)}
@@ -217,7 +224,9 @@ export default function ClientTable({
 
       <div className="px-4 py-3 border-t border-line flex items-center justify-between">
         <p className="text-sm text-ink-secondary">
-          {totalRows === 0
+          {loading && clients.length === 0
+            ? "Loading clients…"
+            : totalRows === 0
             ? "Showing 0 of 0 clients"
             : `Showing ${start + 1}–${Math.min(start + PAGE_SIZE, totalRows)} of ${totalRows} clients`}
         </p>

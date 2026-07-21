@@ -172,6 +172,18 @@ describe("ClientTable", () => {
     expect(screen.queryByText("Preview Email")).not.toBeInTheDocument();
   });
 
+  it("shows Preview Email for ACTIVE (non-alert-eligible) clients with an email on file", () => {
+    const activeClientWithEmail = [
+      { client_id: "CLT004", name: "Sneha Kapoor", company: "EduTech", email: "sneha@edutech.com",
+        cert_name: "ISO 27001", cert_id: "ISO27-1", expiry_date: "15-10-2026", status: "ACTIVE", alert_sent_today: null },
+    ];
+    render(
+      <ClientTable clients={activeClientWithEmail} activeStatus="ALL" searchTerm="" sortKey={null} sortAsc={true}
+        onSort={() => {}} onSendClick={() => {}} onPreviewEmail={() => {}} />
+    );
+    expect(screen.getByText("Preview Email")).toBeInTheDocument();
+  });
+
   it("calls onPreviewEmail with the client_id when Preview Email is clicked", () => {
     const onPreviewEmail = vi.fn();
     render(

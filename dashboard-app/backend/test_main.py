@@ -420,7 +420,7 @@ def test_upload_clients_success(tmp_path, monkeypatch):
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         )
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "row_count": 1}
+    assert response.json() == {"status": "ok", "row_count": 1, "format": "roster"}
     assert excel_path.exists()
 
 
@@ -455,6 +455,73 @@ def test_upload_clients_rejects_wrong_headers(tmp_path, monkeypatch):
     assert not excel_path.exists()
 
 
+def test_upload_clients_rejects_empty_active_sheet_with_clear_message(tmp_path, monkeypatch):
+    """A multi-sheet workbook where the active (last-selected) sheet has no
+    rows must not crash with an unhandled StopIteration mislabeled as a
+    generic invalid-file error."""
+    excel_path = tmp_path / "clients.xlsx"
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "multi_sheet.xlsx"
+    wb = openpyxl.Workbook()
+    data_sheet = wb.active
+    data_sheet.title = "Data"
+    data_sheet.append(HEADERS)
+    empty_sheet = wb.create_sheet("EmptyActive")
+    wb.active = empty_sheet
+    wb.save(upload_path)
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("multi_sheet.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 400
+    assert "EmptyActive" in response.json()["detail"]
+    assert not excel_path.exists()
+
+
+def test_upload_clients_converts_raw_bis_isi_workbook(tmp_path, monkeypatch):
+    """A raw BIS ISI licence export (govt column names, one sheet per IS
+    standard, no Client ID/Phone/Company columns) should be auto-detected
+    and converted into the roster schema, not rejected as a header mismatch."""
+    excel_path = tmp_path / "clients.xlsx"
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "BIS ISI Data.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "IS 302 (Part 2 Sec 30)"
+    ws.append(["S. No.", "Licence No", "Firm Name", "Address", "District", "State",
+               "PIN Code", "Email", "Validity Date", "Status", "Variety", "Brand Names"])
+    ws.append([1, "9512485121", "Creative Hitech Private Limited", "Khasra No.-55, Rohad",
+               "JHAJJAR", "HARYANA", "124501", "hod.quality@creativehitech.co.in",
+               "24-07-2026", "Operative", "Fan", ""])
+    wb.save(upload_path)
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("BIS ISI Data.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["format"] == "bis_isi"
+    assert body["row_count"] == 1
+    assert body["stats"]["rows_written"] == 1
+
+    saved = openpyxl.load_workbook(excel_path)
+    rows = list(saved.active.iter_rows(values_only=True))
+    assert rows[0] == tuple(HEADERS)
+    assert rows[1][0] == "9512485121"
+    assert rows[1][1] == "Creative Hitech Private Limited"
+    assert rows[1][3] == "hod.quality@creativehitech.co.in"
+    assert rows[1][5] == "IS 302 (Part 2 Sec 30)"
+
+
 def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
     excel_path = tmp_path / "clients.xlsx"
     _write_xlsx(excel_path, [
@@ -472,6 +539,166 @@ def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
     with open(upload_path, "rb") as f:
         response = client.post(
             "/api/upload-clients",
+            files={"file": ("new.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+
+    backup_path = excel_path.parent / "clients_certifications.backup.xlsx"
+    assert backup_path.exists()
+
+
+def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    _write_xlsx(excel_path, [
+        ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
+         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "new.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/merge-clients",
+            files={"file": ("new.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "status": "ok", "row_count": 2, "added": 1, "skipped_duplicates": 0,
+        "format": "roster", "stats": None,
+    }
+
+    rows = list(openpyxl.load_workbook(excel_path).active.iter_rows(values_only=True))
+    client_ids = {row[0] for row in rows[1:]}
+    assert client_ids == {"CLT999", "CLT001"}
+
+
+def test_merge_clients_skips_duplicate_client_ids(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    _write_xlsx(excel_path, [
+        ["CLT001", "Rahul Sharma (old data)", "TechCorp", "old@x.com", "919999999999",
+         "ISO 9001", "ISO-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "new.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma (new data)", "TechCorp", "new@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/merge-clients",
+            files={"file": ("new.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["row_count"] == 2
+    assert body["added"] == 1
+    assert body["skipped_duplicates"] == 1
+
+    rows = list(openpyxl.load_workbook(excel_path).active.iter_rows(values_only=True))
+    by_id = {row[0]: row for row in rows[1:]}
+    assert by_id["CLT001"][1] == "Rahul Sharma (old data)"  # old data kept, not overwritten
+    assert "CLT002" in by_id
+
+
+def test_merge_clients_converts_and_merges_raw_bis_isi_workbook(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    _write_xlsx(excel_path, [
+        ["9512485121", "Existing Firm Name", "Existing Firm Name", "existing@x.com", None,
+         "IS 302 (Part 2 Sec 30)", "9512485121", None, "01-01-2026", None, "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "BIS ISI Data.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "IS 302 (Part 2 Sec 30)"
+    ws.append(["S. No.", "Licence No", "Firm Name", "Email", "Validity Date"])
+    ws.append([1, "9512485121", "Creative Hitech Private Limited", "hod@creativehitech.co.in", "24-07-2026"])
+    ws.append([2, "8700138914", "Power Fan Industry", "bharatbijleeudhyog@gmail.com", "26-07-2026"])
+    wb.save(upload_path)
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/merge-clients",
+            files={"file": ("BIS ISI Data.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["format"] == "bis_isi"
+    assert body["added"] == 1
+    assert body["skipped_duplicates"] == 1
+    assert body["row_count"] == 2
+
+    rows = list(openpyxl.load_workbook(excel_path).active.iter_rows(values_only=True))
+    by_id = {row[0]: row for row in rows[1:]}
+    assert by_id["9512485121"][1] == "Existing Firm Name"  # kept, not overwritten by upload
+    assert by_id["8700138914"][1] == "Power Fan Industry"  # new client added
+
+
+def test_merge_clients_into_empty_roster(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "new.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/merge-clients",
+            files={"file": ("new.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["row_count"] == 1
+    assert body["added"] == 1
+    assert body["skipped_duplicates"] == 0
+
+
+def test_merge_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", tmp_path / "clients.xlsx")
+    response = client.post(
+        "/api/merge-clients",
+        files={"file": ("data.csv", b"not,a,spreadsheet", "text/csv")},
+    )
+    assert response.status_code == 400
+
+
+def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
+    excel_path = tmp_path / "clients.xlsx"
+    _write_xlsx(excel_path, [
+        ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
+         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+
+    upload_path = tmp_path / "new.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/merge-clients",
             files={"file": ("new.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         )

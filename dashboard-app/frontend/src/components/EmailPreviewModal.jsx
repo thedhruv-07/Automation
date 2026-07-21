@@ -3,20 +3,26 @@ import { useEffect, useRef, useState } from "react";
 export default function EmailPreviewModal({ clientId, fetchPreview, onClose }) {
   const [preview, setPreview] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [loading, setLoading] = useState(false);
   const closeButtonRef = useRef(null);
 
   useEffect(() => {
     if (!clientId) {
       setPreview(null);
       setLoadError(null);
+      setLoading(false);
       return;
     }
+    setPreview(null);
+    setLoadError(null);
+    setLoading(true);
     fetchPreview(clientId)
       .then((data) => {
         setPreview(data);
         setLoadError(null);
       })
-      .catch((err) => setLoadError(err.message));
+      .catch((err) => setLoadError(err.message))
+      .finally(() => setLoading(false));
   }, [clientId, fetchPreview]);
 
   useEffect(() => {
@@ -54,6 +60,9 @@ export default function EmailPreviewModal({ clientId, fetchPreview, onClose }) {
         </div>
 
         <div className="px-6 py-4 overflow-y-auto flex-1">
+          {loading && (
+            <p className="text-sm text-ink-secondary">Loading preview…</p>
+          )}
           {loadError && (
             <div className="text-sm text-ink-primary bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-2">
               Could not load email preview: {loadError}.

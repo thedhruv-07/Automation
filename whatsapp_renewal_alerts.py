@@ -53,7 +53,7 @@ def save_sent_log(path, log: dict) -> None:
         json.dump(log, f, indent=2)
 
 
-ALERT_STATUSES = {"CRITICAL", "URGENT", "DUE SOON"}
+ALERT_STATUSES = {"CRITICAL", "URGENT", "DUE SOON", "EXPIRED"}
 
 RECORD_FIELDS = [
     "client_id", "name", "company", "email", "phone", "cert_name",
@@ -73,6 +73,25 @@ def read_clients(xlsx_path) -> list[dict]:
                 continue
             records.append(dict(zip(RECORD_FIELDS, row)))
         return records
+    finally:
+        wb.close()
+
+
+def find_client_by_id(xlsx_path, client_id: str) -> dict | None:
+    """Looks up a single client without building the full in-memory list —
+    stops scanning as soon as a match is found, instead of read_clients()'s
+    always-read-everything cost."""
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    try:
+        ws = wb.active
+        rows = ws.iter_rows(values_only=True)
+        next(rows)  # skip header row
+        for row in rows:
+            if row[0] is None:
+                continue
+            if str(row[0]) == client_id:
+                return dict(zip(RECORD_FIELDS, row))
+        return None
     finally:
         wb.close()
 

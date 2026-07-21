@@ -5,8 +5,10 @@ scheduler_output.log
 output/
 clients_certifications.xlsx
 clients_certifications.backup.xlsx
+*.db
 __pycache__/
 *.pyc
 .pytest_cache/
 dashboard-app/frontend/node_modules/
 dashboard-app/frontend/dist/
+.superpowers/

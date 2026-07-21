@@ -10,6 +10,12 @@ describe("EmailPreviewModal", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("shows a loading message while the preview is being fetched", () => {
+    const fetchPreview = vi.fn().mockReturnValue(new Promise(() => {})); // never resolves
+    render(<EmailPreviewModal clientId="CLT001" fetchPreview={fetchPreview} onClose={() => {}} />);
+    expect(screen.getByText("Loading preview…")).toBeInTheDocument();
+  });
+
   it("fetches and displays the preview when clientId is set", async () => {
     const fetchPreview = vi.fn().mockResolvedValue({
       subject: "Renew ISO 9001 — TechCorp",
