@@ -278,3 +278,32 @@ def test_export_clients_rows_yields_all_matching_rows_no_pagination(tmp_path):
     db_path = _seeded_db(tmp_path)
     rows = list(export_clients_rows(db_path, cert_type="ISO 9001"))
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
+
+
+from db import is_already_sent, load_sent_log, save_sent_log
+
+
+def test_is_already_sent_false_then_true_after_record_sent(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    assert is_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is False
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
+    assert is_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is True
+
+
+def test_save_sent_log_then_load_sent_log_round_trips_exactly(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    original = {
+        "CLT001|CRITICAL|2026-07-21": {
+            "sent_at": "2026-07-21T10:00:00",
+            "message_id": "wamid.ABC",
+            "phone": "919876543210",
+        },
+        "CLT002|URGENT|2026-07-21": {
+            "sent_at": "2026-07-21T10:05:00",
+            "message_id": "wamid.DEF",
+            "phone": "919812345678",
+        },
+    }
+    save_sent_log(db_path, original)
+    loaded = load_sent_log(db_path)
+    assert loaded == original
