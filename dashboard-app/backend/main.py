@@ -127,6 +127,8 @@ def stats():
 
 def _csv_escape(value) -> str:
     text = str(value if value is not None else "")
+    if text.startswith(("=", "+", "-", "@")):
+        text = "'" + text
     if any(c in text for c in ('"', ",", "\n")):
         return '"' + text.replace('"', '""') + '"'
     return text

@@ -126,6 +126,67 @@ def test_export_clients_streams_csv_with_all_matching_rows(tmp_path, monkeypatch
     assert "CLT002" not in body
 
 
+def test_get_clients_rejects_out_of_range_pagination_params(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    assert client.get("/api/clients", params={"page": 0}).status_code == 422
+    assert client.get("/api/clients", params={"page": -5}).status_code == 422
+    assert client.get("/api/clients", params={"page_size": 501}).status_code == 422
+    assert client.get("/api/clients", params={"page_size": 0}).status_code == 422
+
+
+def test_get_clients_sort_dir_is_case_insensitive(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "B Name", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "A Name", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    lower = client.get(
+        "/api/clients", params={"sort_key": "name", "sort_dir": "desc", "page_size": 50},
+    )
+    upper = client.get(
+        "/api/clients", params={"sort_key": "name", "sort_dir": "DESC", "page_size": 50},
+    )
+    mixed = client.get(
+        "/api/clients", params={"sort_key": "name", "sort_dir": "Desc", "page_size": 50},
+    )
+    assert lower.status_code == upper.status_code == mixed.status_code == 200
+    lower_ids = [r["client_id"] for r in lower.json()["rows"]]
+    upper_ids = [r["client_id"] for r in upper.json()["rows"]]
+    mixed_ids = [r["client_id"] for r in mixed.json()["rows"]]
+    assert lower_ids == upper_ids == mixed_ids
+    assert lower_ids == ["CLT001", "CLT002"]  # "B Name" sorts before "A Name" in descending order
+
+
+def test_export_clients_escapes_leading_formula_characters(tmp_path, monkeypatch):
+    """A company/name field starting with =, +, -, or @ must not be written
+    verbatim to the CSV: Excel (and similar tools) would interpret it as a
+    formula, which is a well-known CSV/formula-injection vector."""
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "=cmd|'/c calc'!A1", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    response = client.get("/api/clients/export")
+    assert response.status_code == 200
+    body = response.text
+    data_line = next(line for line in body.splitlines() if "CLT001" in line)
+    company_field = data_line.split(",")[2]
+    assert company_field == "'=cmd|'/c calc'!A1"
+    assert not company_field.startswith("=")
+
+
 def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
     xlsx_path = tmp_path / "clients.xlsx"
     _write_xlsx(xlsx_path, [
