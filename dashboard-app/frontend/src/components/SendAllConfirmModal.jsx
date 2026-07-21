@@ -4,6 +4,7 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
   const [confirming, setConfirming] = useState(false);
   const cancelButtonRef = useRef(null);
   const confirmButtonRef = useRef(null);
+  const closeButtonRef = useRef(null);
 
   useEffect(() => {
     if (open) {
@@ -12,20 +13,46 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
     }
   }, [open]);
 
+  // Once the job finishes, the Cancel/Confirm buttons are long gone and the
+  // Close button mounts in their place — move focus there so it doesn't get
+  // silently dropped to <body>.
+  useEffect(() => {
+    if (open && job?.done) {
+      closeButtonRef.current?.focus();
+    }
+  }, [open, job?.done]);
+
   useEffect(() => {
     if (!open) return;
     function handleKeyDown(e) {
       if (e.key === "Escape") {
         onCancel();
       } else if (e.key === "Tab") {
-        const first = cancelButtonRef.current;
-        const last = confirmButtonRef.current;
+        // Only one of these branches is ever mounted at a time (no job:
+        // Cancel+Confirm; job.done: Close; job in progress: neither), so
+        // filtering for whichever refs currently point at a live DOM node
+        // gives us the correct focusable set for whatever is rendered now.
+        const focusable = [cancelButtonRef.current, confirmButtonRef.current, closeButtonRef.current].filter(
+          Boolean
+        );
+        if (focusable.length === 0) {
+          // Nothing focusable is currently in the dialog (e.g. progress bar
+          // only) — block Tab so focus can't slip out into the page behind
+          // the overlay.
+          e.preventDefault();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
         if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
-          last?.focus();
+          last.focus();
         } else if (!e.shiftKey && document.activeElement === last) {
           e.preventDefault();
-          first?.focus();
+          first.focus();
+        } else if (!focusable.includes(document.activeElement)) {
+          e.preventDefault();
+          first.focus();
         }
       }
     }
@@ -62,6 +89,7 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
             {job.done ? (
               <div className="flex justify-end">
                 <button
+                  ref={closeButtonRef}
                   type="button"
                   onClick={onCancel}
                   className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors"

@@ -61,4 +61,46 @@ describe("SendAllConfirmModal", () => {
     fireEvent.click(screen.getByText("Close"));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it("handles job.total === 0 without NaN or a '(of 0)' suffix", () => {
+    const { container } = render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 0, sent: 0, skipped: 0, failed: 0, done: false }}
+      />
+    );
+    expect(screen.getByText(/0 sent, 0 skipped, 0 failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/of 0/)).not.toBeInTheDocument();
+    expect(container.innerHTML).not.toContain("NaN");
+  });
+
+  it("keeps Tab/Shift+Tab from leaving the dialog while a job is in progress (no interactive elements)", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 4, skipped: 1, failed: 0, done: false }}
+      />
+    );
+    // No Cancel/Confirm/Close button exists in this state — pressing Tab
+    // must not throw and must not hand focus to anything outside the dialog.
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("focuses the Close button on completion and cycles Tab/Shift+Tab back to it when the job is done", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 9, skipped: 1, failed: 0, done: true }}
+      />
+    );
+    const closeButton = screen.getByText("Close");
+    expect(document.activeElement).toBe(closeButton);
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(closeButton);
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(closeButton);
+  });
 });
