@@ -157,7 +157,7 @@ def export_clients(status: str = "ALL", cert_type: str = "ALL", expiry_before: s
 
 @app.get("/api/email-preview/{client_id}")
 def email_preview(client_id: str):
-    record = find_client_by_id(DEFAULT_EXCEL_PATH, client_id)
+    record = find_client_by_id(DEFAULT_DB_PATH, client_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Unknown client_id: {client_id}")
 
@@ -194,17 +194,16 @@ def settings_info():
 
 @app.get("/api/message-log")
 def message_log():
-    sent_log = load_sent_log(DEFAULT_LOG_PATH)
-    clients_by_id = {r["client_id"]: r for r in read_clients(DEFAULT_EXCEL_PATH)}
+    sent_log = load_sent_log(DEFAULT_DB_PATH)
     entries = []
     for key, info in sent_log.items():
         client_id, status_tier, _date = key.split("|", 2)
-        client = clients_by_id.get(client_id, {})
+        found = find_client_by_id(DEFAULT_DB_PATH, client_id) or {}
         entries.append({
             "client_id": client_id,
-            "name": client.get("name", "Unknown"),
-            "company": client.get("company", ""),
-            "cert_name": client.get("cert_name", ""),
+            "name": found.get("name", "Unknown"),
+            "company": found.get("company", ""),
+            "cert_name": found.get("cert_name", ""),
             "status_tier": status_tier,
             "phone": info.get("phone"),
             "message_id": info.get("message_id"),
@@ -217,7 +216,7 @@ def message_log():
 @app.post("/api/send/{client_id}")
 def send_alert(client_id: str):
     today = _today_str()
-    record = find_client_by_id(DEFAULT_EXCEL_PATH, client_id)
+    record = find_client_by_id(DEFAULT_DB_PATH, client_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Unknown client_id: {client_id}")
     if record["status"] not in ALERT_STATUSES:
@@ -226,7 +225,7 @@ def send_alert(client_id: str):
             detail=f"Status {record['status']} is not alert-eligible",
         )
 
-    sent_log = load_sent_log(DEFAULT_LOG_PATH)
+    sent_log = load_sent_log(DEFAULT_DB_PATH)
     key = dedup_key(record["client_id"], record["status"], today)
     if key in sent_log:
         raise HTTPException(
@@ -261,7 +260,7 @@ def send_alert(client_id: str):
 
         if result["action"] == "sent":
             if not test_number:
-                save_sent_log(DEFAULT_LOG_PATH, sent_log)
+                save_sent_log(DEFAULT_DB_PATH, sent_log)
             return {"status": "sent", "message_id": result["message_id"]}
         if result["action"] == "skipped_duplicate":
             raise HTTPException(

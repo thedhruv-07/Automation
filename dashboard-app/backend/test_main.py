@@ -1,11 +1,10 @@
 import io
-import json
 import openpyxl
 import main as main_module
 from fastapi.testclient import TestClient
 from main import app
 from unittest.mock import patch
-from db import upsert_clients, record_sent
+from db import upsert_clients, record_sent, load_sent_log
 
 client = TestClient(app)
 
@@ -188,12 +187,12 @@ def test_export_clients_escapes_leading_formula_characters(tmp_path, monkeypatch
 
 
 def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     response = client.get("/api/email-preview/CLT001")
     assert response.status_code == 200
@@ -205,9 +204,9 @@ def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
 
 
 def test_email_preview_unknown_client_returns_404(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [])
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     response = client.get("/api/email-preview/NOPE")
     assert response.status_code == 404
@@ -232,22 +231,14 @@ def test_settings_info_reflects_env_and_never_exposes_token(monkeypatch):
 
 
 def test_message_log_returns_entries_joined_with_client_data(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text(json.dumps({
-        "CLT001|CRITICAL|2026-07-18": {
-            "sent_at": "2026-07-18T10:00:00", "message_id": "wamid.OLD", "phone": "919876543210",
-        },
-        "CLT001|CRITICAL|2026-07-19": {
-            "sent_at": "2026-07-19T10:00:00", "message_id": "wamid.NEW", "phone": "919876543210",
-        },
-    }))
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-18", "wamid.OLD", "919876543210", "2026-07-18T10:00:00")
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-19", "wamid.NEW", "919876543210", "2026-07-19T10:00:00")
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     response = client.get("/api/message-log")
     assert response.status_code == 200
@@ -262,16 +253,10 @@ def test_message_log_returns_entries_joined_with_client_data(tmp_path, monkeypat
 
 
 def test_message_log_handles_client_no_longer_in_roster(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text(json.dumps({
-        "CLT999|CRITICAL|2026-07-18": {
-            "sent_at": "2026-07-18T10:00:00", "message_id": "wamid.OLD", "phone": "919999999999",
-        },
-    }))
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [])
+    record_sent(db_path, "CLT999", "CRITICAL", "2026-07-18", "wamid.OLD", "919999999999", "2026-07-18T10:00:00")
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     response = client.get("/api/message-log")
     assert response.status_code == 200
@@ -280,26 +265,23 @@ def test_message_log_handles_client_no_longer_in_roster(tmp_path, monkeypatch):
 
 
 def _setup_one_client(tmp_path, monkeypatch, status="CRITICAL"):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", status],
     ])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text("{}")
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
     monkeypatch.setenv("PHONE_NUMBER_ID", "pid123")
     monkeypatch.setenv("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
     monkeypatch.setenv("WHATSAPP_TEMPLATE_LANG", "en")
     monkeypatch.delenv("DASHBOARD_TEST_NUMBER", raising=False)
-    return log_path
+    return db_path
 
 
 def test_send_alert_success(tmp_path, monkeypatch):
-    log_path = _setup_one_client(tmp_path, monkeypatch)
+    db_path = _setup_one_client(tmp_path, monkeypatch)
     mock_response = type("Resp", (), {
         "status_code": 200,
         "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
@@ -308,7 +290,7 @@ def test_send_alert_success(tmp_path, monkeypatch):
         response = client.post("/api/send/CLT001")
     assert response.status_code == 200
     assert response.json() == {"status": "sent", "message_id": "wamid.ABC"}
-    assert "CLT001|CRITICAL|2026-07-18" in json.loads(log_path.read_text())
+    assert "CLT001|CRITICAL|2026-07-18" in load_sent_log(db_path)
 
 
 def test_send_alert_unknown_client_returns_404(tmp_path, monkeypatch):
@@ -324,8 +306,8 @@ def test_send_alert_ineligible_status_returns_400(tmp_path, monkeypatch):
 
 
 def test_send_alert_duplicate_returns_409(tmp_path, monkeypatch):
-    log_path = _setup_one_client(tmp_path, monkeypatch)
-    log_path.write_text(json.dumps({"CLT001|CRITICAL|2026-07-18": {"message_id": "wamid.OLD"}}))
+    db_path = _setup_one_client(tmp_path, monkeypatch)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-18", "wamid.OLD", None, "2026-07-18T09:00:00")
     response = client.post("/api/send/CLT001")
     assert response.status_code == 409
 
@@ -359,11 +341,11 @@ def test_send_alert_uses_dashboard_test_number_override(tmp_path, monkeypatch):
 
 def test_send_alert_with_test_number_does_not_persist_dedup_log(tmp_path, monkeypatch):
     """Bug 1: a send redirected to DASHBOARD_TEST_NUMBER must NOT write the
-    real client's dedup key to sent_log.json, or the real 9:30 AM CLI run
-    (and future dashboard sends) would wrongly believe the client was already
-    alerted today."""
-    log_path = _setup_one_client(tmp_path, monkeypatch)
-    original_log_contents = log_path.read_text()
+    real client's dedup key to the sent_log table, or the real 9:30 AM CLI
+    run (and future dashboard sends) would wrongly believe the client was
+    already alerted today."""
+    db_path = _setup_one_client(tmp_path, monkeypatch)
+    original_log = load_sent_log(db_path)
     monkeypatch.setenv("DASHBOARD_TEST_NUMBER", "919000000000")
     mock_response = type("Resp", (), {
         "status_code": 200,
@@ -374,9 +356,9 @@ def test_send_alert_with_test_number_does_not_persist_dedup_log(tmp_path, monkey
     assert response.status_code == 200
     assert response.json() == {"status": "sent", "message_id": "wamid.TEST"}
 
-    # The log file on disk must be untouched: no dedup key was persisted.
-    assert log_path.read_text() == original_log_contents
-    on_disk_log = json.loads(log_path.read_text())
+    # The sent_log table must be untouched: no dedup key was persisted.
+    on_disk_log = load_sent_log(db_path)
+    assert on_disk_log == original_log
     assert "CLT001|CRITICAL|2026-07-18" not in on_disk_log
 
 
