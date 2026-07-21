@@ -14,15 +14,20 @@ import threading  # noqa: E402
 
 import openpyxl  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-from fastapi import FastAPI, HTTPException, File, UploadFile  # noqa: E402
+from fastapi import FastAPI, HTTPException, File, Query, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 
 from datetime import datetime  # noqa: E402
 
+from db import (  # noqa: E402
+    DEFAULT_DB_PATH, get_clients_page, get_stats, export_clients_rows,
+    upsert_clients, find_client_by_id, read_clients, load_sent_log, save_sent_log,
+    is_already_sent,
+)
 from whatsapp_renewal_alerts import (  # noqa: E402
-    read_clients, find_client_by_id, ALERT_STATUSES, dedup_key, load_sent_log, save_sent_log,
-    send_one_alert, run, DEFAULT_EXCEL_PATH, DEFAULT_LOG_PATH,
+    ALERT_STATUSES, dedup_key, filter_alertable, normalize_phone,
+    send_one_alert, run,
 )
 from email_template import build_email_html  # noqa: E402
 from import_bis_isi_data import (  # noqa: E402
@@ -93,19 +98,59 @@ def health():
 
 
 @app.get("/api/clients")
-def get_clients():
+def get_clients(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=500),
+    status: str = "ALL", cert_type: str = "ALL",
+    expiry_before: str = "", search: str = "", sort_key: str = "", sort_dir: str = "asc",
+):
     today = _today_str()
-    records = read_clients(DEFAULT_EXCEL_PATH)
-    sent_log = load_sent_log(DEFAULT_LOG_PATH)
+    rows, total = get_clients_page(
+        DEFAULT_DB_PATH, page=page, page_size=page_size,
+        status=status, cert_type=cert_type, expiry_before=expiry_before or None,
+        search=search or None, sort_key=sort_key or None, sort_dir=sort_dir.lower(),
+    )
     result = []
-    for rec in records:
+    for rec in rows:
         if rec["status"] in ALERT_STATUSES:
-            key = dedup_key(rec["client_id"], rec["status"], today)
-            alert_sent_today = key in sent_log
+            alert_sent_today = is_already_sent(DEFAULT_DB_PATH, rec["client_id"], rec["status"], today)
         else:
             alert_sent_today = None
         result.append({**rec, "alert_sent_today": alert_sent_today})
-    return result
+    return {"rows": result, "total": total, "page": page, "page_size": page_size}
+
+
+@app.get("/api/stats")
+def stats():
+    return get_stats(DEFAULT_DB_PATH, _today_str())
+
+
+def _csv_escape(value) -> str:
+    text = str(value if value is not None else "")
+    if any(c in text for c in ('"', ",", "\n")):
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+@app.get("/api/clients/export")
+def export_clients(status: str = "ALL", cert_type: str = "ALL", expiry_before: str = "", search: str = ""):
+    def generate():
+        yield ",".join(_csv_escape(h) for h in REQUIRED_HEADERS) + "\n"
+        for rec in export_clients_rows(
+            DEFAULT_DB_PATH, status=status, cert_type=cert_type,
+            expiry_before=expiry_before or None, search=search or None,
+        ):
+            values = [
+                rec["client_id"], rec["name"], rec["company"], rec["email"], rec["phone"],
+                rec["cert_name"], rec["cert_id"], rec["issue_date"], rec["expiry_date"],
+                rec["renewal_link"], rec["status"],
+            ]
+            yield ",".join(_csv_escape(v) for v in values) + "\n"
+
+    return StreamingResponse(
+        generate(), media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=clients_export.csv"},
+    )
 
 
 @app.get("/api/email-preview/{client_id}")

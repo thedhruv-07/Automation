@@ -5,6 +5,7 @@ import main as main_module
 from fastapi.testclient import TestClient
 from main import app
 from unittest.mock import patch
+from db import upsert_clients, record_sent
 
 client = TestClient(app)
 
@@ -24,56 +25,105 @@ def _write_xlsx(path, rows):
     wb.save(path)
 
 
+def _write_db(path, rows):
+    upsert_clients(path, rows, mode="replace")
+
+
 def test_health_endpoint():
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-def test_get_clients_merges_alert_sent_today(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+def test_get_clients_paginates_and_reports_total(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
          "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
     ])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text(json.dumps({"CLT001|CRITICAL|2026-07-18": {"message_id": "wamid.ABC"}}))
-
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
 
-    response = client.get("/api/clients")
+    response = client.get("/api/clients", params={"page": 1, "page_size": 1})
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
+    assert data["total"] == 2
+    assert data["page"] == 1
+    assert len(data["rows"]) == 1
+
+
+def test_get_clients_merges_alert_sent_today(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+    ])
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-18", "wamid.ABC", "919876543210", "2026-07-18T10:00:00")
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/clients", params={"page_size": 50})
+    data = response.json()["rows"]
 
     critical = next(r for r in data if r["client_id"] == "CLT001")
     assert critical["alert_sent_today"] is True
-
     active = next(r for r in data if r["client_id"] == "CLT004")
     assert active["alert_sent_today"] is None
 
 
-def test_get_clients_alert_eligible_not_yet_sent(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+def test_get_clients_filters_by_status_param(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/clients", params={"status": "URGENT", "page_size": 50})
+    data = response.json()["rows"]
+    assert len(data) == 1
+    assert data[0]["client_id"] == "CLT002"
+
+
+def test_get_stats_returns_counts_and_cert_types(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/stats")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status_counts"]["total"] == 1
+    assert data["cert_types"] == ["ISO 9001"]
+
+
+def test_export_clients_streams_csv_with_all_matching_rows(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text("{}")
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
-    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
-
-    response = client.get("/api/clients")
+    response = client.get("/api/clients/export", params={"status": "CRITICAL"})
     assert response.status_code == 200
-    data = response.json()
-    assert data[0]["alert_sent_today"] is False
+    assert "text/csv" in response.headers["content-type"]
+    body = response.text
+    assert "CLT001" in body
+    assert "CLT002" not in body
 
 
 def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
