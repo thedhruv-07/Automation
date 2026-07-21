@@ -237,3 +237,44 @@ def test_get_clients_page_defaults_to_client_id_order_when_no_sort_key(tmp_path)
     db_path = _seeded_db(tmp_path)
     rows, _ = get_clients_page(db_path, page=1, page_size=50)
     assert [r["client_id"] for r in rows] == ["CLT001", "CLT002", "CLT003", "CLT004", "CLT005"]
+
+
+from db import get_stats, export_clients_rows, record_sent
+
+
+def test_get_stats_counts_by_status_and_total(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    stats = get_stats(db_path, today="2026-07-21")
+    assert stats["status_counts"]["total"] == 5
+    assert stats["status_counts"]["CRITICAL"] == 1
+    assert stats["status_counts"]["URGENT"] == 1
+    assert stats["status_counts"]["ACTIVE"] == 1
+    assert stats["status_counts"]["EXPIRED"] == 1
+
+
+def test_get_stats_cert_types_are_distinct_and_sorted(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    stats = get_stats(db_path, today="2026-07-21")
+    assert stats["cert_types"] == ["GMP", "HACCP", "ISO 9001", "OSHA"]
+
+
+def test_get_stats_renewals_by_month_groups_by_year_month(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    stats = get_stats(db_path, today="2026-07-21")
+    by_month = {r["year_month"]: r["count"] for r in stats["renewals_by_month"]}
+    assert by_month["2026-07"] == 1
+    assert by_month["2026-08"] == 1
+
+
+def test_get_stats_eligible_not_sent_today_excludes_already_sent(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
+    stats = get_stats(db_path, today="2026-07-21")
+    # CRITICAL, URGENT, DUE SOON, EXPIRED = 4 alert-eligible rows; CLT001 already sent today
+    assert stats["eligible_not_sent_today"] == 3
+
+
+def test_export_clients_rows_yields_all_matching_rows_no_pagination(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows = list(export_clients_rows(db_path, cert_type="ISO 9001"))
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}

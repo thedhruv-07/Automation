@@ -220,3 +220,128 @@ def get_clients_page(
         return [_row_to_dict(r) for r in rows], total
     finally:
         conn.close()
+
+
+def get_stats(db_path, today: str) -> dict:
+    conn = get_connection(db_path)
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
+        status_counts = {"total": total}
+        for status in ("CRITICAL", "URGENT", "DUE SOON", "ACTIVE", "EXPIRED"):
+            status_counts[status] = conn.execute(
+                "SELECT COUNT(*) FROM clients WHERE status = ?", (status,)
+            ).fetchone()[0]
+
+        alert_statuses = ("CRITICAL", "URGENT", "DUE SOON", "EXPIRED")
+        placeholders = ", ".join(["?"] * len(alert_statuses))
+        eligible_not_sent = conn.execute(
+            f"""
+            SELECT COUNT(*) FROM clients c
+            WHERE c.status IN ({placeholders})
+            AND NOT EXISTS (
+                SELECT 1 FROM sent_log s
+                WHERE s.client_id = c.client_id AND s.status = c.status AND s.sent_date = ?
+            )
+            """,
+            (*alert_statuses, today),
+        ).fetchone()[0]
+
+        cert_types = [r[0] for r in conn.execute(
+            "SELECT DISTINCT cert_name FROM clients WHERE cert_name IS NOT NULL ORDER BY cert_name"
+        ).fetchall()]
+
+        monthly_rows = conn.execute(
+            "SELECT substr(expiry_date_iso, 1, 7) AS ym, COUNT(*) AS cnt "
+            "FROM clients WHERE expiry_date_iso IS NOT NULL GROUP BY ym ORDER BY ym"
+        ).fetchall()
+        renewals_by_month = [{"year_month": r["ym"], "count": r["cnt"]} for r in monthly_rows]
+
+        return {
+            "status_counts": status_counts,
+            "eligible_not_sent_today": eligible_not_sent,
+            "cert_types": cert_types,
+            "renewals_by_month": renewals_by_month,
+        }
+    finally:
+        conn.close()
+
+
+def export_clients_rows(
+    db_path, status: str | None = None, cert_type: str | None = None,
+    expiry_before: str | None = None, search: str | None = None,
+):
+    """Yields a dict per matching client, no pagination — for CSV export."""
+    conn = get_connection(db_path)
+    try:
+        where = []
+        params: list = []
+        if status and status != "ALL":
+            where.append("status = ?")
+            params.append(status)
+        if cert_type and cert_type != "ALL":
+            where.append("cert_name = ?")
+            params.append(cert_type)
+        if expiry_before:
+            where.append("expiry_date_iso <= ?")
+            params.append(expiry_before)
+        if search:
+            where.append("(name LIKE ? OR company LIKE ?)")
+            like_term = f"%{search}%"
+            params.extend([like_term, like_term])
+        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+        cursor = conn.execute(f"SELECT {', '.join(RECORD_FIELDS)} FROM clients {where_clause}", params)
+        for row in cursor:
+            yield _row_to_dict(row)
+    finally:
+        conn.close()
+
+
+def record_sent(db_path, client_id, status, sent_date, message_id, phone, sent_at) -> None:
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO sent_log (client_id, status, sent_date, message_id, phone, sent_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (client_id, status, sent_date, message_id, phone, sent_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def is_already_sent(db_path, client_id, status, sent_date) -> bool:
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sent_log WHERE client_id = ? AND status = ? AND sent_date = ?",
+            (client_id, status, sent_date),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def load_sent_log(db_path) -> dict:
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT client_id, status, sent_date, message_id, phone, sent_at FROM sent_log"
+        ).fetchall()
+        log = {}
+        for r in rows:
+            key = f"{r['client_id']}|{r['status']}|{r['sent_date']}"
+            log[key] = {"sent_at": r["sent_at"], "message_id": r["message_id"], "phone": r["phone"]}
+        return log
+    finally:
+        conn.close()
+
+
+def save_sent_log(db_path, log: dict) -> None:
+    for key, info in log.items():
+        client_id, status, sent_date = key.split("|", 2)
+        record_sent(
+            db_path, client_id, status, sent_date,
+            info.get("message_id"), info.get("phone"), info.get("sent_at"),
+        )
