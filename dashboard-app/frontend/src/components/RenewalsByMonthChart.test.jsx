@@ -6,7 +6,10 @@ describe("RenewalsByMonthChart", () => {
   it("renders a bar with the count and month label for each bucket", () => {
     render(
       <RenewalsByMonthChart
-        clients={[{ expiry_date: "24-07-2026" }, { expiry_date: "02-07-2026" }, { expiry_date: "15-09-2026" }]}
+        renewalsByMonth={[
+          { year_month: "2026-07", count: 2 },
+          { year_month: "2026-09", count: 1 },
+        ]}
       />
     );
     expect(screen.getByText("Jul 2026")).toBeInTheDocument();
@@ -14,8 +17,8 @@ describe("RenewalsByMonthChart", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("shows an empty state when there are no clients", () => {
-    render(<RenewalsByMonthChart clients={[]} />);
+  it("shows an empty state when there are no buckets", () => {
+    render(<RenewalsByMonthChart renewalsByMonth={[]} />);
     expect(screen.getByText("No certification expiry dates to chart yet.")).toBeInTheDocument();
   });
 });

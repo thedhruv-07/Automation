@@ -1,7 +1,15 @@
-import { monthlyGroups } from "../sortUtils";
+const MONTH_LABELS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
-export default function RenewalsByMonthChart({ clients }) {
-  const groups = monthlyGroups(clients);
+function labelFor(yearMonth) {
+  const [year, month] = yearMonth.split("-").map(Number);
+  return `${MONTH_LABELS[month - 1]} ${year}`;
+}
+
+export default function RenewalsByMonthChart({ renewalsByMonth }) {
+  const groups = renewalsByMonth.map((g) => ({ key: g.year_month, label: labelFor(g.year_month), count: g.count }));
   const max = Math.max(1, ...groups.map((g) => g.count));
 
   return (

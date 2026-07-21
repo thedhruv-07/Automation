@@ -31,9 +31,10 @@ function StatIcon({ name, className }) {
   );
 }
 
-export default function StatCards({ clients }) {
+export default function StatCards({ stats }) {
+  const statusCounts = stats?.status_counts || {};
   const counts = CARD_CONFIG.reduce((acc, { key }) => {
-    acc[key] = key === "total" ? clients.length : clients.filter((c) => c.status === key).length;
+    acc[key] = statusCounts[key] || 0;
     return acc;
   }, {});
 
