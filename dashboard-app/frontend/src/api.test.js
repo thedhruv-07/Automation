@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getClients, sendAlert, sendAllAlerts, uploadClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
+  getStats, getSendAllStatus,
 } from "./api";
 
 beforeEach(() => {
@@ -8,19 +9,33 @@ beforeEach(() => {
 });
 
 describe("getClients", () => {
-  it("returns parsed JSON on success", async () => {
+  it("returns the paginated response and passes query params", async () => {
     global.fetch.mockResolvedValue({
       ok: true,
-      json: async () => [{ client_id: "CLT001" }],
+      json: async () => ({ rows: [{ client_id: "CLT001" }], total: 1, page: 1, page_size: 50 }),
     });
-    const clients = await getClients();
-    expect(clients).toEqual([{ client_id: "CLT001" }]);
-    expect(global.fetch).toHaveBeenCalledWith("/api/clients");
+    const result = await getClients({ page: 1, pageSize: 50, status: "CRITICAL", search: "tech" });
+    expect(result).toEqual({ rows: [{ client_id: "CLT001" }], total: 1, page: 1, page_size: 50 });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/clients?page=1&page_size=50&status=CRITICAL&search=tech"
+    );
   });
 
   it("throws when the response is not ok", async () => {
     global.fetch.mockResolvedValue({ ok: false, status: 500 });
-    await expect(getClients()).rejects.toThrow("Failed to load clients: 500");
+    await expect(getClients({})).rejects.toThrow("Failed to load clients: 500");
+  });
+});
+
+describe("getStats", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status_counts: { total: 5 }, cert_types: ["ISO 9001"] }),
+    });
+    const stats = await getStats();
+    expect(stats).toEqual({ status_counts: { total: 5 }, cert_types: ["ISO 9001"] });
+    expect(global.fetch).toHaveBeenCalledWith("/api/stats");
   });
 });
 
@@ -127,22 +142,30 @@ describe("uploadClientsFile", () => {
 });
 
 describe("sendAllAlerts", () => {
-  it("returns parsed JSON array on success", async () => {
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: async () => [{ client_id: "CLT001", action: "sent" }],
-    });
+  it("returns a job id on success", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
     const result = await sendAllAlerts();
-    expect(result).toEqual([{ client_id: "CLT001", action: "sent" }]);
+    expect(result).toEqual({ job_id: "abc-123" });
     expect(global.fetch).toHaveBeenCalledWith("/api/send-all", { method: "POST" });
   });
 
   it("throws the backend's detail message on failure", async () => {
     global.fetch.mockResolvedValue({
-      ok: false,
-      status: 409,
+      ok: false, status: 409,
       json: async () => ({ detail: "A bulk send is already in progress" }),
     });
     await expect(sendAllAlerts()).rejects.toThrow("A bulk send is already in progress");
+  });
+});
+
+describe("getSendAllStatus", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ total: 5, sent: 2, skipped: 1, failed: 0, done: false }),
+    });
+    const status = await getSendAllStatus("abc-123");
+    expect(status).toEqual({ total: 5, sent: 2, skipped: 1, failed: 0, done: false });
+    expect(global.fetch).toHaveBeenCalledWith("/api/send-all/status/abc-123");
   });
 });
