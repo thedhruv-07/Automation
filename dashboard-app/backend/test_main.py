@@ -4,7 +4,7 @@ import main as main_module
 from fastapi.testclient import TestClient
 from main import app
 from unittest.mock import patch
-from db import upsert_clients, record_sent, load_sent_log
+from db import upsert_clients, record_sent, load_sent_log, read_clients
 
 client = TestClient(app)
 
@@ -391,9 +391,49 @@ def test_send_alert_skipped_duplicate_from_send_one_alert_returns_409(tmp_path, 
     assert "already sent today" in response.json()["detail"]
 
 
-def test_send_all_alerts_success(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+def test_send_all_starts_job_and_reports_progress(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+
+    # Note: whatsapp_renewal_alerts.run()/send_one_alert() default their
+    # send_fn parameter to send_message at *def time*, so patching the
+    # module-level `send_message` name (as one might expect) would not
+    # actually intercept the call made from run()'s default argument.
+    # Patching requests.post (which send_message calls by attribute lookup
+    # at call time) is what actually takes effect, matching the pattern
+    # already used by the /api/send/{id} tests above.
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-all")
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["sent"] == 1
+    assert final["total"] == 1
+
+
+def test_send_all_reports_sent_for_all_alertable_statuses(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
@@ -401,14 +441,9 @@ def test_send_all_alerts_success(tmp_path, monkeypatch):
         ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
          "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
     ])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text("{}")
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
     monkeypatch.setenv("PHONE_NUMBER_ID", "pid123")
-    monkeypatch.setenv("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
-    monkeypatch.setenv("WHATSAPP_TEMPLATE_LANG", "en")
     monkeypatch.delenv("DASHBOARD_TEST_NUMBER", raising=False)
 
     mock_response = type("Resp", (), {
@@ -417,23 +452,29 @@ def test_send_all_alerts_success(tmp_path, monkeypatch):
     })()
     with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
         response = client.post("/api/send-all")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 2  # only CRITICAL/URGENT are alertable; ACTIVE excluded
-    actions = {r["client_id"]: r["action"] for r in data}
-    assert actions == {"CLT001": "sent", "CLT002": "sent"}
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["total"] == 2  # only CRITICAL/URGENT are alertable; ACTIVE excluded
+    assert final["sent"] == 2
 
 
-def test_send_all_alerts_uses_test_number_override(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+def test_send_all_uses_dashboard_test_number_override(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text("{}")
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
     monkeypatch.setenv("PHONE_NUMBER_ID", "pid123")
     monkeypatch.setenv("DASHBOARD_TEST_NUMBER", "919000000000")
@@ -443,18 +484,31 @@ def test_send_all_alerts_uses_test_number_override(tmp_path, monkeypatch):
     })()
     with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response) as mock_post:
         response = client.post("/api/send-all")
-    assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    assert status_response.json()["done"] is True
     sent_payload = mock_post.call_args.kwargs["json"]
     assert sent_payload["to"] == "919000000000"
 
 
+def test_send_all_status_returns_404_for_unknown_job(tmp_path, monkeypatch):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+    response = client.get("/api/send-all/status/does-not-exist")
+    assert response.status_code == 404
+
+
 def test_send_all_alerts_blocks_concurrent_calls(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text("{}")
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_bulk_in_progress", True)
     response = client.post("/api/send-all")
     assert response.status_code == 409
@@ -468,12 +522,9 @@ def test_send_alert_blocked_while_bulk_in_progress(tmp_path, monkeypatch):
 
 
 def test_send_all_alerts_blocked_while_per_client_send_in_progress(tmp_path, monkeypatch):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [])
-    log_path = tmp_path / "sent_log.json"
-    log_path.write_text("{}")
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", xlsx_path)
-    monkeypatch.setattr(main_module, "DEFAULT_LOG_PATH", log_path)
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     main_module._pending_sends.add("CLT999")
     try:
         response = client.post("/api/send-all")
@@ -497,8 +548,8 @@ def test_client_template_returns_header_only_xlsx():
 
 
 def test_upload_clients_success(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "upload.xlsx"
     _write_xlsx(upload_path, [
@@ -514,12 +565,13 @@ def test_upload_clients_success(tmp_path, monkeypatch):
         )
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "row_count": 1, "format": "roster"}
-    assert excel_path.exists()
+    assert db_path.exists()
+    assert read_clients(db_path)[0]["client_id"] == "CLT001"
 
 
 def test_upload_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     response = client.post(
         "/api/upload-clients",
         files={"file": ("clients.csv", b"not,a,real,xlsx", "text/csv")},
@@ -528,8 +580,8 @@ def test_upload_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
 
 
 def test_upload_clients_rejects_wrong_headers(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "bad.xlsx"
     wb = openpyxl.Workbook()
@@ -545,15 +597,15 @@ def test_upload_clients_rejects_wrong_headers(tmp_path, monkeypatch):
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         )
     assert response.status_code == 400
-    assert not excel_path.exists()
+    assert not db_path.exists()
 
 
 def test_upload_clients_rejects_empty_active_sheet_with_clear_message(tmp_path, monkeypatch):
     """A multi-sheet workbook where the active (last-selected) sheet has no
     rows must not crash with an unhandled StopIteration mislabeled as a
     generic invalid-file error."""
-    excel_path = tmp_path / "clients.xlsx"
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "multi_sheet.xlsx"
     wb = openpyxl.Workbook()
@@ -572,15 +624,15 @@ def test_upload_clients_rejects_empty_active_sheet_with_clear_message(tmp_path, 
         )
     assert response.status_code == 400
     assert "EmptyActive" in response.json()["detail"]
-    assert not excel_path.exists()
+    assert not db_path.exists()
 
 
 def test_upload_clients_converts_raw_bis_isi_workbook(tmp_path, monkeypatch):
     """A raw BIS ISI licence export (govt column names, one sheet per IS
     standard, no Client ID/Phone/Company columns) should be auto-detected
     and converted into the roster schema, not rejected as a header mismatch."""
-    excel_path = tmp_path / "clients.xlsx"
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "BIS ISI Data.xlsx"
     wb = openpyxl.Workbook()
@@ -606,22 +658,20 @@ def test_upload_clients_converts_raw_bis_isi_workbook(tmp_path, monkeypatch):
     assert body["row_count"] == 1
     assert body["stats"]["rows_written"] == 1
 
-    saved = openpyxl.load_workbook(excel_path)
-    rows = list(saved.active.iter_rows(values_only=True))
-    assert rows[0] == tuple(HEADERS)
-    assert rows[1][0] == "9512485121"
-    assert rows[1][1] == "Creative Hitech Private Limited"
-    assert rows[1][3] == "hod.quality@creativehitech.co.in"
-    assert rows[1][5] == "IS 302 (Part 2 Sec 30)"
+    rows = read_clients(db_path)
+    assert rows[0]["client_id"] == "9512485121"
+    assert rows[0]["name"] == "Creative Hitech Private Limited"
+    assert rows[0]["email"] == "hod.quality@creativehitech.co.in"
+    assert rows[0]["cert_name"] == "IS 302 (Part 2 Sec 30)"
 
 
 def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    _write_xlsx(excel_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
          "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
@@ -637,17 +687,17 @@ def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
         )
     assert response.status_code == 200
 
-    backup_path = excel_path.parent / "clients_certifications.backup.xlsx"
+    backup_path = db_path.parent / "clients.backup.db"
     assert backup_path.exists()
 
 
 def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    _write_xlsx(excel_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
          "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
@@ -668,18 +718,18 @@ def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch):
         "format": "roster", "stats": None,
     }
 
-    rows = list(openpyxl.load_workbook(excel_path).active.iter_rows(values_only=True))
-    client_ids = {row[0] for row in rows[1:]}
+    rows = read_clients(db_path)
+    client_ids = {row["client_id"] for row in rows}
     assert client_ids == {"CLT999", "CLT001"}
 
 
 def test_merge_clients_skips_duplicate_client_ids(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    _write_xlsx(excel_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Rahul Sharma (old data)", "TechCorp", "old@x.com", "919999999999",
          "ISO 9001", "ISO-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
@@ -701,19 +751,19 @@ def test_merge_clients_skips_duplicate_client_ids(tmp_path, monkeypatch):
     assert body["added"] == 1
     assert body["skipped_duplicates"] == 1
 
-    rows = list(openpyxl.load_workbook(excel_path).active.iter_rows(values_only=True))
-    by_id = {row[0]: row for row in rows[1:]}
-    assert by_id["CLT001"][1] == "Rahul Sharma (old data)"  # old data kept, not overwritten
+    rows = read_clients(db_path)
+    by_id = {row["client_id"]: row for row in rows}
+    assert by_id["CLT001"]["name"] == "Rahul Sharma (old data)"  # old data kept, not overwritten
     assert "CLT002" in by_id
 
 
 def test_merge_clients_converts_and_merges_raw_bis_isi_workbook(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    _write_xlsx(excel_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["9512485121", "Existing Firm Name", "Existing Firm Name", "existing@x.com", None,
          "IS 302 (Part 2 Sec 30)", "9512485121", None, "01-01-2026", None, "ACTIVE"],
     ])
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "BIS ISI Data.xlsx"
     wb = openpyxl.Workbook()
@@ -737,15 +787,15 @@ def test_merge_clients_converts_and_merges_raw_bis_isi_workbook(tmp_path, monkey
     assert body["skipped_duplicates"] == 1
     assert body["row_count"] == 2
 
-    rows = list(openpyxl.load_workbook(excel_path).active.iter_rows(values_only=True))
-    by_id = {row[0]: row for row in rows[1:]}
-    assert by_id["9512485121"][1] == "Existing Firm Name"  # kept, not overwritten by upload
-    assert by_id["8700138914"][1] == "Power Fan Industry"  # new client added
+    rows = read_clients(db_path)
+    by_id = {row["client_id"]: row for row in rows}
+    assert by_id["9512485121"]["name"] == "Existing Firm Name"  # kept, not overwritten by upload
+    assert by_id["8700138914"]["name"] == "Power Fan Industry"  # new client added
 
 
 def test_merge_clients_into_empty_roster(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
@@ -767,7 +817,7 @@ def test_merge_clients_into_empty_roster(tmp_path, monkeypatch):
 
 
 def test_merge_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", tmp_path / "clients.xlsx")
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
     response = client.post(
         "/api/merge-clients",
         files={"file": ("data.csv", b"not,a,spreadsheet", "text/csv")},
@@ -776,12 +826,12 @@ def test_merge_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
 
 
 def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
-    excel_path = tmp_path / "clients.xlsx"
-    _write_xlsx(excel_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
          "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
-    monkeypatch.setattr(main_module, "DEFAULT_EXCEL_PATH", excel_path)
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
@@ -797,5 +847,5 @@ def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
         )
     assert response.status_code == 200
 
-    backup_path = excel_path.parent / "clients_certifications.backup.xlsx"
+    backup_path = db_path.parent / "clients.backup.db"
     assert backup_path.exists()

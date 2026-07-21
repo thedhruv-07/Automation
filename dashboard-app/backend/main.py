@@ -9,8 +9,8 @@ sys.path.insert(0, str(REPO_ROOT))
 import base64  # noqa: E402
 import io  # noqa: E402
 import os  # noqa: E402
-import shutil  # noqa: E402
 import threading  # noqa: E402
+import uuid  # noqa: E402
 
 import openpyxl  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
@@ -22,7 +22,7 @@ from datetime import datetime  # noqa: E402
 
 from db import (  # noqa: E402
     DEFAULT_DB_PATH, get_clients_page, get_stats, export_clients_rows,
-    upsert_clients, find_client_by_id, read_clients, load_sent_log, save_sent_log,
+    upsert_clients, find_client_by_id, load_sent_log, save_sent_log,
     is_already_sent,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
@@ -32,7 +32,6 @@ from whatsapp_renewal_alerts import (  # noqa: E402
 from email_template import build_email_html  # noqa: E402
 from import_bis_isi_data import (  # noqa: E402
     looks_like_bis_isi_workbook, import_bis_isi_workbook, RowCollector,
-    OUTPUT_HEADERS as BIS_OUTPUT_HEADERS,
 )
 
 load_dotenv(REPO_ROOT / ".env")
@@ -273,6 +272,32 @@ def send_alert(client_id: str):
             _pending_sends.discard(client_id)
 
 
+_send_all_jobs: dict[str, dict] = {}
+
+
+def _run_send_all_job(job_id, token, phone_number_id, template_name, template_lang, test_number):
+    def progress(result, total):
+        job = _send_all_jobs[job_id]
+        job["total"] = total
+        if result["action"] == "sent":
+            job["sent"] += 1
+        elif result["action"] == "skipped_duplicate":
+            job["skipped"] += 1
+        elif result["action"] == "failed":
+            job["failed"] += 1
+
+    try:
+        run(
+            DEFAULT_DB_PATH, token, phone_number_id, template_name, template_lang,
+            dry_run=False, test_number=test_number, on_progress=progress,
+        )
+    finally:
+        _send_all_jobs[job_id]["done"] = True
+        global _bulk_in_progress
+        with _send_lock:
+            _bulk_in_progress = False
+
+
 @app.post("/api/send-all")
 def send_all_alerts():
     global _bulk_in_progress
@@ -286,20 +311,29 @@ def send_all_alerts():
             )
         _bulk_in_progress = True
 
-    try:
-        token = os.environ["WHATSAPP_TOKEN"]
-        phone_number_id = os.environ["PHONE_NUMBER_ID"]
-        template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
-        template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
-        test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
+    token = os.environ["WHATSAPP_TOKEN"]
+    phone_number_id = os.environ["PHONE_NUMBER_ID"]
+    template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
+    template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
+    test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
 
-        return run(
-            DEFAULT_EXCEL_PATH, DEFAULT_LOG_PATH, token, phone_number_id,
-            template_name, template_lang, dry_run=False, test_number=test_number,
-        )
-    finally:
-        with _send_lock:
-            _bulk_in_progress = False
+    job_id = str(uuid.uuid4())
+    _send_all_jobs[job_id] = {"total": 0, "sent": 0, "skipped": 0, "failed": 0, "done": False}
+    thread = threading.Thread(
+        target=_run_send_all_job,
+        args=(job_id, token, phone_number_id, template_name, template_lang, test_number),
+        daemon=True,
+    )
+    thread.start()
+    return {"job_id": job_id}
+
+
+@app.get("/api/send-all/status/{job_id}")
+def send_all_status(job_id: str):
+    job = _send_all_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    return job
 
 
 @app.get("/api/client-template")
@@ -323,7 +357,7 @@ async def upload_clients(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
 
     contents = await file.read()
-    tmp_path = DEFAULT_EXCEL_PATH.parent / "_upload_tmp.xlsx"
+    tmp_path = DEFAULT_DB_PATH.parent / "_upload_tmp.xlsx"
     tmp_path.write_bytes(contents)
 
     try:
@@ -333,35 +367,28 @@ async def upload_clients(file: UploadFile = File(...)):
             header_row = next(wb.active.iter_rows(values_only=True))
         except StopIteration:
             header_row = None
-    except HTTPException:
-        raise
     except Exception:
         tmp_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=400,
-            detail="Could not read the uploaded file as a valid .xlsx spreadsheet",
-        )
+        raise HTTPException(status_code=400, detail="Could not read the uploaded file as a valid .xlsx spreadsheet")
 
     actual_headers = list(header_row[: len(REQUIRED_HEADERS)]) if header_row else None
 
     if actual_headers == REQUIRED_HEADERS:
+        rows_iter = wb.active.iter_rows(values_only=True)
+        next(rows_iter)
+        rows = [tuple(row[:len(REQUIRED_HEADERS)]) for row in rows_iter if row and row[0] is not None]
         wb.close()
-        if DEFAULT_EXCEL_PATH.exists():
-            backup_path = DEFAULT_EXCEL_PATH.parent / "clients_certifications.backup.xlsx"
-            shutil.copyfile(DEFAULT_EXCEL_PATH, backup_path)
-        shutil.move(str(tmp_path), str(DEFAULT_EXCEL_PATH))
-        row_count = len(read_clients(DEFAULT_EXCEL_PATH))
-        return {"status": "ok", "row_count": row_count, "format": "roster"}
+        tmp_path.unlink(missing_ok=True)
+        stats = upsert_clients(DEFAULT_DB_PATH, rows, mode="replace")
+        return {"status": "ok", "row_count": stats["row_count"], "format": "roster"}
 
     if looks_like_bis_isi_workbook(wb):
-        out_wb = openpyxl.Workbook()
-        out_ws = out_wb.active
-        out_ws.append(BIS_OUTPUT_HEADERS)
-        stats = import_bis_isi_workbook(wb, out_ws)
+        collector = RowCollector()
+        bis_stats = import_bis_isi_workbook(wb, collector)
         wb.close()
         tmp_path.unlink(missing_ok=True)
 
-        if stats["rows_written"] == 0:
+        if bis_stats["rows_written"] == 0:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -370,17 +397,11 @@ async def upload_clients(file: UploadFile = File(...)):
                 ),
             )
 
-        if DEFAULT_EXCEL_PATH.exists():
-            backup_path = DEFAULT_EXCEL_PATH.parent / "clients_certifications.backup.xlsx"
-            shutil.copyfile(DEFAULT_EXCEL_PATH, backup_path)
-        out_wb.save(DEFAULT_EXCEL_PATH)
-
-        row_count = len(read_clients(DEFAULT_EXCEL_PATH))
-        return {"status": "ok", "row_count": row_count, "format": "bis_isi", "stats": stats}
+        stats = upsert_clients(DEFAULT_DB_PATH, collector.rows, mode="replace")
+        return {"status": "ok", "row_count": stats["row_count"], "format": "bis_isi", "stats": bis_stats}
 
     wb.close()
     tmp_path.unlink(missing_ok=True)
-
     if header_row is None:
         raise HTTPException(
             status_code=400,
@@ -405,7 +426,7 @@ async def merge_clients(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
 
     contents = await file.read()
-    tmp_path = DEFAULT_EXCEL_PATH.parent / "_merge_upload_tmp.xlsx"
+    tmp_path = DEFAULT_DB_PATH.parent / "_merge_upload_tmp.xlsx"
     tmp_path.write_bytes(contents)
 
     try:
@@ -417,27 +438,24 @@ async def merge_clients(file: UploadFile = File(...)):
             header_row = None
     except Exception:
         tmp_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=400,
-            detail="Could not read the uploaded file as a valid .xlsx spreadsheet",
-        )
+        raise HTTPException(status_code=400, detail="Could not read the uploaded file as a valid .xlsx spreadsheet")
 
     actual_headers = list(header_row[: len(REQUIRED_HEADERS)]) if header_row else None
-    stats = None
+    bis_stats = None
 
     if actual_headers == REQUIRED_HEADERS:
         rows_iter = wb.active.iter_rows(values_only=True)
         next(rows_iter)  # header
-        new_rows = [row[:len(REQUIRED_HEADERS)] for row in rows_iter if row and row[0] is not None]
+        new_rows = [tuple(row[:len(REQUIRED_HEADERS)]) for row in rows_iter if row and row[0] is not None]
         wb.close()
         upload_format = "roster"
     elif looks_like_bis_isi_workbook(wb):
         collector = RowCollector()
-        stats = import_bis_isi_workbook(wb, collector)
+        bis_stats = import_bis_isi_workbook(wb, collector)
         new_rows = collector.rows
         wb.close()
         upload_format = "bis_isi"
-        if stats["rows_written"] == 0:
+        if bis_stats["rows_written"] == 0:
             tmp_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=400,
@@ -464,53 +482,10 @@ async def merge_clients(file: UploadFile = File(...)):
         )
 
     tmp_path.unlink(missing_ok=True)
-
-    existing_rows = []
-    existing_ids = set()
-    if DEFAULT_EXCEL_PATH.exists():
-        existing_wb = openpyxl.load_workbook(DEFAULT_EXCEL_PATH, read_only=True, data_only=True)
-        try:
-            erows = existing_wb.active.iter_rows(values_only=True)
-            next(erows)  # header
-            for row in erows:
-                if not row or row[0] is None:
-                    continue
-                existing_rows.append(row)
-                existing_ids.add(str(row[0]).strip())
-        finally:
-            existing_wb.close()
-
-    merged_rows = list(existing_rows)
-    added = 0
-    skipped_duplicates = 0
-    for row in new_rows:
-        client_id = str(row[0]).strip() if row[0] is not None else None
-        if client_id and client_id in existing_ids:
-            skipped_duplicates += 1
-            continue
-        merged_rows.append(row)
-        if client_id:
-            existing_ids.add(client_id)
-        added += 1
-
-    if DEFAULT_EXCEL_PATH.exists():
-        backup_path = DEFAULT_EXCEL_PATH.parent / "clients_certifications.backup.xlsx"
-        shutil.copyfile(DEFAULT_EXCEL_PATH, backup_path)
-
-    out_wb = openpyxl.Workbook()
-    out_ws = out_wb.active
-    out_ws.append(REQUIRED_HEADERS)
-    for row in merged_rows:
-        out_ws.append(list(row))
-    out_wb.save(DEFAULT_EXCEL_PATH)
-
+    stats = upsert_clients(DEFAULT_DB_PATH, new_rows, mode="merge")
     return {
-        "status": "ok",
-        "row_count": len(merged_rows),
-        "added": added,
-        "skipped_duplicates": skipped_duplicates,
-        "format": upload_format,
-        "stats": stats,
+        "status": "ok", "row_count": stats["row_count"], "added": stats["added"],
+        "skipped_duplicates": stats["skipped_duplicates"], "format": upload_format, "stats": bis_stats,
     }
 
 
