@@ -7,6 +7,7 @@ from the roster format the frontend already expects); expiry_date_iso is a
 YYYY-MM-DD copy used for correct sorting/filtering, since plain string
 comparison of DD-MM-YYYY does not sort chronologically.
 """
+import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -102,5 +103,52 @@ def find_client_by_id(db_path, client_id: str) -> dict | None:
             (client_id,),
         ).fetchone()
         return _row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
+    """rows: list of tuples in RECORD_FIELDS order (client_id first).
+    mode="replace": clears the table and inserts all rows.
+    mode="merge": inserts only rows whose client_id isn't already present."""
+    if mode not in ("replace", "merge"):
+        raise ValueError(f"Unknown mode: {mode!r}")
+
+    init_db(db_path)
+    db_path = Path(db_path)
+    if db_path.exists():
+        backup_path = db_path.parent / "clients.backup.db"
+        shutil.copyfile(db_path, backup_path)
+
+    columns = RECORD_FIELDS + ["expiry_date_iso"]
+    placeholders = ", ".join(["?"] * len(columns))
+    prepared_rows = [tuple(row) + (to_iso_date(row[8]),) for row in rows]
+
+    conn = get_connection(db_path)
+    try:
+        if mode == "replace":
+            conn.execute("DELETE FROM clients")
+            conn.executemany(
+                f"INSERT INTO clients ({', '.join(columns)}) VALUES ({placeholders})",
+                prepared_rows,
+            )
+            conn.commit()
+            row_count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
+            return {"row_count": row_count, "added": row_count, "skipped_duplicates": 0}
+
+        added = 0
+        skipped = 0
+        for row in prepared_rows:
+            cursor = conn.execute(
+                f"INSERT OR IGNORE INTO clients ({', '.join(columns)}) VALUES ({placeholders})",
+                row,
+            )
+            if cursor.rowcount == 1:
+                added += 1
+            else:
+                skipped += 1
+        conn.commit()
+        row_count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
+        return {"row_count": row_count, "added": added, "skipped_duplicates": skipped}
     finally:
         conn.close()
