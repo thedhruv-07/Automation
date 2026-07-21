@@ -38,4 +38,27 @@ describe("SendAllConfirmModal", () => {
     fireEvent.click(button);
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
+
+  it("shows a progress bar once a job is in progress", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 4, skipped: 1, failed: 0, done: false }}
+      />
+    );
+    expect(screen.getByText(/4 sent, 1 skipped, 0 failed/)).toBeInTheDocument();
+    expect(screen.getByText(/of 10/)).toBeInTheDocument();
+  });
+
+  it("shows a done summary and a Close button once the job finishes", () => {
+    const onCancel = vi.fn();
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={onCancel}
+        job={{ total: 10, sent: 9, skipped: 1, failed: 0, done: true }}
+      />
+    );
+    fireEvent.click(screen.getByText("Close"));
+    expect(onCancel).toHaveBeenCalled();
+  });
 });
