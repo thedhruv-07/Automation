@@ -148,3 +148,92 @@ def test_upsert_merge_raises_on_constraint_violation_not_miscounted_as_duplicate
     # it was never inserted, and the pre-check confirms it wasn't treated
     # as a duplicate of any existing row.
     assert find_client_by_id(db_path, "CLT099") is None
+
+
+from db import get_clients_page
+
+FIVE_ROWS = [
+    ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "1", "ISO 9001", "ISO-1",
+     "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+    ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "2", "OSHA", "OSHA-1",
+     "01-01-2025", "11-08-2026", "https://x", "URGENT"),
+    ("CLT003", "Amit Verma", "HealthFirst", "a@x.com", "3", "ISO 9001", "ISO27-1",
+     "01-01-2025", "10-09-2026", "https://x", "DUE SOON"),
+    ("CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "4", "GMP", "GMP-1",
+     "01-01-2025", "15-10-2026", "https://x", "ACTIVE"),
+    ("CLT005", "Rajesh Nair", "Logistics Plus", "raj@x.com", "5", "HACCP", "HACCP-1",
+     "01-01-2025", "12-01-2026", "https://x", "EXPIRED"),
+]
+
+
+def _seeded_db(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, FIVE_ROWS, mode="replace")
+    return db_path
+
+
+def test_get_clients_page_returns_page_and_total(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, total = get_clients_page(db_path, page=1, page_size=2)
+    assert total == 5
+    assert len(rows) == 2
+
+
+def test_get_clients_page_second_page_has_remaining_rows(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, total = get_clients_page(db_path, page=3, page_size=2)
+    assert total == 5
+    assert len(rows) == 1
+
+
+def test_get_clients_page_filters_by_status(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, total = get_clients_page(db_path, page=1, page_size=50, status="URGENT")
+    assert total == 1
+    assert rows[0]["client_id"] == "CLT002"
+
+
+def test_get_clients_page_filters_by_cert_type(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, total = get_clients_page(db_path, page=1, page_size=50, cert_type="ISO 9001")
+    assert total == 2
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
+
+
+def test_get_clients_page_filters_by_search_matches_name_or_company(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, total = get_clients_page(db_path, page=1, page_size=50, search="tech")
+    # "TechCorp" (CLT001 company) and "EduTech" (CLT004 company) both contain "tech" as a substring
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT004"}
+
+
+def test_get_clients_page_filters_by_expiry_before(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, total = get_clients_page(db_path, page=1, page_size=50, expiry_before="2026-08-01")
+    # CLT001 expiry_date_iso 2026-07-24, CLT005 expiry_date_iso 2026-01-12, both <= 2026-08-01
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT005"}
+
+
+def test_get_clients_page_sorts_by_expiry_date_chronologically_not_lexically(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, _ = get_clients_page(db_path, page=1, page_size=50, sort_key="expiry_date", sort_dir="asc")
+    # Chronological order by actual date, NOT lexical DD-MM-YYYY string order:
+    # CLT005 2026-01-12, CLT001 2026-07-24, CLT002 2026-08-11, CLT003 2026-09-10, CLT004 2026-10-15
+    assert [r["client_id"] for r in rows] == ["CLT005", "CLT001", "CLT002", "CLT003", "CLT004"]
+
+
+def test_get_clients_page_sorts_descending_by_name(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, _ = get_clients_page(db_path, page=1, page_size=50, sort_key="name", sort_dir="desc")
+    # Names: Rahul Sharma, Priya Mehta, Amit Verma, Sneha Kapoor, Rajesh Nair
+    # Descending alphabetical: Sneha Kapoor, Rajesh Nair, Rahul Sharma, Priya Mehta, Amit Verma
+    # (verified with sorted(names, reverse=True) in plain Python - "Rahul" < "Rajesh"
+    # lexically since 'h' < 'j' at the 3rd char, so Amit Verma, not Rahul Sharma, is last)
+    assert rows[0]["client_id"] == "CLT004"
+    assert rows[-1]["client_id"] == "CLT003"
+
+
+def test_get_clients_page_defaults_to_client_id_order_when_no_sort_key(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, _ = get_clients_page(db_path, page=1, page_size=50)
+    assert [r["client_id"] for r in rows] == ["CLT001", "CLT002", "CLT003", "CLT004", "CLT005"]

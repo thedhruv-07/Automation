@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS clients (
 );
 CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
 CREATE INDEX IF NOT EXISTS idx_clients_expiry ON clients(expiry_date_iso);
+CREATE INDEX IF NOT EXISTS idx_clients_cert_name ON clients(cert_name);
 
 CREATE TABLE IF NOT EXISTS sent_log (
     client_id   TEXT NOT NULL,
@@ -167,5 +168,55 @@ def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
             conn.commit()
         row_count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
         return {"row_count": row_count, "added": added, "skipped_duplicates": skipped}
+    finally:
+        conn.close()
+
+
+_SORTABLE_COLUMNS = {
+    "client_id", "name", "company", "cert_name", "cert_id", "status",
+}
+
+
+def get_clients_page(
+    db_path, page: int = 1, page_size: int = 50, status: str | None = None,
+    cert_type: str | None = None, expiry_before: str | None = None,
+    search: str | None = None, sort_key: str | None = None, sort_dir: str = "asc",
+) -> tuple[list[dict], int]:
+    conn = get_connection(db_path)
+    try:
+        where = []
+        params: list = []
+        if status and status != "ALL":
+            where.append("status = ?")
+            params.append(status)
+        if cert_type and cert_type != "ALL":
+            where.append("cert_name = ?")
+            params.append(cert_type)
+        if expiry_before:
+            where.append("expiry_date_iso <= ?")
+            params.append(expiry_before)
+        if search:
+            where.append("(name LIKE ? OR company LIKE ?)")
+            like_term = f"%{search}%"
+            params.extend([like_term, like_term])
+        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+
+        total = conn.execute(f"SELECT COUNT(*) FROM clients {where_clause}", params).fetchone()[0]
+
+        if sort_key in ("expiry_date", "days_left"):
+            order_column = "expiry_date_iso"
+        elif sort_key in _SORTABLE_COLUMNS:
+            order_column = sort_key
+        else:
+            order_column = "client_id"
+        direction = "DESC" if sort_dir == "desc" else "ASC"
+
+        offset = (page - 1) * page_size
+        rows = conn.execute(
+            f"SELECT {', '.join(RECORD_FIELDS)} FROM clients {where_clause} "
+            f"ORDER BY {order_column} {direction} LIMIT ? OFFSET ?",
+            params + [page_size, offset],
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows], total
     finally:
         conn.close()
