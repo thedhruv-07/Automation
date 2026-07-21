@@ -505,6 +505,43 @@ def test_send_all_status_returns_404_for_unknown_job(tmp_path, monkeypatch):
     assert response.status_code == 404
 
 
+def test_send_all_missing_env_var_resets_bulk_in_progress_flag(tmp_path, monkeypatch):
+    """If required WHATSAPP_TOKEN/PHONE_NUMBER_ID env vars are missing, setup
+    for the background job fails before the thread ever starts. _bulk_in_progress
+    must still be reset in that case -- otherwise every future bulk AND
+    per-client send would be permanently blocked with no way to recover short
+    of restarting the server process (this was a regression introduced when
+    send-all moved to a background job; the pre-migration synchronous
+    implementation reset the flag in a finally around this exact lookup)."""
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.delenv("WHATSAPP_TOKEN", raising=False)
+    monkeypatch.delenv("PHONE_NUMBER_ID", raising=False)
+
+    response = client.post("/api/send-all")
+    assert response.status_code == 500
+
+    # The flag must have been reset: neither a subsequent bulk send nor a
+    # subsequent per-client send should be blocked by a stuck flag left over
+    # from the failed attempt.
+    assert main_module._bulk_in_progress is False
+
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        second_response = client.post("/api/send/CLT001")
+    assert second_response.status_code == 200
+
+
 def test_send_all_alerts_blocks_concurrent_calls(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [])

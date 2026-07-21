@@ -311,21 +311,26 @@ def send_all_alerts():
             )
         _bulk_in_progress = True
 
-    token = os.environ["WHATSAPP_TOKEN"]
-    phone_number_id = os.environ["PHONE_NUMBER_ID"]
-    template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
-    template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
-    test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
+    try:
+        token = os.environ["WHATSAPP_TOKEN"]
+        phone_number_id = os.environ["PHONE_NUMBER_ID"]
+        template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
+        template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
+        test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
 
-    job_id = str(uuid.uuid4())
-    _send_all_jobs[job_id] = {"total": 0, "sent": 0, "skipped": 0, "failed": 0, "done": False}
-    thread = threading.Thread(
-        target=_run_send_all_job,
-        args=(job_id, token, phone_number_id, template_name, template_lang, test_number),
-        daemon=True,
-    )
-    thread.start()
-    return {"job_id": job_id}
+        job_id = str(uuid.uuid4())
+        _send_all_jobs[job_id] = {"total": 0, "sent": 0, "skipped": 0, "failed": 0, "done": False}
+        thread = threading.Thread(
+            target=_run_send_all_job,
+            args=(job_id, token, phone_number_id, template_name, template_lang, test_number),
+            daemon=True,
+        )
+        thread.start()
+        return {"job_id": job_id}
+    except Exception:
+        with _send_lock:
+            _bulk_in_progress = False
+        raise HTTPException(status_code=500, detail="Server is not configured to send WhatsApp messages")
 
 
 @app.get("/api/send-all/status/{job_id}")
