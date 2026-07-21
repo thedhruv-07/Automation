@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { sortClients, formatDaysLeft, parseDate, initialsFor } from "../sortUtils";
-import { downloadClientsCsv } from "../csvExport";
+import { formatDaysLeft, initialsFor } from "../sortUtils";
+import { clientsExportUrl } from "../api";
 
 const STATUS_DOT = {
   EXPIRED: "bg-status-critical",
@@ -23,48 +23,16 @@ const COLUMNS = [
   { key: "status", label: "Status" },
 ];
 
-const PAGE_SIZE = 8;
-
 export default function ClientTable({
-  clients, loading = false, activeStatus, searchTerm, certType = "ALL", expiryBefore = "",
-  sortKey, sortAsc, onSort, onSendClick, onSendSelected, onPreviewEmail,
+  page, loading, sortKey, sortAsc, onSort, onPageChange,
+  onSendClick, onSendSelected, onPreviewEmail, exportFilters = {},
 }) {
-  const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(new Set());
-
-  let rows = clients;
-  if (activeStatus !== "ALL") {
-    rows = rows.filter((c) => c.status === activeStatus);
-  }
-  if (searchTerm) {
-    const term = searchTerm.toLowerCase();
-    rows = rows.filter(
-      (c) => c.name.toLowerCase().includes(term) || c.company.toLowerCase().includes(term)
-    );
-  }
-  if (certType !== "ALL") {
-    rows = rows.filter((c) => c.cert_name === certType);
-  }
-  if (expiryBefore) {
-    const cutoff = new Date(expiryBefore);
-    rows = rows.filter((c) => parseDate(c.expiry_date) <= cutoff);
-  }
-  rows = sortClients(rows, sortKey, sortAsc);
-
-  useEffect(() => {
-    setPage(1);
-    setSelectedIds(new Set());
-  }, [activeStatus, searchTerm, certType, expiryBefore, sortKey, sortAsc]);
-
-  const totalRows = rows.length;
-  const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const start = (safePage - 1) * PAGE_SIZE;
-  const pageRows = rows.slice(start, start + PAGE_SIZE);
+  const { rows, total, page: currentPage, page_size: pageSize } = page;
 
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [safePage]);
+  }, [currentPage, sortKey, sortAsc]);
 
   function toggleRow(clientId) {
     setSelectedIds((prev) => {
@@ -77,27 +45,28 @@ export default function ClientTable({
 
   function toggleSelectAllOnPage() {
     setSelectedIds((prev) => {
-      const allSelected = pageRows.length > 0 && pageRows.every((c) => prev.has(c.client_id));
+      const allSelected = rows.length > 0 && rows.every((c) => prev.has(c.client_id));
       if (allSelected) return new Set();
-      return new Set(pageRows.map((c) => c.client_id));
+      return new Set(rows.map((c) => c.client_id));
     });
   }
 
-  const allOnPageSelected = pageRows.length > 0 && pageRows.every((c) => selectedIds.has(c.client_id));
-  const selectedClients = pageRows.filter((c) => selectedIds.has(c.client_id));
+  const allOnPageSelected = rows.length > 0 && rows.every((c) => selectedIds.has(c.client_id));
+  const selectedClients = rows.filter((c) => selectedIds.has(c.client_id));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const start = (currentPage - 1) * pageSize;
+  const isEmptyLoading = loading && rows.length === 0;
 
   return (
     <div className="bg-surface rounded-xl border border-line overflow-hidden">
       <div className="px-4 py-3 border-b border-line flex items-center justify-between">
         <h5 className="font-semibold text-ink-primary">Client Renewals</h5>
-        <button
-          type="button"
-          onClick={() => downloadClientsCsv(rows)}
-          disabled={totalRows === 0}
-          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-ink-secondary border border-line hover:text-ink-primary transition-colors disabled:opacity-40"
+        <a
+          href={clientsExportUrl(exportFilters)}
+          className="px-3 py-1.5 rounded-lg text-sm font-semibold text-ink-secondary border border-line hover:text-ink-primary transition-colors"
         >
           Export CSV
-        </button>
+        </a>
       </div>
 
       {selectedIds.size > 0 && (
@@ -146,14 +115,14 @@ export default function ClientTable({
           </tr>
         </thead>
         <tbody>
-          {loading && clients.length === 0 && (
+          {isEmptyLoading && (
             <tr>
               <td colSpan={COLUMNS.length + 2} className="px-3 py-10 text-center text-ink-secondary">
                 Loading clients…
               </td>
             </tr>
           )}
-          {pageRows.map((c) => {
+          {rows.map((c) => {
             const dot = STATUS_DOT[c.status] || "bg-ink-muted";
             return (
               <tr key={c.client_id} className="border-b border-line text-sm text-ink-primary hover:bg-surface-page transition-colors">
@@ -224,17 +193,17 @@ export default function ClientTable({
 
       <div className="px-4 py-3 border-t border-line flex items-center justify-between">
         <p className="text-sm text-ink-secondary">
-          {loading && clients.length === 0
-            ? "Loading clients…"
-            : totalRows === 0
+          {isEmptyLoading
+            ? ""
+            : total === 0
             ? "Showing 0 of 0 clients"
-            : `Showing ${start + 1}–${Math.min(start + PAGE_SIZE, totalRows)} of ${totalRows} clients`}
+            : `Showing ${start + 1}–${Math.min(start + pageSize, total)} of ${total} clients`}
         </p>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={safePage <= 1}
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage <= 1}
             aria-label="Previous page"
             className="px-3 py-1.5 rounded-lg border border-line text-ink-secondary hover:text-ink-primary transition-colors disabled:opacity-30"
           >
@@ -242,8 +211,8 @@ export default function ClientTable({
           </button>
           <button
             type="button"
-            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-            disabled={safePage >= pageCount}
+            onClick={() => onPageChange(Math.min(pageCount, currentPage + 1))}
+            disabled={currentPage >= pageCount}
             aria-label="Next page"
             className="px-3 py-1.5 rounded-lg border border-line text-ink-secondary hover:text-ink-primary transition-colors disabled:opacity-30"
           >
