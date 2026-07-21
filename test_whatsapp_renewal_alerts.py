@@ -341,6 +341,35 @@ def test_run_calls_on_progress_for_each_record(tmp_path):
     assert progress_calls == [("sent", 2), ("sent", 2)]
 
 
+def test_run_survives_raising_on_progress_and_still_persists_sent_log(tmp_path):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "URGENT"],
+    ])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    def flaky_on_progress(result, total):
+        raise RuntimeError("boom: broken progress callback")
+
+    results = run(
+        db_path=db_path, token="tok", phone_number_id="pid",
+        template_name="cert_renewal_alert", template_lang="en_US",
+        today="2026-07-17", send_fn=send_fn,
+        on_progress=flaky_on_progress,
+    )
+
+    assert len(results) == 2
+    assert [r["action"] for r in results] == ["sent", "sent"]
+    assert send_fn.call_count == 2
+
+    saved = load_sent_log(db_path)
+    assert "CLT001|CRITICAL|2026-07-17" in saved
+    assert "CLT002|URGENT|2026-07-17" in saved
+
+
 from whatsapp_renewal_alerts import send_one_alert
 
 

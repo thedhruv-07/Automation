@@ -197,7 +197,10 @@ def run(
 
         results.append(result)
         if on_progress:
-            on_progress(result, len(records))
+            try:
+                on_progress(result, len(records))
+            except Exception as exc:
+                print(f"⚠ on_progress callback raised {exc!r}; continuing send batch.")
 
     if persist_log and log_dirty:
         save_sent_log(db_path, sent_log)
