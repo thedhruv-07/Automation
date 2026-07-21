@@ -57,33 +57,23 @@ def test_load_sent_log_missing_file_returns_empty_dict(tmp_path):
 
 def test_save_and_load_sent_log_round_trip(tmp_path):
     path = tmp_path / "sent_log.json"
-    save_sent_log(path, {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.ABC"}})
+    entry = {"message_id": "wamid.ABC", "phone": "919876543210", "sent_at": "2026-07-17T10:00:00"}
+    save_sent_log(path, {"CLT001|CRITICAL|2026-07-17": entry})
     result = load_sent_log(path)
-    assert result == {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.ABC"}}
+    assert result == {"CLT001|CRITICAL|2026-07-17": entry}
 
 
-import openpyxl
 from whatsapp_renewal_alerts import read_clients, filter_alertable
-
-HEADERS = [
-    "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
-    "Certification Name", "Certification ID", "Issue Date",
-    "Expiry Date", "Renewal Link", "Status",
-]
+from db import upsert_clients, DEFAULT_DB_PATH
 
 
-def _write_xlsx(path, rows):
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.append(HEADERS)
-    for row in rows:
-        ws.append(row)
-    wb.save(path)
+def _write_db(path, rows):
+    upsert_clients(path, rows, mode="replace")
 
 
 def test_read_clients_and_filter_alertable(tmp_path):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026",
          "https://x/renew?id=ISO-1", "CRITICAL"],
@@ -101,7 +91,7 @@ def test_read_clients_and_filter_alertable(tmp_path):
          "https://x/renew?id=HACCP-1", "EXPIRED"],
     ])
 
-    records = read_clients(xlsx_path)
+    records = read_clients(db_path)
     assert len(records) == 5
     assert records[0]["client_id"] == "CLT001"
     assert records[0]["cert_id"] == "ISO-1"
@@ -112,15 +102,15 @@ def test_read_clients_and_filter_alertable(tmp_path):
 
 
 def test_read_clients_skips_blank_rows(tmp_path):
-    xlsx_path = tmp_path / "test.xlsx"
-    _write_xlsx(xlsx_path, [
+    db_path = tmp_path / "test.db"
+    _write_db(db_path, [
         ["CLT001", "Name", "Co", "e@x.com", "919876543210", "Cert", "C-1",
          "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         [None, None, None, None, None, None, None, None, None, None, None],
         ["CLT002", "Name2", "Co2", "e2@x.com", "919876543211", "Cert2", "C-2",
          "01-01-2025", "24-07-2026", "https://x", "URGENT"],
     ])
-    records = read_clients(xlsx_path)
+    records = read_clients(db_path)
     assert len(records) == 2
     assert [r["client_id"] for r in records] == ["CLT001", "CLT002"]
 
@@ -209,13 +199,12 @@ ONE_CRITICAL_ROW = [
 
 
 def test_run_dry_run_makes_no_calls_and_no_log_writes(tmp_path):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
-    log_path = tmp_path / "sent_log.json"
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, ONE_CRITICAL_ROW)
     send_fn = Mock()
 
     results = run(
-        excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+        db_path=db_path, token="tok", phone_number_id="pid",
         template_name="cert_renewal_alert", template_lang="en_US",
         dry_run=True, today="2026-07-17", send_fn=send_fn,
     )
@@ -223,12 +212,12 @@ def test_run_dry_run_makes_no_calls_and_no_log_writes(tmp_path):
     assert len(results) == 1
     assert results[0]["action"] == "dry_run"
     send_fn.assert_not_called()
-    assert not log_path.exists()
+    assert load_sent_log(db_path) == {}
 
 
 def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Already Sent", "Co1", "a@x.com", "919111111111",
          "Cert1", "C-1", "01-01-2025", "24-07-2026",
          "https://x/renew?id=C-1", "CRITICAL"],
@@ -236,12 +225,13 @@ def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path):
          "Cert2", "C-2", "01-01-2025", "24-07-2026",
          "https://x/renew?id=C-2", "URGENT"],
     ])
-    log_path = tmp_path / "sent_log.json"
-    save_sent_log(log_path, {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.OLD"}})
+    save_sent_log(db_path, {"CLT001|CRITICAL|2026-07-17": {
+        "message_id": "wamid.OLD", "phone": "919111111111", "sent_at": "2026-07-16T10:00:00",
+    }})
     send_fn = Mock()
 
     results = run(
-        excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+        db_path=db_path, token="tok", phone_number_id="pid",
         template_name="cert_renewal_alert", template_lang="en_US",
         dry_run=True, today="2026-07-17", send_fn=send_fn,
     )
@@ -252,19 +242,18 @@ def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path):
 
 
 def test_run_live_sends_and_dedups_on_second_call(tmp_path):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
-    log_path = tmp_path / "sent_log.json"
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, ONE_CRITICAL_ROW)
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
-    first = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+    first = run(db_path=db_path, token="tok", phone_number_id="pid",
                 template_name="cert_renewal_alert", template_lang="en_US",
                 today="2026-07-17", send_fn=send_fn)
     assert first[0]["action"] == "sent"
     assert send_fn.call_count == 1
-    assert log_path.exists()
+    assert "CLT001|CRITICAL|2026-07-17" in load_sent_log(db_path)
 
-    second = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+    second = run(db_path=db_path, token="tok", phone_number_id="pid",
                  template_name="cert_renewal_alert", template_lang="en_US",
                  today="2026-07-17", send_fn=send_fn)
     assert second[0]["action"] == "skipped_duplicate"
@@ -272,38 +261,36 @@ def test_run_live_sends_and_dedups_on_second_call(tmp_path):
 
 
 def test_run_test_number_overrides_phone_and_skips_log_write(tmp_path):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
-    log_path = tmp_path / "sent_log.json"
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, ONE_CRITICAL_ROW)
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
-    results = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+    results = run(db_path=db_path, token="tok", phone_number_id="pid",
                   template_name="cert_renewal_alert", template_lang="en_US",
                   test_number="+919999999999", today="2026-07-17", send_fn=send_fn)
 
     assert results[0]["action"] == "sent"
     assert results[0]["to"] == "919999999999"
-    assert not log_path.exists()
+    assert load_sent_log(db_path) == {}
 
 
 def test_run_failed_send_does_not_write_log(tmp_path):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, ONE_CRITICAL_ROW)
-    log_path = tmp_path / "sent_log.json"
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, ONE_CRITICAL_ROW)
     send_fn = Mock(return_value=(False, {"error": "Invalid parameter"}))
 
-    results = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+    results = run(db_path=db_path, token="tok", phone_number_id="pid",
                   template_name="cert_renewal_alert", template_lang="en_US",
                   today="2026-07-17", send_fn=send_fn)
 
     assert results[0]["action"] == "failed"
     assert results[0]["error"] == "Invalid parameter"
-    assert not log_path.exists()
+    assert load_sent_log(db_path) == {}
 
 
 def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path):
-    xlsx_path = tmp_path / "clients.xlsx"
-    _write_xlsx(xlsx_path, [
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
         ["CLT001", "Already Sent", "Co1", "a@x.com", "919111111111",
          "Cert1", "C-1", "01-01-2025", "24-07-2026",
          "https://x/renew?id=C-1", "CRITICAL"],
@@ -314,11 +301,12 @@ def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path)
          "Cert3", "C-3", "01-01-2025", "not-a-date",
          "https://x/renew?id=C-3", "DUE SOON"],
     ])
-    log_path = tmp_path / "sent_log.json"
-    save_sent_log(log_path, {"CLT001|CRITICAL|2026-07-17": {"message_id": "wamid.OLD"}})
+    save_sent_log(db_path, {"CLT001|CRITICAL|2026-07-17": {
+        "message_id": "wamid.OLD", "phone": "919111111111", "sent_at": "2026-07-16T10:00:00",
+    }})
     send_fn = Mock(return_value=(True, {"message_id": "wamid.NEW"}))
 
-    results = run(excel_path=xlsx_path, log_path=log_path, token="tok", phone_number_id="pid",
+    results = run(db_path=db_path, token="tok", phone_number_id="pid",
                   template_name="cert_renewal_alert", template_lang="en_US",
                   today="2026-07-17", send_fn=send_fn)
 
@@ -327,9 +315,30 @@ def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path)
     assert results[2]["action"] == "failed"
     assert send_fn.call_count == 1
 
-    saved = load_sent_log(log_path)
+    saved = load_sent_log(db_path)
     assert "CLT001|CRITICAL|2026-07-17" in saved
     assert "CLT002|URGENT|2026-07-17" in saved
+
+
+def test_run_calls_on_progress_for_each_record(tmp_path):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "URGENT"],
+    ])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+    progress_calls = []
+
+    run(
+        db_path=db_path, token="tok", phone_number_id="pid",
+        template_name="cert_renewal_alert", template_lang="en_US",
+        today="2026-07-17", send_fn=send_fn,
+        on_progress=lambda result, total: progress_calls.append((result["action"], total)),
+    )
+
+    assert progress_calls == [("sent", 2), ("sent", 2)]
 
 
 from whatsapp_renewal_alerts import send_one_alert
@@ -405,14 +414,14 @@ def test_send_one_alert_uses_override_phone_and_reports_failure():
     assert sent_log == {}
 
 
-from whatsapp_renewal_alerts import parse_args, DEFAULT_EXCEL_PATH
+from whatsapp_renewal_alerts import parse_args
 
 
 def test_parse_args_defaults():
     args = parse_args([])
     assert args.dry_run is False
     assert args.test_number is None
-    assert args.excel == str(DEFAULT_EXCEL_PATH)
+    assert args.db == str(DEFAULT_DB_PATH)
 
 
 def test_parse_args_dry_run_and_test_number():

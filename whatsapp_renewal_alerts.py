@@ -1,13 +1,11 @@
 """WhatsApp Cloud API renewal-alert sender for Absolute Veritas."""
 import argparse
-import json
 import os
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
 
-import openpyxl
 import requests
 from dotenv import load_dotenv
 
@@ -40,60 +38,12 @@ def dedup_key(client_id: str, status: str, date_str: str) -> str:
     return f"{client_id}|{status}|{date_str}"
 
 
-def load_sent_log(path) -> dict:
-    path = Path(path)
-    if not path.exists():
-        return {}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_sent_log(path, log: dict) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(log, f, indent=2)
-
+from db import (  # noqa: E402
+    DEFAULT_DB_PATH, read_clients, find_client_by_id, load_sent_log, save_sent_log,
+    RECORD_FIELDS,
+)
 
 ALERT_STATUSES = {"CRITICAL", "URGENT", "DUE SOON", "EXPIRED"}
-
-RECORD_FIELDS = [
-    "client_id", "name", "company", "email", "phone", "cert_name",
-    "cert_id", "issue_date", "expiry_date", "renewal_link", "status",
-]
-
-
-def read_clients(xlsx_path) -> list[dict]:
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    try:
-        ws = wb.active
-        rows = ws.iter_rows(values_only=True)
-        next(rows)  # skip header row
-        records = []
-        for row in rows:
-            if row[0] is None:
-                continue
-            records.append(dict(zip(RECORD_FIELDS, row)))
-        return records
-    finally:
-        wb.close()
-
-
-def find_client_by_id(xlsx_path, client_id: str) -> dict | None:
-    """Looks up a single client without building the full in-memory list —
-    stops scanning as soon as a match is found, instead of read_clients()'s
-    always-read-everything cost."""
-    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
-    try:
-        ws = wb.active
-        rows = ws.iter_rows(values_only=True)
-        next(rows)  # skip header row
-        for row in rows:
-            if row[0] is None:
-                continue
-            if str(row[0]) == client_id:
-                return dict(zip(RECORD_FIELDS, row))
-        return None
-    finally:
-        wb.close()
 
 
 def filter_alertable(records: list[dict]) -> list[dict]:
@@ -201,8 +151,7 @@ def send_one_alert(
 
 
 def run(
-    excel_path,
-    log_path,
+    db_path,
     token: str,
     phone_number_id: str,
     template_name: str,
@@ -211,10 +160,11 @@ def run(
     test_number: str | None = None,
     today: str | None = None,
     send_fn=send_message,
+    on_progress=None,
 ) -> list[dict]:
     today = today or datetime.now().strftime("%Y-%m-%d")
-    records = filter_alertable(read_clients(excel_path))
-    sent_log = load_sent_log(log_path)
+    records = filter_alertable(read_clients(db_path))
+    sent_log = load_sent_log(db_path)
     persist_log = not dry_run and not test_number
     log_dirty = False
     results = []
@@ -224,40 +174,38 @@ def run(
         key = dedup_key(rec["client_id"], rec["status"], today)
 
         if key in sent_log:
-            results.append({
+            result = {
                 "client_id": rec["client_id"], "name": rec["name"],
                 "status": rec["status"], "action": "skipped_duplicate",
                 "to": to_phone,
-            })
-            continue
-
-        if dry_run:
+            }
+        elif dry_run:
             payload = build_payload(rec, to_phone, template_name, template_lang)
-            results.append({
+            result = {
                 "client_id": rec["client_id"], "name": rec["name"],
                 "status": rec["status"], "action": "dry_run",
                 "to": to_phone, "payload": payload,
-            })
-            continue
+            }
+        else:
+            result = send_one_alert(
+                rec, sent_log, today, token, phone_number_id,
+                template_name, template_lang,
+                to_phone_override=test_number, send_fn=send_fn,
+            )
+            if result["action"] == "sent":
+                log_dirty = True
 
-        result = send_one_alert(
-            rec, sent_log, today, token, phone_number_id,
-            template_name, template_lang,
-            to_phone_override=test_number, send_fn=send_fn,
-        )
         results.append(result)
-        if result["action"] == "sent":
-            log_dirty = True
+        if on_progress:
+            on_progress(result, len(records))
 
     if persist_log and log_dirty:
-        save_sent_log(log_path, sent_log)
+        save_sent_log(db_path, sent_log)
 
     return results
 
 
 SCRIPT_DIR = Path(__file__).parent
-DEFAULT_EXCEL_PATH = SCRIPT_DIR / "clients_certifications.xlsx"
-DEFAULT_LOG_PATH = SCRIPT_DIR / "sent_log.json"
 DEFAULT_TEXT_LOG_PATH = SCRIPT_DIR / "whatsapp_automation.log"
 
 
@@ -265,7 +213,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Send WhatsApp renewal alerts via Meta Cloud API.")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be sent without calling the API.")
     parser.add_argument("--test-number", default=None, help="Redirect all sends to this number instead of real client numbers.")
-    parser.add_argument("--excel", default=str(DEFAULT_EXCEL_PATH), help="Path to clients_certifications.xlsx")
+    parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="Path to clients.db")
     return parser
 
 
@@ -310,8 +258,7 @@ def main(argv=None) -> int:
     template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
 
     results = run(
-        excel_path=args.excel,
-        log_path=DEFAULT_LOG_PATH,
+        db_path=args.db,
         token=token,
         phone_number_id=phone_number_id,
         template_name=template_name,
