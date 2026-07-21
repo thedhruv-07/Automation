@@ -71,7 +71,7 @@ export default function ClientTable({
 
       {selectedIds.size > 0 && (
         <div className="px-4 py-2 bg-surface-page border-b border-line flex items-center gap-3 text-sm">
-          <span className="text-ink-primary font-medium">{selectedIds.size} selected</span>
+          <span className="text-ink-primary font-medium">{selectedClients.length} selected</span>
           <button
             type="button"
             onClick={() => onSendSelected(selectedClients)}

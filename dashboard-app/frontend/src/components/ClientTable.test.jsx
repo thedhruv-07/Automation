@@ -106,4 +106,41 @@ describe("ClientTable", () => {
     fireEvent.click(screen.getByText("Full Name"));
     expect(onSort).toHaveBeenCalledWith("name");
   });
+
+  it("renders cached rows instead of the loading placeholder when a refetch is in flight but rows are already present", () => {
+    render(
+      <ClientTable
+        page={pageOf([oneClient])} loading={true} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}}
+      />
+    );
+    expect(screen.getByText("Rahul Sharma")).toBeInTheDocument();
+    expect(screen.queryByText("Loading clients…")).not.toBeInTheDocument();
+  });
+
+  it("keeps the displayed selected count accurate when a previously selected id is no longer on the page", () => {
+    const { rerender } = render(
+      <ClientTable
+        page={pageOf([oneClient])} loading={false} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByLabelText("Select Rahul Sharma"));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    // Simulate a filter change that doesn't move currentPage/sortKey/sortAsc (so the
+    // selection-clearing effect doesn't fire) but replaces the rows entirely — the
+    // previously-selected client_id is now stale.
+    const otherClient = { ...oneClient, client_id: "CLT999", name: "Priya Mehta" };
+    rerender(
+      <ClientTable
+        page={pageOf([otherClient])} loading={false} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}}
+      />
+    );
+    expect(screen.getByText("0 selected")).toBeInTheDocument();
+  });
 });
