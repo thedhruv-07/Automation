@@ -1,5 +1,6 @@
 # test_db.py
 import sqlite3
+import pytest
 from db import (
     init_db, read_clients, find_client_by_id, upsert_clients, RECORD_FIELDS,
 )
@@ -109,3 +110,41 @@ def test_upsert_computes_expiry_date_iso_for_sorting(tmp_path):
     iso = conn.execute("SELECT expiry_date_iso FROM clients WHERE client_id = 'CLT001'").fetchone()[0]
     conn.close()
     assert iso == "2026-07-24"
+
+
+def test_upsert_merge_drops_rows_with_blank_or_none_client_id(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [ROW_A], mode="replace")
+
+    blank_id_row = ("", "No ID Person", "Acme", "n@x.com", "919999999999",
+                     "ISO 9001", "ISO-2", "01-01-2025", "01-01-2027", "https://x", "OK")
+    none_id_row = (None, "Also No ID", "Acme", "n2@x.com", "919999999998",
+                    "ISO 9001", "ISO-3", "01-01-2025", "01-01-2027", "https://x", "OK")
+
+    stats = upsert_clients(db_path, [blank_id_row, none_id_row, ROW_B], mode="merge")
+
+    # Only ROW_B (a genuinely new, valid client_id) should be added; the
+    # blank/None client_id rows are dropped and never reach the table.
+    assert stats == {"row_count": 2, "added": 1, "skipped_duplicates": 0}
+    records = read_clients(db_path)
+    assert {r["client_id"] for r in records} == {"CLT001", "CLT002"}
+
+
+def test_upsert_merge_raises_on_constraint_violation_not_miscounted_as_duplicate(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [ROW_A], mode="replace")
+
+    # A brand-new client_id (not a duplicate of CLT001) but with a NULL name,
+    # which violates the `name TEXT NOT NULL` constraint.
+    invalid_row = (
+        "CLT099", None, "TechCorp", "r@x.com", "919876543210",
+        "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        upsert_clients(db_path, [invalid_row], mode="merge")
+
+    # Must not have been silently dropped-and-counted as a duplicate skip:
+    # it was never inserted, and the pre-check confirms it wasn't treated
+    # as a duplicate of any existing row.
+    assert find_client_by_id(db_path, "CLT099") is None

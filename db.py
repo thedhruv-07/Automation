@@ -110,7 +110,13 @@ def find_client_by_id(db_path, client_id: str) -> dict | None:
 def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
     """rows: list of tuples in RECORD_FIELDS order (client_id first).
     mode="replace": clears the table and inserts all rows.
-    mode="merge": inserts only rows whose client_id isn't already present."""
+    mode="merge": inserts only rows whose client_id isn't already present.
+
+    Rows with a blank/None client_id are dropped before insertion in either
+    mode: SQLite allows multiple NULLs in a non-INTEGER PRIMARY KEY column, so
+    such rows would never collide with each other and can't be treated as
+    valid client records regardless of mode.
+    """
     if mode not in ("replace", "merge"):
         raise ValueError(f"Unknown mode: {mode!r}")
 
@@ -120,34 +126,45 @@ def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
         backup_path = db_path.parent / "clients.backup.db"
         shutil.copyfile(db_path, backup_path)
 
+    rows = [row for row in rows if row[0] is not None and str(row[0]).strip() != ""]
+
     columns = RECORD_FIELDS + ["expiry_date_iso"]
     placeholders = ", ".join(["?"] * len(columns))
+    insert_sql = f"INSERT INTO clients ({', '.join(columns)}) VALUES ({placeholders})"
     prepared_rows = [tuple(row) + (to_iso_date(row[8]),) for row in rows]
 
     conn = get_connection(db_path)
     try:
         if mode == "replace":
             conn.execute("DELETE FROM clients")
-            conn.executemany(
-                f"INSERT INTO clients ({', '.join(columns)}) VALUES ({placeholders})",
-                prepared_rows,
-            )
+            conn.executemany(insert_sql, prepared_rows)
             conn.commit()
             row_count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
             return {"row_count": row_count, "added": row_count, "skipped_duplicates": 0}
 
         added = 0
         skipped = 0
-        for row in prepared_rows:
-            cursor = conn.execute(
-                f"INSERT OR IGNORE INTO clients ({', '.join(columns)}) VALUES ({placeholders})",
-                row,
-            )
-            if cursor.rowcount == 1:
+        try:
+            for row in prepared_rows:
+                client_id = row[0]
+                # Check for a genuine duplicate explicitly, rather than relying
+                # on INSERT OR IGNORE: that would also silently swallow (and
+                # miscount as "duplicate") a row that fails for an unrelated
+                # reason, e.g. a NOT NULL violation on name.
+                exists = conn.execute(
+                    "SELECT 1 FROM clients WHERE client_id = ?", (client_id,)
+                ).fetchone()
+                if exists:
+                    skipped += 1
+                    continue
+                # Not a duplicate: attempt a plain insert so a real constraint
+                # violation raises instead of being folded into the duplicate
+                # count. Rows added before a failing row are still committed
+                # below (in `finally`) so a bad row doesn't discard prior work.
+                conn.execute(insert_sql, row)
                 added += 1
-            else:
-                skipped += 1
-        conn.commit()
+        finally:
+            conn.commit()
         row_count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
         return {"row_count": row_count, "added": added, "skipped_duplicates": skipped}
     finally:
