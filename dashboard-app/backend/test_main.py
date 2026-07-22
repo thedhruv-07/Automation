@@ -799,6 +799,39 @@ def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
     assert backup_path.exists()
 
 
+def test_upload_clients_rejects_blank_name_with_400_not_500(tmp_path, monkeypatch):
+    """A blank name cell violates the `name TEXT NOT NULL` constraint in
+    db.py, raising sqlite3.IntegrityError. The endpoint must surface this as
+    a clear 400, not let it bubble up as an opaque 500, and must not leave
+    the previously-existing roster wiped (mode="replace" deletes first)."""
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
+         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    upload_path = tmp_path / "blank_name.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", None, "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("blank_name.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 400
+    assert "invalid" in response.json()["detail"].lower()
+
+    # The pre-existing roster must survive untouched -- not wiped by the
+    # DELETE that mode="replace" issues before the failed insert.
+    rows = read_clients(db_path)
+    assert {r["client_id"] for r in rows} == {"CLT999"}
+
+
 def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
@@ -922,6 +955,40 @@ def test_merge_clients_into_empty_roster(tmp_path, monkeypatch):
     assert body["row_count"] == 1
     assert body["added"] == 1
     assert body["skipped_duplicates"] == 0
+
+
+def test_merge_clients_rejects_blank_name_with_400_and_rolls_back_batch(tmp_path, monkeypatch):
+    """A blank name cell anywhere in the uploaded batch must surface as a
+    400, and none of the batch's rows -- including a valid row that sorted
+    before the bad one -- may be partially merged in (all-or-nothing)."""
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
+         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    upload_path = tmp_path / "new.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", None, "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/merge-clients",
+            files={"file": ("new.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 400
+    assert "invalid" in response.json()["detail"].lower()
+
+    # CLT001 (valid, ordered before the bad row) must NOT have been
+    # partially merged in -- only the pre-existing CLT999 remains.
+    rows = read_clients(db_path)
+    assert {r["client_id"] for r in rows} == {"CLT999"}
 
 
 def test_merge_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):

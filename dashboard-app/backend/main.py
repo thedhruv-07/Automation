@@ -9,6 +9,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import base64  # noqa: E402
 import io  # noqa: E402
 import os  # noqa: E402
+import sqlite3  # noqa: E402
 import threading  # noqa: E402
 import uuid  # noqa: E402
 
@@ -367,6 +368,25 @@ def client_template():
     )
 
 
+def _upsert_clients_or_400(rows, mode):
+    """Wraps upsert_clients() so a dirty row (e.g. a blank required field
+    like name, which violates the `name TEXT NOT NULL` constraint) surfaces
+    to the admin as a clear 400 instead of an opaque 500. db.py's
+    upsert_clients() rolls back the whole batch on any such failure, so by
+    the time this exception reaches here nothing from the batch was
+    written -- the 400 accurately reflects "nothing was saved"."""
+    try:
+        return upsert_clients(DEFAULT_DB_PATH, rows, mode=mode)
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Upload contains invalid data (e.g. a blank required field like "
+                f"name) and was not saved: {exc}"
+            ),
+        )
+
+
 @app.post("/api/upload-clients")
 async def upload_clients(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".xlsx"):
@@ -395,7 +415,7 @@ async def upload_clients(file: UploadFile = File(...)):
         rows = [tuple(row[:len(REQUIRED_HEADERS)]) for row in rows_iter if row and row[0] is not None]
         wb.close()
         tmp_path.unlink(missing_ok=True)
-        stats = upsert_clients(DEFAULT_DB_PATH, rows, mode="replace")
+        stats = _upsert_clients_or_400(rows, mode="replace")
         return {"status": "ok", "row_count": stats["row_count"], "format": "roster"}
 
     if looks_like_bis_isi_workbook(wb):
@@ -413,7 +433,7 @@ async def upload_clients(file: UploadFile = File(...)):
                 ),
             )
 
-        stats = upsert_clients(DEFAULT_DB_PATH, collector.rows, mode="replace")
+        stats = _upsert_clients_or_400(collector.rows, mode="replace")
         return {"status": "ok", "row_count": stats["row_count"], "format": "bis_isi", "stats": bis_stats}
 
     wb.close()
@@ -498,7 +518,7 @@ async def merge_clients(file: UploadFile = File(...)):
         )
 
     tmp_path.unlink(missing_ok=True)
-    stats = upsert_clients(DEFAULT_DB_PATH, new_rows, mode="merge")
+    stats = _upsert_clients_or_400(new_rows, mode="merge")
     return {
         "status": "ok", "row_count": stats["row_count"], "added": stats["added"],
         "skipped_duplicates": stats["skipped_duplicates"], "format": upload_format, "stats": bis_stats,

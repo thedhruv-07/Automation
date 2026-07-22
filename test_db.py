@@ -150,6 +150,29 @@ def test_upsert_merge_raises_on_constraint_violation_not_miscounted_as_duplicate
     assert find_client_by_id(db_path, "CLT099") is None
 
 
+def test_upsert_merge_rolls_back_whole_batch_on_constraint_violation(tmp_path):
+    """A batch containing one genuinely-new, valid row followed by one row
+    that violates the NOT NULL constraint on name must not partially commit:
+    the valid row processed before the failing one must also be rolled back,
+    so the caller's "this whole operation failed" story matches reality."""
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [ROW_A], mode="replace")
+
+    valid_new_row = ROW_B  # CLT002, new and valid
+    invalid_row = (
+        "CLT099", None, "TechCorp", "r@x.com", "919876543210",
+        "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        upsert_clients(db_path, [valid_new_row, invalid_row], mode="merge")
+
+    # Neither CLT002 (valid, processed first) nor CLT099 (invalid) should
+    # have been committed -- only the pre-existing CLT001 remains.
+    records = read_clients(db_path)
+    assert {r["client_id"] for r in records} == {"CLT001"}
+
+
 from db import get_clients_page
 
 FIVE_ROWS = [

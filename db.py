@@ -137,9 +137,17 @@ def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
     conn = get_connection(db_path)
     try:
         if mode == "replace":
-            conn.execute("DELETE FROM clients")
-            conn.executemany(insert_sql, prepared_rows)
-            conn.commit()
+            try:
+                conn.execute("DELETE FROM clients")
+                conn.executemany(insert_sql, prepared_rows)
+                conn.commit()
+            except Exception:
+                # A bad row (e.g. NOT NULL violation on name) must not leave
+                # the table half-cleared -- roll back the DELETE along with
+                # the partial inserts so a failed replace leaves the
+                # previous roster untouched, not silently wiped.
+                conn.rollback()
+                raise
             row_count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
             return {"row_count": row_count, "added": row_count, "skipped_duplicates": 0}
 
@@ -160,12 +168,16 @@ def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
                     continue
                 # Not a duplicate: attempt a plain insert so a real constraint
                 # violation raises instead of being folded into the duplicate
-                # count. Rows added before a failing row are still committed
-                # below (in `finally`) so a bad row doesn't discard prior work.
+                # count. On failure, the whole batch (including rows added
+                # earlier in this same call) is rolled back below -- an
+                # all-or-nothing contract, rather than a partial merge
+                # silently happening on a failed upload.
                 conn.execute(insert_sql, row)
                 added += 1
-        finally:
             conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         row_count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
         return {"row_count": row_count, "added": added, "skipped_duplicates": skipped}
     finally:
