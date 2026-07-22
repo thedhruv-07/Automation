@@ -5,15 +5,25 @@ import * as api from "./api";
 
 vi.mock("./api");
 
+const samplePage = (rows, total = rows.length, page = 1) => ({ rows, total, page, page_size: 50 });
+
 const sampleClients = [
   { client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", email: "rahul@techcorp.com",
     cert_name: "ISO 9001", cert_id: "ISO-1", expiry_date: "24-07-2026", status: "CRITICAL",
     alert_sent_today: false },
 ];
 
+const sampleStats = {
+  status_counts: { total: 1, CRITICAL: 1 },
+  eligible_not_sent_today: 1,
+  cert_types: ["ISO 9001"],
+  renewals_by_month: [{ year_month: "2026-07", count: 1 }],
+};
+
 beforeEach(() => {
   vi.resetAllMocks();
-  api.getClients.mockResolvedValue(sampleClients);
+  api.getClients.mockResolvedValue(samplePage(sampleClients));
+  api.getStats.mockResolvedValue(sampleStats);
 });
 
 describe("App", () => {
@@ -70,25 +80,30 @@ describe("App", () => {
     expect(api.sendAllAlerts).not.toHaveBeenCalled();
   });
 
-  it("sends all and shows a summary toast after confirming", async () => {
-    api.sendAllAlerts.mockResolvedValue([
-      { client_id: "CLT001", name: "Rahul Sharma", status: "CRITICAL", action: "sent", message_id: "wamid.ABC" },
-    ]);
+  it("sends all and shows a summary toast once the job finishes", async () => {
+    api.sendAllAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllStatus.mockResolvedValue({ total: 1, sent: 1, skipped: 0, failed: 0, done: true });
     render(<App />);
     await waitFor(() => screen.getByText("Send Alert"));
     fireEvent.click(screen.getByText("Send All Eligible"));
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() => expect(api.sendAllAlerts).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText("1 sent, 0 already sent, 0 failed")).toBeInTheDocument());
+    await waitFor(() => expect(api.getSendAllStatus).toHaveBeenCalledWith("job-1"));
+    await waitFor(() => expect(screen.getByText(/1 sent, 0 skipped, 0 failed/)).toBeInTheDocument());
   });
 
   it("filters the table via the top-bar search input", async () => {
     render(<App />);
     await waitFor(() => screen.getByText("Rahul Sharma"));
+    api.getClients.mockResolvedValue(samplePage([]));
     fireEvent.change(screen.getByPlaceholderText("Search name or company..."), {
       target: { value: "nobody" },
     });
-    expect(screen.queryByText("Rahul Sharma")).not.toBeInTheDocument();
+    await waitFor(
+      () => expect(api.getClients).toHaveBeenCalledWith(expect.objectContaining({ search: "nobody" })),
+      { timeout: 1000 }
+    );
+    await waitFor(() => expect(screen.queryByText("Rahul Sharma")).not.toBeInTheDocument());
   });
 
   it("switches to the Dashboard view and shows the stat cards instead of the table", async () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import StatCards from "./components/StatCards";
 import RenewalsByMonthChart from "./components/RenewalsByMonthChart";
@@ -14,55 +14,79 @@ import SendSelectedConfirmModal from "./components/SendSelectedConfirmModal";
 import EmailPreviewModal from "./components/EmailPreviewModal";
 import Toast from "./components/Toast";
 import {
-  getClients, sendAlert, sendAllAlerts, uploadClientsFile, mergeClientsFile, getMessageLog,
-  getSettingsInfo, getEmailPreview,
+  getClients, getStats, sendAlert, sendAllAlerts, getSendAllStatus, uploadClientsFile,
+  mergeClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
 } from "./api";
 
 const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
+const PAGE_SIZE = 8;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function App() {
   const [activeView, setActiveView] = useState("clientData");
-  const [clients, setClients] = useState([]);
+  const [page, setPage] = useState({ rows: [], total: 0, page: 1, page_size: PAGE_SIZE });
   const [clientsLoading, setClientsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [stats, setStats] = useState(null);
   const [activeStatus, setActiveStatus] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [certType, setCertType] = useState("ALL");
   const [expiryBefore, setExpiryBefore] = useState("");
+  const [pageNum, setPageNum] = useState(1);
   const [sortKey, setSortKey] = useState(null);
   const [sortAsc, setSortAsc] = useState(true);
   const [pendingClient, setPendingClient] = useState(null);
   const [toast, setToast] = useState(null);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
-  const [bulkSending, setBulkSending] = useState(false);
+  const [sendAllJob, setSendAllJob] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [pendingSelected, setPendingSelected] = useState([]);
   const [bulkSelectedSending, setBulkSelectedSending] = useState(false);
   const [previewClientId, setPreviewClientId] = useState(null);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPageNum(1);
+  }, [activeStatus, debouncedSearch, certType, expiryBefore, sortKey, sortAsc]);
+
+  const queryParams = useMemo(() => ({
+    page: pageNum, pageSize: PAGE_SIZE, status: activeStatus, certType,
+    expiryBefore, search: debouncedSearch, sortKey, sortDir: sortAsc ? "asc" : "desc",
+  }), [pageNum, activeStatus, certType, expiryBefore, debouncedSearch, sortKey, sortAsc]);
+
   const loadClients = useCallback(() => {
     setClientsLoading(true);
-    return getClients()
+    return getClients(queryParams)
       .then((data) => {
-        setClients(data);
+        setPage(data);
         setLoadError(null);
       })
       .catch((err) => setLoadError(err.message))
       .finally(() => setClientsLoading(false));
+  }, [queryParams]);
+
+  const loadStats = useCallback(() => {
+    return getStats().then(setStats).catch(() => {});
   }, []);
 
   useEffect(() => {
     loadClients();
   }, [loadClients]);
 
-  const certOptions = useMemo(
-    () => Array.from(new Set(clients.map((c) => c.cert_name))).sort(),
-    [clients]
-  );
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const certOptions = stats?.cert_types || [];
 
   function handleRefreshClick() {
     setRefreshing(true);
-    loadClients().finally(() => setRefreshing(false));
+    Promise.all([loadClients(), loadStats()]).finally(() => setRefreshing(false));
   }
 
   function handleClearAllFilters() {
@@ -87,33 +111,44 @@ export default function App() {
       await sendAlert(client.client_id);
       setToast({ type: "success", message: `Sent to ${client.name}` });
       loadClients();
+      loadStats();
     } catch (err) {
       setToast({ type: "error", message: err.message });
     }
   }
 
-  const eligibleCount = clients.filter(
-    (c) => ALERT_ELIGIBLE_STATUSES.has(c.status) && !c.alert_sent_today
-  ).length;
+  const eligibleCount = stats?.eligible_not_sent_today || 0;
+  const jobPollRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (jobPollRef.current) clearInterval(jobPollRef.current);
+    };
+  }, []);
 
   async function handleConfirmSendAll() {
-    setBulkModalOpen(false);
-    setBulkSending(true);
     try {
-      const results = await sendAllAlerts();
-      const sent = results.filter((r) => r.action === "sent").length;
-      const skipped = results.filter((r) => r.action === "skipped_duplicate").length;
-      const failed = results.filter((r) => r.action === "failed").length;
-      setToast({
-        type: failed > 0 ? "error" : "success",
-        message: `${sent} sent, ${skipped} already sent, ${failed} failed`,
-      });
-      loadClients();
+      const { job_id: jobId } = await sendAllAlerts();
+      setSendAllJob({ total: 0, sent: 0, skipped: 0, failed: 0, done: false });
+      jobPollRef.current = setInterval(async () => {
+        const status = await getSendAllStatus(jobId);
+        setSendAllJob(status);
+        if (status.done) {
+          clearInterval(jobPollRef.current);
+          loadClients();
+          loadStats();
+        }
+      }, 500);
     } catch (err) {
+      setBulkModalOpen(false);
       setToast({ type: "error", message: err.message });
-    } finally {
-      setBulkSending(false);
     }
+  }
+
+  function handleCloseSendAllModal() {
+    if (jobPollRef.current) clearInterval(jobPollRef.current);
+    setSendAllJob(null);
+    setBulkModalOpen(false);
   }
 
   async function handleConfirmSendSelected() {
@@ -140,6 +175,7 @@ export default function App() {
       message: `${sent} sent, ${skipped} already sent, ${failed} failed`,
     });
     loadClients();
+    loadStats();
     setBulkSelectedSending(false);
   }
 
@@ -151,6 +187,7 @@ export default function App() {
         message: `Imported ${result.row_count} client${result.row_count === 1 ? "" : "s"}.`,
       });
       loadClients();
+      loadStats();
       return result;
     } catch (err) {
       setToast({ type: "error", message: err.message });
@@ -167,6 +204,7 @@ export default function App() {
           + `skipped ${result.skipped_duplicates} already on file (${result.row_count} total).`,
       });
       loadClients();
+      loadStats();
       return result;
     } catch (err) {
       setToast({ type: "error", message: err.message });
@@ -215,7 +253,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setBulkModalOpen(true)}
-                disabled={bulkSending || eligibleCount === 0}
+                disabled={(sendAllJob !== null && !sendAllJob.done) || eligibleCount === 0}
                 className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors disabled:opacity-50"
               >
                 Send All Eligible
@@ -242,8 +280,8 @@ export default function App() {
                   Real-time status of all active and upcoming certification renewals.
                 </p>
               </div>
-              <StatCards clients={clients} />
-              <RenewalsByMonthChart clients={clients} />
+              <StatCards stats={stats} />
+              <RenewalsByMonthChart renewalsByMonth={stats?.renewals_by_month || []} />
             </>
           )}
 
@@ -265,18 +303,16 @@ export default function App() {
                 onClearAll={handleClearAllFilters}
               />
               <ClientTable
-                clients={clients}
+                page={page}
                 loading={clientsLoading}
-                activeStatus={activeStatus}
-                searchTerm={searchTerm}
-                certType={certType}
-                expiryBefore={expiryBefore}
                 sortKey={sortKey}
                 sortAsc={sortAsc}
                 onSort={handleSort}
+                onPageChange={setPageNum}
                 onSendClick={setPendingClient}
                 onSendSelected={bulkSelectedSending ? () => {} : setPendingSelected}
                 onPreviewEmail={setPreviewClientId}
+                exportFilters={{ status: activeStatus, certType, expiryBefore, search: debouncedSearch }}
               />
             </>
           )}
@@ -299,8 +335,9 @@ export default function App() {
       <SendAllConfirmModal
         open={bulkModalOpen}
         eligibleCount={eligibleCount}
+        job={sendAllJob}
         onConfirm={handleConfirmSendAll}
-        onCancel={() => setBulkModalOpen(false)}
+        onCancel={sendAllJob ? handleCloseSendAllModal : () => setBulkModalOpen(false)}
       />
       <SendSelectedConfirmModal
         clients={pendingSelected}
