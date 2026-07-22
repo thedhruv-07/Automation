@@ -86,6 +86,14 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
               {job.sent} sent, {job.skipped} skipped, {job.failed} failed
               {job.total ? ` (of ${job.total})` : ""}
             </p>
+            {job.error && (
+              <div
+                role="alert"
+                className="text-sm text-ink-primary bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-2 mb-3"
+              >
+                Send failed: {job.error}
+              </div>
+            )}
             {job.done ? (
               <div className="flex justify-end">
                 <button

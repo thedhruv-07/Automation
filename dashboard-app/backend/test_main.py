@@ -499,6 +499,77 @@ def test_send_all_uses_dashboard_test_number_override(tmp_path, monkeypatch):
     assert sent_payload["to"] == "919000000000"
 
 
+def test_send_all_job_reports_error_when_run_raises(tmp_path, monkeypatch):
+    """If run() raises inside the background job (e.g. a locked DB or an
+    unexpected error mid-send-loop), the job dict must record it so polling
+    clients can distinguish a real crash from "0/0/0, nothing to do" -- not
+    silently mark done=True with no trace of the failure."""
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+
+    def fake_run(*args, **kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(main_module, "run", fake_run)
+
+    response = client.post("/api/send-all")
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+
+    import time
+    status_response = None
+    for _ in range(50):
+        status_response = client.get(f"/api/send-all/status/{job_id}")
+        if status_response.json()["done"]:
+            break
+        time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["error"] is not None
+    assert "database is locked" in final["error"]
+
+    # The crash must not leave the bulk-in-progress flag stuck.
+    assert main_module._bulk_in_progress is False
+
+
+def test_send_all_job_error_is_none_on_success(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-all")
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final.get("error") is None
+
+
 def test_send_all_status_returns_404_for_unknown_job(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
     response = client.get("/api/send-all/status/does-not-exist")

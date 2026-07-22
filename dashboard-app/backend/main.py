@@ -291,6 +291,15 @@ def _run_send_all_job(job_id, token, phone_number_id, template_name, template_la
             DEFAULT_DB_PATH, token, phone_number_id, template_name, template_lang,
             dry_run=False, test_number=test_number, on_progress=progress,
         )
+    except Exception as exc:
+        # Without this, an exception here (locked DB, unexpected error mid-
+        # send-loop) only propagates into this daemon thread -- printed to
+        # stderr, invisible to the running app -- while the job dict is left
+        # at done=True with whatever counts happened to accumulate before
+        # the crash (often 0/0/0), indistinguishable from a real "nothing to
+        # do" success. Recording it here lets polling clients tell the two
+        # apart.
+        _send_all_jobs[job_id]["error"] = str(exc)
     finally:
         _send_all_jobs[job_id]["done"] = True
         global _bulk_in_progress
@@ -319,7 +328,9 @@ def send_all_alerts():
         test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
 
         job_id = str(uuid.uuid4())
-        _send_all_jobs[job_id] = {"total": 0, "sent": 0, "skipped": 0, "failed": 0, "done": False}
+        _send_all_jobs[job_id] = {
+            "total": 0, "sent": 0, "skipped": 0, "failed": 0, "done": False, "error": None,
+        }
         thread = threading.Thread(
             target=_run_send_all_job,
             args=(job_id, token, phone_number_id, template_name, template_lang, test_number),

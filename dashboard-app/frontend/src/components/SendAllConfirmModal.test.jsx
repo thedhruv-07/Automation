@@ -74,6 +74,30 @@ describe("SendAllConfirmModal", () => {
     expect(container.innerHTML).not.toContain("NaN");
   });
 
+  it("shows a distinct error state and Close button when the job fails", () => {
+    const onCancel = vi.fn();
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={onCancel}
+        job={{ total: 0, sent: 0, skipped: 0, failed: 0, done: true, error: "database is locked" }}
+      />
+    );
+    expect(screen.getByText(/database is locked/)).toBeInTheDocument();
+    const closeButton = screen.getByText("Close");
+    fireEvent.click(closeButton);
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("does not show the error state when job.error is not set", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 4, skipped: 1, failed: 0, done: false }}
+      />
+    );
+    expect(screen.queryByText(/failed:/i)).not.toBeInTheDocument();
+  });
+
   it("keeps Tab/Shift+Tab from leaving the dialog while a job is in progress (no interactive elements)", () => {
     render(
       <SendAllConfirmModal
