@@ -92,6 +92,73 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText(/1 sent, 0 skipped, 0 failed/)).toBeInTheDocument());
   });
 
+  it("stops polling and shows an error toast if checking send-all status fails", async () => {
+    api.sendAllAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllStatus.mockRejectedValue(new Error("Network error"));
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() => expect(api.getSendAllStatus).toHaveBeenCalledWith("job-1"));
+    await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
+    // The modal should have closed and the interval should be cleared — no further polling.
+    expect(screen.queryByTestId("send-all-confirm-modal")).not.toBeInTheDocument();
+    const callsAfterError = api.getSendAllStatus.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(api.getSendAllStatus.mock.calls.length).toBe(callsAfterError);
+  });
+
+  it("ignores a stale paginated response that resolves after a newer one for a changed filter", async () => {
+    const manyClients = Array.from({ length: 16 }, (_, i) => ({
+      client_id: `CLT${i}`, name: `Client ${i}`, company: "Co", email: "",
+      cert_name: "ISO 9001", cert_id: "ISO-1", expiry_date: "24-07-2026", status: "CRITICAL",
+      alert_sent_today: false,
+    }));
+
+    // App.jsx paginates at 8 rows/page — samplePage()'s default page_size (50)
+    // would leave everything on one page, so build pages with page_size: 8
+    // explicitly to get a real second page to navigate to.
+    const pageOf8 = (rows, total, page) => ({ rows, total, page, page_size: 8 });
+
+    const resolvers = [];
+    api.getClients.mockImplementation((params) => new Promise((resolve) => {
+      resolvers.push({ params, resolve });
+    }));
+
+    render(<App />);
+
+    // Initial load: page 1.
+    await waitFor(() => expect(resolvers.length).toBe(1));
+    resolvers[0].resolve(pageOf8(manyClients.slice(0, 8), 16, 1));
+    await waitFor(() => screen.getByText("Client 0"));
+
+    // Move to page 2.
+    fireEvent.click(screen.getByLabelText("Next page"));
+    await waitFor(() => expect(resolvers.length).toBe(2));
+    resolvers[1].resolve(pageOf8(manyClients.slice(8, 16), 16, 2));
+    await waitFor(() => screen.getByText("Client 8"));
+
+    // Change a filter while on page 2 — this fires two requests: one still
+    // carrying the stale page (2), and one carrying the reset page (1).
+    fireEvent.click(screen.getByText("Critical"));
+    await waitFor(() => expect(resolvers.length).toBe(4));
+
+    const stale = resolvers[2]; // page 2 with the new filter — superseded
+    const fresh = resolvers[3]; // page 1 with the new filter — the real answer
+
+    // Resolve out of order: the fresh (later-issued) request answers first,
+    // then the stale (earlier-issued) request answers after it.
+    fresh.resolve(pageOf8([manyClients[0]], 1, 1));
+    await waitFor(() => screen.getByText("Client 0"));
+    stale.resolve(pageOf8(manyClients.slice(8, 16), 16, 2));
+
+    // Give the stale response a chance to (incorrectly) clobber state.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(screen.getByText("Client 0")).toBeInTheDocument();
+    expect(screen.queryByText("Client 8")).not.toBeInTheDocument();
+  });
+
   it("filters the table via the top-bar search input", async () => {
     render(<App />);
     await waitFor(() => screen.getByText("Rahul Sharma"));

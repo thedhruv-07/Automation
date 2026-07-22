@@ -59,15 +59,24 @@ export default function App() {
     expiryBefore, search: debouncedSearch, sortKey, sortDir: sortAsc ? "asc" : "desc",
   }), [pageNum, activeStatus, certType, expiryBefore, debouncedSearch, sortKey, sortAsc]);
 
+  const requestIdRef = useRef(0);
+
   const loadClients = useCallback(() => {
+    const requestId = ++requestIdRef.current;
     setClientsLoading(true);
     return getClients(queryParams)
       .then((data) => {
+        if (requestId !== requestIdRef.current) return; // a newer request has since been issued — ignore this stale response
         setPage(data);
         setLoadError(null);
       })
-      .catch((err) => setLoadError(err.message))
-      .finally(() => setClientsLoading(false));
+      .catch((err) => {
+        if (requestId !== requestIdRef.current) return;
+        setLoadError(err.message);
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setClientsLoading(false);
+      });
   }, [queryParams]);
 
   const loadStats = useCallback(() => {
@@ -131,12 +140,19 @@ export default function App() {
       const { job_id: jobId } = await sendAllAlerts();
       setSendAllJob({ total: 0, sent: 0, skipped: 0, failed: 0, done: false });
       jobPollRef.current = setInterval(async () => {
-        const status = await getSendAllStatus(jobId);
-        setSendAllJob(status);
-        if (status.done) {
+        try {
+          const status = await getSendAllStatus(jobId);
+          setSendAllJob(status);
+          if (status.done) {
+            clearInterval(jobPollRef.current);
+            loadClients();
+            loadStats();
+          }
+        } catch (err) {
           clearInterval(jobPollRef.current);
-          loadClients();
-          loadStats();
+          setSendAllJob(null);
+          setBulkModalOpen(false);
+          setToast({ type: "error", message: err.message });
         }
       }, 500);
     } catch (err) {
