@@ -44,11 +44,12 @@ export default function RenewalsByMonthChart({ renewalsByMonth }) {
         <p className="text-sm text-ink-muted">No certification expiry dates to chart yet.</p>
       ) : (
         <div className="overflow-x-auto">
-          <div className="inline-flex items-end gap-3 h-40 min-w-full">
+          <div className="inline-flex items-end justify-center gap-3 h-40 min-w-full">
             {groups.map((g) => (
               <div
                 key={g.key}
                 ref={(node) => { barRefs.current[g.key] = node; }}
+                data-month={g.key}
                 className="flex flex-col items-center h-full justify-end group shrink-0 w-16"
                 title={`${g.label}: ${g.count} renewal${g.count === 1 ? "" : "s"}`}
               >

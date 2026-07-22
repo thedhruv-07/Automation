@@ -46,7 +46,7 @@ describe("RenewalsByMonthChart", () => {
   });
 
   it("scrolls the selected month's bar into view when chosen from the dropdown", () => {
-    render(
+    const { container } = render(
       <RenewalsByMonthChart
         renewalsByMonth={[
           { year_month: "2026-07", count: 2 },
@@ -54,10 +54,20 @@ describe("RenewalsByMonthChart", () => {
         ]}
       />
     );
+    const julBar = container.querySelector('[data-month="2026-07"]');
+    const sepBar = container.querySelector('[data-month="2026-09"]');
+    // Assign fresh mocks as own properties on each specific node (rather than
+    // vi.spyOn, which resolves the inherited Element.prototype.scrollIntoView
+    // and would install on the shared prototype instead of the instance).
+    const julScroll = (julBar.scrollIntoView = vi.fn());
+    const sepScroll = (sepBar.scrollIntoView = vi.fn());
+
     const select = screen.getByLabelText("Jump to month");
     fireEvent.change(select, { target: { value: "2026-09" } });
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(
+
+    expect(sepScroll).toHaveBeenCalledWith(
       expect.objectContaining({ inline: "center", block: "nearest" })
     );
+    expect(julScroll).not.toHaveBeenCalled();
   });
 });
