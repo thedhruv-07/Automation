@@ -18,17 +18,23 @@ export default function RenewalsByMonthChart({ renewalsByMonth }) {
       {groups.length === 0 ? (
         <p className="text-sm text-ink-muted">No certification expiry dates to chart yet.</p>
       ) : (
-        <div className="flex items-end justify-between gap-3 h-40">
-          {groups.map((g) => (
-            <div key={g.key} className="flex flex-col items-center flex-1 h-full justify-end group" title={`${g.label}: ${g.count} renewal${g.count === 1 ? "" : "s"}`}>
-              <span className="text-xs font-semibold text-ink-secondary mb-1 tabular-nums">{g.count}</span>
+        <div className="overflow-x-auto">
+          <div className="inline-flex items-end gap-3 h-40 min-w-full">
+            {groups.map((g) => (
               <div
-                className="w-full max-w-[36px] bg-accent rounded-t group-hover:bg-accent-dark transition-colors"
-                style={{ height: `${Math.max(6, (g.count / max) * 100)}%` }}
-              />
-              <span className="text-xs text-ink-muted mt-2 whitespace-nowrap">{g.label}</span>
-            </div>
-          ))}
+                key={g.key}
+                className="flex flex-col items-center h-full justify-end group shrink-0 w-16"
+                title={`${g.label}: ${g.count} renewal${g.count === 1 ? "" : "s"}`}
+              >
+                <span className="text-xs font-semibold text-ink-secondary mb-1 tabular-nums">{g.count}</span>
+                <div
+                  className="w-full max-w-[36px] bg-accent rounded-t group-hover:bg-accent-dark transition-colors"
+                  style={{ height: `${Math.max(6, (g.count / max) * 100)}%` }}
+                />
+                <span className="text-xs text-ink-muted mt-2 whitespace-nowrap">{g.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
