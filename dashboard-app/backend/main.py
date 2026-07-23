@@ -131,29 +131,6 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/api/_debug_auth")
-def debug_auth():
-    """TEMPORARY diagnostic endpoint -- remove once the Render auth mismatch
-    is resolved. Reveals structural info about DASHBOARD_USERNAME/PASSWORD
-    (length, first/last char) without exposing the actual secret, so we can
-    compare against what was actually typed into Render's dashboard."""
-    def describe(value):
-        if value is None:
-            return {"set": False}
-        return {
-            "set": True,
-            "length": len(value),
-            "first_char": value[0] if value else None,
-            "last_char": value[-1] if value else None,
-            "repr_first_10": repr(value[:10]),
-        }
-
-    return {
-        "DASHBOARD_USERNAME": describe(os.environ.get("DASHBOARD_USERNAME")),
-        "DASHBOARD_PASSWORD": describe(os.environ.get("DASHBOARD_PASSWORD")),
-    }
-
-
 @app.get("/api/clients", dependencies=[Depends(require_auth)])
 def get_clients(
     page: int = Query(default=1, ge=1),
