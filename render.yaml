@@ -4,6 +4,12 @@
 # docs before relying on it. docs/DEPLOYMENT.md's manual dashboard steps are
 # the authoritative path if this file is stale by the time you deploy.
 #
+# NOTE: Render's "New Blueprint" flow may prompt for payment info on file
+# even with `plan: free` below -- observed 2026-07-23, unclear if this is a
+# blanket Blueprint-feature policy or something else. If that happens and
+# you don't want to add a card, use "New Web Service" (manual, non-Blueprint)
+# instead and enter these same settings by hand -- see docs/DEPLOYMENT.md.
+#
 # FREE TIER: no persistent disk. clients.db lives on the service's ephemeral
 # filesystem (the repo-relative data/clients.db default -- no DASHBOARD_DB_PATH
 # override needed) and is wiped on every restart/redeploy/spin-down-from-
@@ -17,6 +23,7 @@ services:
   - type: web
     name: absolute-veritas-dashboard-backend
     runtime: python
+    plan: free
     rootDir: dashboard-app/backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
