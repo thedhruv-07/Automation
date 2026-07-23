@@ -36,4 +36,16 @@ describe("Sidebar", () => {
     expect(screen.getByText("Client Data").closest("button")).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Dashboard").closest("button")).not.toHaveAttribute("aria-current");
   });
+
+  it("does not render a Log out button when onLogout is not provided", () => {
+    render(<Sidebar activeView="dashboard" onNavigate={() => {}} />);
+    expect(screen.queryByText("Log out")).not.toBeInTheDocument();
+  });
+
+  it("calls onLogout when the Log out button is clicked", () => {
+    const onLogout = vi.fn();
+    render(<Sidebar activeView="dashboard" onNavigate={() => {}} onLogout={onLogout} />);
+    fireEvent.click(screen.getByText("Log out"));
+    expect(onLogout).toHaveBeenCalled();
+  });
 });

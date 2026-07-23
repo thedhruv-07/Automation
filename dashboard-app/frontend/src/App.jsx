@@ -22,7 +22,7 @@ const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPI
 const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
 
-export default function App() {
+export default function App({ onLogout } = {}) {
   const [activeView, setActiveView] = useState("clientData");
   const [page, setPage] = useState({ rows: [], total: 0, page: 1, page_size: PAGE_SIZE });
   const [clientsLoading, setClientsLoading] = useState(true);
@@ -230,7 +230,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-surface-page flex">
-      <Sidebar activeView={activeView} onNavigate={setActiveView} />
+      <Sidebar activeView={activeView} onNavigate={setActiveView} onLogout={onLogout} />
 
       <div className="flex-1 min-w-0">
         <header className="h-16 sticky top-0 z-10 bg-surface border-b border-line flex items-center justify-between px-6">
@@ -240,7 +240,9 @@ export default function App() {
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e
+                  
+                ) => setSearchTerm(e.target.value)}
                 placeholder="Search name or company..."
                 aria-label="Search name or company"
                 className="w-72 px-4 py-1.5 rounded-full border border-line bg-surface-page text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent"

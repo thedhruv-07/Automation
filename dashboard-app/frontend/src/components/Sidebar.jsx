@@ -14,6 +14,9 @@ const ICONS = {
   log: (
     <path d="M4 6h16M4 12h16M4 18h10" />
   ),
+  logout: (
+    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+  ),
 };
 
 const NAV_ITEMS = [
@@ -41,7 +44,7 @@ function NavIcon({ name }) {
   );
 }
 
-export default function Sidebar({ activeView, onNavigate }) {
+export default function Sidebar({ activeView, onNavigate, onLogout }) {
   return (
     <aside className="w-[240px] shrink-0 h-screen sticky top-0 bg-ink-primary text-white flex flex-col py-6">
       <div className="px-6 mb-6">
@@ -72,6 +75,16 @@ export default function Sidebar({ activeView, onNavigate }) {
           );
         })}
       </nav>
+      {onLogout && (
+        <button
+          type="button"
+          onClick={onLogout}
+          className="w-full px-6 py-3 flex items-center gap-3 text-sm text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          <NavIcon name="logout" />
+          Log out
+        </button>
+      )}
     </aside>
   );
 }
