@@ -14,11 +14,12 @@ from datetime import datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
+REPO_ROOT = SCRIPT_DIR.parent.parent
 
 
 def _resolve_default_db_path() -> Path:
     override = os.environ.get("DASHBOARD_DB_PATH")
-    return Path(override) if override else SCRIPT_DIR / "clients.db"
+    return Path(override) if override else REPO_ROOT / "data" / "clients.db"
 
 
 DEFAULT_DB_PATH = _resolve_default_db_path()

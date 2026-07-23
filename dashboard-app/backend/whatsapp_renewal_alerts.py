@@ -209,7 +209,8 @@ def run(
 
 
 SCRIPT_DIR = Path(__file__).parent
-DEFAULT_TEXT_LOG_PATH = SCRIPT_DIR / "whatsapp_automation.log"
+REPO_ROOT = SCRIPT_DIR.parent.parent
+DEFAULT_TEXT_LOG_PATH = REPO_ROOT / "logs" / "whatsapp_automation.log"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -248,7 +249,7 @@ def append_text_log(path, lines: list[str]) -> None:
 
 
 def main(argv=None) -> int:
-    load_dotenv(SCRIPT_DIR / ".env")
+    load_dotenv(REPO_ROOT / ".env")
     args = parse_args(argv)
 
     token = os.environ.get("WHATSAPP_TOKEN")

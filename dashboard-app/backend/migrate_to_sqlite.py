@@ -17,8 +17,9 @@ import openpyxl
 from db import DEFAULT_DB_PATH, RECORD_FIELDS, upsert_clients, record_sent, read_clients
 
 SCRIPT_DIR = Path(__file__).parent
-SOURCE_XLSX = SCRIPT_DIR / "clients_certifications.xlsx"
-SOURCE_LOG = SCRIPT_DIR / "sent_log.json"
+REPO_ROOT = SCRIPT_DIR.parent.parent
+SOURCE_XLSX = REPO_ROOT / "data" / "clients_certifications.xlsx"
+SOURCE_LOG = REPO_ROOT / "data" / "sent_log.json"
 
 # Used when a sent_log.json entry is missing sent_at, whose column is
 # NOT NULL in the schema. We backfill rather than skip: the entry still

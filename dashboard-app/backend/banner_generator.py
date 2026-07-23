@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")  # Windows console defaults to cp1252, which crashes on emoji output
 
-LOGO_PATH = Path(__file__).parent / "dashboard-app" / "frontend" / "public" / "company-logo.png"
+LOGO_PATH = Path(__file__).parent.parent / "frontend" / "public" / "company-logo.png"
 
 INK_PRIMARY = "#0b0b0b"
 INK_SECONDARY = "#52514e"

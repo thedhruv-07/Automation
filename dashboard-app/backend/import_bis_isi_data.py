@@ -189,7 +189,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     source = sys.argv[1]
-    output = str(Path(__file__).parent / "clients_certifications.xlsx")
+    output = str(Path(__file__).parent.parent.parent / "data" / "clients_certifications.xlsx")
     result = import_bis_isi(source, output)
     print("Sheets with data used:", result["sheets_used"])
     print("Sheets empty/skipped:", result["sheets_empty"])

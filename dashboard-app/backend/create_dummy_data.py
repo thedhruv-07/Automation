@@ -127,7 +127,7 @@ def create_dummy_excel():
         status_cell.font = Font(bold=True, color=status_colors.get(status, "000000"))
 
     ws.row_dimensions[1].height = 25
-    output_path = Path(__file__).parent / "clients_certifications.xlsx"
+    output_path = Path(__file__).parent.parent.parent / "data" / "clients_certifications.xlsx"
     wb.save(output_path)
     print(f"✅ Dummy Excel created: {output_path}")
     print(f"   {len(clients)} clients added with various expiry scenarios")

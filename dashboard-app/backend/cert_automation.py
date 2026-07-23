@@ -342,6 +342,6 @@ def run_automation(excel_path: str, test_mode: bool = True, output_dir: str = "o
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     run_automation(
-        excel_path="clients_certifications.xlsx",
+        excel_path="../../data/clients_certifications.xlsx",
         test_mode=True  # Change to False (after setting real credentials in .env) to send real messages
     )
