@@ -1,27 +1,25 @@
 """FastAPI backend for the Absolute Veritas React dashboard."""
-import sys
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).parent
 REPO_ROOT = BACKEND_DIR.parent.parent
-sys.path.insert(0, str(REPO_ROOT))
 
-import base64  # noqa: E402
-import io  # noqa: E402
-import os  # noqa: E402
-import secrets  # noqa: E402
-import sqlite3  # noqa: E402
-import threading  # noqa: E402
-import uuid  # noqa: E402
+import base64
+import io
+import os
+import secrets
+import sqlite3
+import threading
+import uuid
 
-import openpyxl  # noqa: E402
-from dotenv import load_dotenv  # noqa: E402
-from fastapi import Depends, FastAPI, HTTPException, File, Query, UploadFile, status  # noqa: E402
-from fastapi.security import HTTPBasic, HTTPBasicCredentials  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import StreamingResponse  # noqa: E402
+import openpyxl
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, File, Query, UploadFile, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
-from datetime import datetime  # noqa: E402
+from datetime import datetime
 
 from db import (  # noqa: E402
     DEFAULT_DB_PATH, get_clients_page, get_stats, export_clients_rows,
