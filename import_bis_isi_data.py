@@ -1,14 +1,18 @@
-"""One-off importer: converts the multi-sheet BIS ISI license register export
-into clients_certifications.xlsx's single-sheet client roster schema.
+"""One-off importer: converts a BIS ISI license register export into
+clients_certifications.xlsx's single-sheet client roster schema.
 
 Source sheets vary slightly in column set/order, so columns are looked up by
 header name per sheet rather than by fixed position. Fields with no source
 equivalent (Phone, Issue Date, Renewal Link) are left blank. Certification
-Name is the sheet name (e.g. "IS 269"); Certification ID and Client ID both
-use the license number, since a license number is the natural unique key in
-this dataset. Status is recomputed from Validity Date using this project's
-own urgency thresholds — the source "Status" column (Operative/Cancelled/etc.)
-means something different and is not used.
+Name is taken from each row's "Standard" column when the sheet has one (the
+current single-sheet-with-all-standards-mixed template); if a sheet has no
+"Standard" column at all -- the older one-sheet-per-standard layout -- or a
+given row's Standard cell is blank, the sheet name is used instead (e.g.
+"IS 269"), matching the original behavior. Certification ID and Client ID
+both use the license number, since a license number is the natural unique
+key in this dataset. Status is recomputed from Validity Date using this
+project's own urgency thresholds -- the source "Status" column
+(Operative/Cancelled/etc.) means something different and is not used.
 
 Usage: python import_bis_isi_data.py "<path to source xlsx>"
 """
@@ -115,7 +119,6 @@ def import_bis_isi_workbook(wb, out_ws, today=None):
             continue
 
         index_map = header_index_map(header_row)
-        cert_name = sheet_name.strip()
         sheet_had_rows = False
 
         for row in rows_iter:
@@ -125,6 +128,8 @@ def import_bis_isi_workbook(wb, out_ws, today=None):
             firm_name = get(row, index_map, "firm name")
             email = get(row, index_map, "email")
             validity_raw = get(row, index_map, "validity date", "validity")
+            row_standard = get(row, index_map, "standard")
+            cert_name = str(row_standard).strip() if row_standard else sheet_name.strip()
 
             if not licence_no or not validity_raw:
                 stats["rows_skipped_missing_key"] += 1

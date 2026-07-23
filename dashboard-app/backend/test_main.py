@@ -823,6 +823,46 @@ def test_upload_clients_converts_raw_bis_isi_workbook(tmp_path, monkeypatch):
     assert rows[0]["cert_name"] == "IS 302 (Part 2 Sec 30)"
 
 
+def test_upload_clients_converts_single_sheet_bis_isi_workbook_with_standard_column(tmp_path, monkeypatch):
+    """The current BIS ISI export format: everything in one sheet, with a
+    "Standard" column carrying what used to be the sheet name -- each row's
+    certification should come from that column, not a shared sheet name."""
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    upload_path = tmp_path / "BIS_Final_Edited_Master_File.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(["S. No.", "Standard", "Licence No", "Firm Name", "Address", "District", "State",
+               "PIN Code", "Email", "Validity Date", "Status", "Variety", "Brand Names"])
+    ws.append([1, "IS 1008", "4631257", "Prayagh Consumer Care Pvt. Unit II",
+               "Survey No.527, 528 & 558 Chettanpally", "Mahbubnagar", "Telangana", "509316",
+               "info@prayagh.com", "2026-08-31", "Operative", "-", ""])
+    ws.append([2, "IS 10124 Part 2", "6298283", "Sudhakar PVC Products Private Limited",
+               "Unit-2, Suryapet", "Suryapet", "Telangana", "508213",
+               "sudhakarpipes@suryapet.com", "2026-12-31", "Operative", "Show Variety", ""])
+    wb.save(upload_path)
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("BIS_Final_Edited_Master_File.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["format"] == "bis_isi"
+    assert body["row_count"] == 2
+    assert body["stats"]["rows_written"] == 2
+
+    rows = {r["client_id"]: r for r in read_clients(db_path)}
+    assert rows["4631257"]["cert_name"] == "IS 1008"
+    assert rows["4631257"]["name"] == "Prayagh Consumer Care Pvt. Unit II"
+    assert rows["6298283"]["cert_name"] == "IS 10124 Part 2"
+
+
 def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
