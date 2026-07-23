@@ -9,13 +9,15 @@ sys.path.insert(0, str(REPO_ROOT))
 import base64  # noqa: E402
 import io  # noqa: E402
 import os  # noqa: E402
+import secrets  # noqa: E402
 import sqlite3  # noqa: E402
 import threading  # noqa: E402
 import uuid  # noqa: E402
 
 import openpyxl  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-from fastapi import FastAPI, HTTPException, File, Query, UploadFile  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, File, Query, UploadFile, status  # noqa: E402
+from fastapi.security import HTTPBasic, HTTPBasicCredentials  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 
@@ -91,13 +93,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+security = HTTPBasic(auto_error=False)
+
+
+def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
+    """No-ops when DASHBOARD_USERNAME/DASHBOARD_PASSWORD aren't set (local dev,
+    and the existing test suite, which never sets them). Once both are set --
+    intended for a public deployment -- every route depending on this requires
+    them."""
+    expected_user = os.environ.get("DASHBOARD_USERNAME")
+    expected_pass = os.environ.get("DASHBOARD_PASSWORD")
+    if not expected_user or not expected_pass:
+        return
+    valid = (
+        credentials is not None
+        and secrets.compare_digest(credentials.username, expected_user)
+        and secrets.compare_digest(credentials.password, expected_pass)
+    )
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
 
 
-@app.get("/api/clients")
+@app.get("/api/clients", dependencies=[Depends(require_auth)])
 def get_clients(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=500),
@@ -120,7 +146,7 @@ def get_clients(
     return {"rows": result, "total": total, "page": page, "page_size": page_size}
 
 
-@app.get("/api/stats")
+@app.get("/api/stats", dependencies=[Depends(require_auth)])
 def stats():
     return get_stats(DEFAULT_DB_PATH, _today_str())
 
@@ -134,7 +160,7 @@ def _csv_escape(value) -> str:
     return text
 
 
-@app.get("/api/clients/export")
+@app.get("/api/clients/export", dependencies=[Depends(require_auth)])
 def export_clients(status: str = "ALL", cert_type: str = "ALL", expiry_before: str = "", search: str = ""):
     def generate():
         yield ",".join(_csv_escape(h) for h in REQUIRED_HEADERS) + "\n"
@@ -155,7 +181,7 @@ def export_clients(status: str = "ALL", cert_type: str = "ALL", expiry_before: s
     )
 
 
-@app.get("/api/email-preview/{client_id}")
+@app.get("/api/email-preview/{client_id}", dependencies=[Depends(require_auth)])
 def email_preview(client_id: str):
     record = find_client_by_id(DEFAULT_DB_PATH, client_id)
     if record is None:
@@ -180,7 +206,7 @@ def email_preview(client_id: str):
     return {"subject": subject, "html": html}
 
 
-@app.get("/api/settings-info")
+@app.get("/api/settings-info", dependencies=[Depends(require_auth)])
 def settings_info():
     return {
         "template_name": os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert"),
@@ -192,7 +218,7 @@ def settings_info():
     }
 
 
-@app.get("/api/message-log")
+@app.get("/api/message-log", dependencies=[Depends(require_auth)])
 def message_log():
     sent_log = load_sent_log(DEFAULT_DB_PATH)
     entries = []
@@ -213,7 +239,7 @@ def message_log():
     return entries
 
 
-@app.post("/api/send/{client_id}")
+@app.post("/api/send/{client_id}", dependencies=[Depends(require_auth)])
 def send_alert(client_id: str):
     today = _today_str()
     record = find_client_by_id(DEFAULT_DB_PATH, client_id)
@@ -308,7 +334,7 @@ def _run_send_all_job(job_id, token, phone_number_id, template_name, template_la
             _bulk_in_progress = False
 
 
-@app.post("/api/send-all")
+@app.post("/api/send-all", dependencies=[Depends(require_auth)])
 def send_all_alerts():
     global _bulk_in_progress
     with _send_lock:
@@ -345,7 +371,7 @@ def send_all_alerts():
         raise HTTPException(status_code=500, detail="Server is not configured to send WhatsApp messages")
 
 
-@app.get("/api/send-all/status/{job_id}")
+@app.get("/api/send-all/status/{job_id}", dependencies=[Depends(require_auth)])
 def send_all_status(job_id: str):
     job = _send_all_jobs.get(job_id)
     if job is None:
@@ -353,7 +379,7 @@ def send_all_status(job_id: str):
     return job
 
 
-@app.get("/api/client-template")
+@app.get("/api/client-template", dependencies=[Depends(require_auth)])
 def client_template():
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -387,7 +413,7 @@ def _upsert_clients_or_400(rows, mode):
         )
 
 
-@app.post("/api/upload-clients")
+@app.post("/api/upload-clients", dependencies=[Depends(require_auth)])
 async def upload_clients(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
@@ -453,7 +479,7 @@ async def upload_clients(file: UploadFile = File(...)):
     )
 
 
-@app.post("/api/merge-clients")
+@app.post("/api/merge-clients", dependencies=[Depends(require_auth)])
 async def merge_clients(file: UploadFile = File(...)):
     """Adds rows from the uploaded spreadsheet to the existing roster instead
     of replacing it. Client IDs already present in the roster are left
