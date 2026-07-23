@@ -185,7 +185,7 @@ describe("verifyCredentials", () => {
     const ok = await verifyCredentials("Basic dGVzdDp0ZXN0");
     expect(ok).toBe(true);
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/stats",
+      "/api/settings-info",
       { credentials: "include", headers: { Authorization: "Basic dGVzdDp0ZXN0" } }
     );
   });

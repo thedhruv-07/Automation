@@ -128,7 +128,11 @@ export function downloadClientTemplate() {
 }
 
 export async function verifyCredentials(authHeaderValue) {
-  const res = await fetch(`${API_BASE}/api/stats`, {
+  // /api/settings-info is deliberately used here instead of /api/stats (or any
+  // other data-backed endpoint): it requires auth but never touches the
+  // database, so login isn't blocked by an empty/missing clients.db (e.g.
+  // right after a Render free-tier restart, before the roster is reloaded).
+  const res = await fetch(`${API_BASE}/api/settings-info`, {
     credentials: "include",
     headers: { Authorization: authHeaderValue },
   });
