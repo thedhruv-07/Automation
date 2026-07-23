@@ -43,7 +43,7 @@ copying the already-built `.db` file:
 2. Upload `clients_certifications.xlsx` to the service (Render's shell
    supports file upload via its web UI, or `scp`/`rsync` if you've set up
    SSH access — check Render's current docs for the supported method).
-3. From the shell, at the repo root: `python migrate_to_sqlite.py`. It reads
+3. From the shell, at the repo root: `python dashboard-app/backend/migrate_to_sqlite.py`. It reads
    `clients_certifications.xlsx` and writes to `$DASHBOARD_DB_PATH`
    (`/data/clients.db`), verifying the row count matches before declaring
    success — the same script and safety check you already ran locally.
