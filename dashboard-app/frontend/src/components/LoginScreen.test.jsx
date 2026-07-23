@@ -35,4 +35,17 @@ describe("LoginScreen", () => {
     await waitFor(() => expect(screen.getByText("Invalid username or password.")).toBeInTheDocument());
     expect(onSuccess).not.toHaveBeenCalled();
   });
+
+  it("toggles the password field between hidden and visible text", () => {
+    render(<LoginScreen onSuccess={vi.fn()} />);
+
+    const passwordInput = screen.getByLabelText("Password");
+    expect(passwordInput).toHaveAttribute("type", "password");
+
+    fireEvent.click(screen.getByLabelText("Show password"));
+    expect(passwordInput).toHaveAttribute("type", "text");
+
+    fireEvent.click(screen.getByLabelText("Hide password"));
+    expect(passwordInput).toHaveAttribute("type", "password");
+  });
 });
