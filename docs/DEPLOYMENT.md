@@ -4,6 +4,17 @@ This app is a solo-admin tool. Deploying it makes it reachable from anywhere
 you're logged in — it does **not** make it safe to leave undefended. Follow
 every step, especially the credentials one.
 
+> **You're on Render's free tier: `clients.db` will NOT persist.** Free-tier
+> services have an ephemeral filesystem and spin down after inactivity,
+> wiping local files when they restart. Every time that happens, the roster
+> is gone until you reload it (Step 2, or the dashboard's own Excel Sync
+> page). There is no code difference between free and paid here — `db.py`
+> already supports a `DASHBOARD_DB_PATH` override for a persistent disk;
+> upgrading later is just adding that env var and a Render Disk, no redeploy
+> of new code required. Until then, treat this deployment as something you
+> reload data into each time you start using it after a gap, not a
+> fire-and-forget system of record.
+
 ## 1. Deploy the backend to Render
 
 1. In the Render dashboard, create a new **Web Service** from this GitHub repo.
@@ -14,41 +25,52 @@ every step, especially the credentials one.
    - Build command: `pip install -r requirements.txt`
    - Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
    - Health check path: `/api/health`
-2. Add a **Disk** (Render's persistent storage add-on — requires a paid
-   instance type, not the free tier): mount path `/data`, 1 GB is plenty for
-   this dataset size.
-3. Set environment variables (Render dashboard → your service → Environment):
+   - Instance type: free
+2. Set environment variables (Render dashboard → your service → Environment):
    - `WHATSAPP_TOKEN`, `PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_NAME`,
      `WHATSAPP_TEMPLATE_LANG`, `EMAIL_SENDER`, `BREVO_API_KEY` — same values
      as your local `.env`.
    - `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` — **pick real, unique
      credentials now, not placeholders.** Anyone with these can read every
      client's name/email/phone number and trigger WhatsApp sends.
-   - `DASHBOARD_DB_PATH=/data/clients.db` — points the app at the persistent
-     disk instead of the ephemeral checkout path.
    - Leave `DASHBOARD_ALLOWED_ORIGIN` unset for now — you'll set it after
      step 2, once you know the Vercel URL.
-4. Deploy. Confirm `https://<your-service>.onrender.com/api/health` returns
+   - Do **not** set `DASHBOARD_DB_PATH` — with no persistent disk attached,
+     the default (`data/clients.db` inside the ephemeral checkout) is exactly
+     as durable as any path you'd point it at instead.
+3. Deploy. Confirm `https://<your-service>.onrender.com/api/health` returns
    `{"status": "ok"}`.
 
-## 2. Get the real client data onto the Render disk
+## 2. Load real client data onto the running service
 
-The disk starts empty — `clients.db` doesn't exist there yet. Recommended:
-transfer the source spreadsheet (which you already treat as the source of
-truth) and run the same migration script Render will run, rather than
-copying the already-built `.db` file:
+Because the filesystem is ephemeral, this step needs repeating after every
+restart/redeploy/spin-down (see the warning above) — bookmark it rather than
+treating it as a one-time setup step:
 
 1. Open a shell on the Render service (Render dashboard → your service →
    "Shell").
-2. Upload `clients_certifications.xlsx` to the service (Render's shell
+2. Upload `data/clients_certifications.xlsx` to the service (Render's shell
    supports file upload via its web UI, or `scp`/`rsync` if you've set up
-   SSH access — check Render's current docs for the supported method).
+   SSH access — check Render's current docs for the supported method). Put
+   it at `data/clients_certifications.xlsx` relative to the repo root, matching
+   where `migrate_to_sqlite.py` expects to find it.
 3. From the shell, at the repo root: `python dashboard-app/backend/migrate_to_sqlite.py`. It reads
-   `clients_certifications.xlsx` and writes to `$DASHBOARD_DB_PATH`
-   (`/data/clients.db`), verifying the row count matches before declaring
-   success — the same script and safety check you already ran locally.
+   `data/clients_certifications.xlsx` and writes to `data/clients.db`,
+   verifying the row count matches before declaring success — the same
+   script and safety check you already ran locally. If a previous
+   `clients.db` from before the last restart happens to still be present
+   (it won't be, on a genuine restart, but might be after a code-only
+   redeploy) and already has rows, this refuses to run — pass `--force`
+   only if you're deliberately overwriting it.
 4. Confirm: `python -c "from db import read_clients, DEFAULT_DB_PATH; print(len(read_clients(DEFAULT_DB_PATH)))"`
    should print the same row count as your local `clients.db`.
+
+**Faster alternative for routine reloads**: once the service is up, you can
+skip the shell entirely and use the dashboard's own **Excel Sync → Replace**
+page instead (upload `clients_certifications.xlsx` through the browser) —
+same effect, no shell access needed. The shell + migration script route
+above is only necessary the first time, or if you specifically want the
+`migrate_to_sqlite.py` script's row-count verification.
 
 ## 3. Deploy the frontend to Vercel
 
@@ -83,10 +105,18 @@ redeploys automatically.
 ## Updating later
 
 - Backend code changes: push to the branch Render is tracking; it redeploys
-  automatically. `clients.db` on the disk is untouched by a redeploy.
+  automatically. **On the free tier, a redeploy likely wipes `clients.db`**
+  (new container, ephemeral filesystem) — reload the data afterward via
+  Step 2's Excel Sync shortcut.
 - Frontend code changes: push to the branch Vercel is tracking; it redeploys
   automatically.
-- Client roster changes: use the dashboard's own Excel Sync page (Replace or
-  Merge) against the live deployment — no need to re-run the migration
-  script or touch the Render shell again after the initial data load in
-  step 2.
+- Client roster changes day-to-day: use the dashboard's own Excel Sync page
+  (Replace or Merge) against the live deployment. Just remember that on the
+  free tier this only lasts until the next restart/spin-down — it's not a
+  substitute for keeping your local `data/clients_certifications.xlsx` as
+  the real source of truth.
+- If you later upgrade to a paid instance + Render Disk: add a `disk:` block
+  back to `render.yaml` (or the dashboard equivalent) and set
+  `DASHBOARD_DB_PATH` to its mount path (e.g. `/data/clients.db`) as an env
+  var. No code changes needed — `db.py` already supports this, it's exactly
+  what this setup used before switching to the free tier.

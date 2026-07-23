@@ -3,6 +3,16 @@
 # the field names here against Render's current "Blueprint (render.yaml)"
 # docs before relying on it. docs/DEPLOYMENT.md's manual dashboard steps are
 # the authoritative path if this file is stale by the time you deploy.
+#
+# FREE TIER: no persistent disk. clients.db lives on the service's ephemeral
+# filesystem (the repo-relative data/clients.db default -- no DASHBOARD_DB_PATH
+# override needed) and is wiped on every restart/redeploy/spin-down-from-
+# inactivity. See docs/DEPLOYMENT.md for the re-load-data-after-every-reset
+# workflow this implies. Upgrading to a paid instance + Render Disk later
+# just means adding back a `disk:` block and a DASHBOARD_DB_PATH env var
+# pointing at its mount path -- no code change either way, since db.py
+# already reads DASHBOARD_DB_PATH when set and falls back to data/clients.db
+# otherwise.
 services:
   - type: web
     name: absolute-veritas-dashboard-backend
@@ -11,10 +21,6 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
-    disk:
-      name: dashboard-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: WHATSAPP_TOKEN
         sync: false
@@ -32,7 +38,5 @@ services:
         sync: false
       - key: DASHBOARD_PASSWORD
         sync: false
-      - key: DASHBOARD_DB_PATH
-        value: /data/clients.db
       - key: DASHBOARD_ALLOWED_ORIGIN
         sync: false
