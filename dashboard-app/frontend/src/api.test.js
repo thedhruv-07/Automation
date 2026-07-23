@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getClients, sendAlert, sendAllAlerts, uploadClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
-  getStats, getSendAllStatus,
+  getStats, getSendAllStatus, verifyCredentials,
 } from "./api";
+import { setStoredAuthHeader } from "./auth";
 
 beforeEach(() => {
   global.fetch = vi.fn();
+  sessionStorage.clear();
 });
 
 describe("getClients", () => {
@@ -17,7 +19,8 @@ describe("getClients", () => {
     const result = await getClients({ page: 1, pageSize: 50, status: "CRITICAL", search: "tech" });
     expect(result).toEqual({ rows: [{ client_id: "CLT001" }], total: 1, page: 1, page_size: 50 });
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/clients?page=1&page_size=50&status=CRITICAL&search=tech"
+      "/api/clients?page=1&page_size=50&status=CRITICAL&search=tech",
+      { credentials: "include", headers: {} }
     );
   });
 
@@ -35,7 +38,7 @@ describe("getStats", () => {
     });
     const stats = await getStats();
     expect(stats).toEqual({ status_counts: { total: 5 }, cert_types: ["ISO 9001"] });
-    expect(global.fetch).toHaveBeenCalledWith("/api/stats");
+    expect(global.fetch).toHaveBeenCalledWith("/api/stats", { credentials: "include", headers: {} });
   });
 });
 
@@ -47,7 +50,7 @@ describe("getEmailPreview", () => {
     });
     const preview = await getEmailPreview("CLT001");
     expect(preview).toEqual({ subject: "Renew ISO 9001", html: "<html></html>" });
-    expect(global.fetch).toHaveBeenCalledWith("/api/email-preview/CLT001");
+    expect(global.fetch).toHaveBeenCalledWith("/api/email-preview/CLT001", { credentials: "include", headers: {} });
   });
 
   it("throws when the response is not ok", async () => {
@@ -64,7 +67,7 @@ describe("getSettingsInfo", () => {
     });
     const info = await getSettingsInfo();
     expect(info).toEqual({ template_name: "cert_renewal_alert", critical_days: 7 });
-    expect(global.fetch).toHaveBeenCalledWith("/api/settings-info");
+    expect(global.fetch).toHaveBeenCalledWith("/api/settings-info", { credentials: "include", headers: {} });
   });
 
   it("throws when the response is not ok", async () => {
@@ -81,7 +84,7 @@ describe("getMessageLog", () => {
     });
     const log = await getMessageLog();
     expect(log).toEqual([{ client_id: "CLT001", message_id: "wamid.ABC" }]);
-    expect(global.fetch).toHaveBeenCalledWith("/api/message-log");
+    expect(global.fetch).toHaveBeenCalledWith("/api/message-log", { credentials: "include", headers: {} });
   });
 
   it("throws when the response is not ok", async () => {
@@ -98,7 +101,10 @@ describe("sendAlert", () => {
     });
     const result = await sendAlert("CLT001");
     expect(result).toEqual({ status: "sent", message_id: "wamid.ABC" });
-    expect(global.fetch).toHaveBeenCalledWith("/api/send/CLT001", { method: "POST" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/send/CLT001",
+      { method: "POST", credentials: "include", headers: {} }
+    );
   });
 
   it("throws the backend's detail message on failure", async () => {
@@ -124,7 +130,7 @@ describe("uploadClientsFile", () => {
     expect(result).toEqual({ status: "ok", row_count: 3 });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/upload-clients",
-      expect.objectContaining({ method: "POST" })
+      expect.objectContaining({ method: "POST", credentials: "include" })
     );
   });
 
@@ -146,7 +152,10 @@ describe("sendAllAlerts", () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
     const result = await sendAllAlerts();
     expect(result).toEqual({ job_id: "abc-123" });
-    expect(global.fetch).toHaveBeenCalledWith("/api/send-all", { method: "POST" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/send-all",
+      { method: "POST", credentials: "include", headers: {} }
+    );
   });
 
   it("throws the backend's detail message on failure", async () => {
@@ -166,6 +175,51 @@ describe("getSendAllStatus", () => {
     });
     const status = await getSendAllStatus("abc-123");
     expect(status).toEqual({ total: 5, sent: 2, skipped: 1, failed: 0, done: false });
-    expect(global.fetch).toHaveBeenCalledWith("/api/send-all/status/abc-123");
+    expect(global.fetch).toHaveBeenCalledWith("/api/send-all/status/abc-123", { credentials: "include", headers: {} });
+  });
+});
+
+describe("verifyCredentials", () => {
+  it("returns true when the backend accepts the credentials", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const ok = await verifyCredentials("Basic dGVzdDp0ZXN0");
+    expect(ok).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/stats",
+      { credentials: "include", headers: { Authorization: "Basic dGVzdDp0ZXN0" } }
+    );
+  });
+
+  it("returns false when the backend rejects the credentials", async () => {
+    global.fetch.mockResolvedValue({ ok: false, status: 401 });
+    const ok = await verifyCredentials("Basic d3Jvbmc6d3Jvbmc=");
+    expect(ok).toBe(false);
+  });
+});
+
+describe("authenticated requests", () => {
+  it("adds the stored Authorization header to requests once set", async () => {
+    setStoredAuthHeader("Basic dGVzdDp0ZXN0");
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ status_counts: { total: 1 } }) });
+    await getStats();
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/stats",
+      { credentials: "include", headers: { Authorization: "Basic dGVzdDp0ZXN0" } }
+    );
+  });
+});
+
+describe("API_BASE prefixing", () => {
+  it("prefixes requests with VITE_API_BASE_URL when set", async () => {
+    vi.resetModules();
+    vi.stubEnv("VITE_API_BASE_URL", "https://backend.example.com");
+    const { getStats: getStatsWithBase } = await import("./api");
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ status_counts: { total: 1 } }) });
+    await getStatsWithBase();
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://backend.example.com/api/stats",
+      { credentials: "include", headers: {} }
+    );
+    vi.unstubAllEnvs();
   });
 });

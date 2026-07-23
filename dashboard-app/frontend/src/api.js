@@ -1,3 +1,12 @@
+import { getStoredAuthHeader } from "./auth";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+
+function authHeaders(extra = {}) {
+  const stored = getStoredAuthHeader();
+  return stored ? { ...extra, Authorization: stored } : extra;
+}
+
 export async function getClients(params = {}) {
   const query = new URLSearchParams();
   if (params.page) query.set("page", params.page);
@@ -9,37 +18,44 @@ export async function getClients(params = {}) {
   if (params.sortKey) query.set("sort_key", params.sortKey);
   if (params.sortDir) query.set("sort_dir", params.sortDir);
   const qs = query.toString();
-  const res = await fetch(qs ? `/api/clients?${qs}` : "/api/clients");
+  const res = await fetch(`${API_BASE}${qs ? `/api/clients?${qs}` : "/api/clients"}`, {
+    credentials: "include",
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to load clients: ${res.status}`);
   return res.json();
 }
 
 export async function getStats() {
-  const res = await fetch("/api/stats");
+  const res = await fetch(`${API_BASE}/api/stats`, { credentials: "include", headers: authHeaders() });
   if (!res.ok) throw new Error(`Failed to load stats: ${res.status}`);
   return res.json();
 }
 
 export async function getEmailPreview(clientId) {
-  const res = await fetch(`/api/email-preview/${clientId}`);
+  const res = await fetch(`${API_BASE}/api/email-preview/${clientId}`, {
+    credentials: "include", headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to load email preview: ${res.status}`);
   return res.json();
 }
 
 export async function getSettingsInfo() {
-  const res = await fetch("/api/settings-info");
+  const res = await fetch(`${API_BASE}/api/settings-info`, { credentials: "include", headers: authHeaders() });
   if (!res.ok) throw new Error(`Failed to load settings info: ${res.status}`);
   return res.json();
 }
 
 export async function getMessageLog() {
-  const res = await fetch("/api/message-log");
+  const res = await fetch(`${API_BASE}/api/message-log`, { credentials: "include", headers: authHeaders() });
   if (!res.ok) throw new Error(`Failed to load message log: ${res.status}`);
   return res.json();
 }
 
 export async function sendAlert(clientId) {
-  const res = await fetch(`/api/send/${clientId}`, { method: "POST" });
+  const res = await fetch(`${API_BASE}/api/send/${clientId}`, {
+    method: "POST", credentials: "include", headers: authHeaders(),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.detail || `Send failed: ${res.status}`);
@@ -48,7 +64,9 @@ export async function sendAlert(clientId) {
 }
 
 export async function sendAllAlerts() {
-  const res = await fetch("/api/send-all", { method: "POST" });
+  const res = await fetch(`${API_BASE}/api/send-all`, {
+    method: "POST", credentials: "include", headers: authHeaders(),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error((data && data.detail) || `Send-all failed: ${res.status}`);
@@ -57,7 +75,9 @@ export async function sendAllAlerts() {
 }
 
 export async function getSendAllStatus(jobId) {
-  const res = await fetch(`/api/send-all/status/${jobId}`);
+  const res = await fetch(`${API_BASE}/api/send-all/status/${jobId}`, {
+    credentials: "include", headers: authHeaders(),
+  });
   if (!res.ok) throw new Error(`Failed to load send-all status: ${res.status}`);
   return res.json();
 }
@@ -69,13 +89,15 @@ export function clientsExportUrl({ status, certType, expiryBefore, search } = {}
   if (expiryBefore) query.set("expiry_before", expiryBefore);
   if (search) query.set("search", search);
   const qs = query.toString();
-  return qs ? `/api/clients/export?${qs}` : "/api/clients/export";
+  return `${API_BASE}${qs ? `/api/clients/export?${qs}` : "/api/clients/export"}`;
 }
 
 export async function uploadClientsFile(file) {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch("/api/upload-clients", { method: "POST", body: formData });
+  const res = await fetch(`${API_BASE}/api/upload-clients`, {
+    method: "POST", credentials: "include", headers: authHeaders(), body: formData,
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error((data && data.detail) || `Upload failed: ${res.status}`);
@@ -86,7 +108,9 @@ export async function uploadClientsFile(file) {
 export async function mergeClientsFile(file) {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch("/api/merge-clients", { method: "POST", body: formData });
+  const res = await fetch(`${API_BASE}/api/merge-clients`, {
+    method: "POST", credentials: "include", headers: authHeaders(), body: formData,
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error((data && data.detail) || `Merge failed: ${res.status}`);
@@ -96,9 +120,17 @@ export async function mergeClientsFile(file) {
 
 export function downloadClientTemplate() {
   const link = document.createElement("a");
-  link.href = "/api/client-template";
+  link.href = `${API_BASE}/api/client-template`;
   link.download = "clients_certifications_template.xlsx";
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+export async function verifyCredentials(authHeaderValue) {
+  const res = await fetch(`${API_BASE}/api/stats`, {
+    credentials: "include",
+    headers: { Authorization: authHeaderValue },
+  });
+  return res.ok;
 }
