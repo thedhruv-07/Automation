@@ -7,13 +7,21 @@ from the roster format the frontend already expects); expiry_date_iso is a
 YYYY-MM-DD copy used for correct sorting/filtering, since plain string
 comparison of DD-MM-YYYY does not sort chronologically.
 """
+import os
 import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
-DEFAULT_DB_PATH = SCRIPT_DIR / "clients.db"
+
+
+def _resolve_default_db_path() -> Path:
+    override = os.environ.get("DASHBOARD_DB_PATH")
+    return Path(override) if override else SCRIPT_DIR / "clients.db"
+
+
+DEFAULT_DB_PATH = _resolve_default_db_path()
 
 RECORD_FIELDS = [
     "client_id", "name", "company", "email", "phone", "cert_name",

@@ -1,5 +1,7 @@
 # test_db.py
 import sqlite3
+from pathlib import Path
+
 import pytest
 from db import (
     init_db, read_clients, find_client_by_id, upsert_clients, RECORD_FIELDS,
@@ -330,3 +332,15 @@ def test_save_sent_log_then_load_sent_log_round_trips_exactly(tmp_path):
     save_sent_log(db_path, original)
     loaded = load_sent_log(db_path)
     assert loaded == original
+
+
+def test_resolve_default_db_path_uses_env_override(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_DB_PATH", "/tmp/custom-dir/clients.db")
+    from db import _resolve_default_db_path
+    assert _resolve_default_db_path() == Path("/tmp/custom-dir/clients.db")
+
+
+def test_resolve_default_db_path_falls_back_to_script_dir(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_DB_PATH", raising=False)
+    from db import _resolve_default_db_path, SCRIPT_DIR
+    assert _resolve_default_db_path() == SCRIPT_DIR / "clients.db"
