@@ -340,7 +340,7 @@ def test_resolve_default_db_path_uses_env_override(monkeypatch):
     assert _resolve_default_db_path() == Path("/tmp/custom-dir/clients.db")
 
 
-def test_resolve_default_db_path_falls_back_to_script_dir(monkeypatch):
+def test_resolve_default_db_path_falls_back_to_repo_data_dir(monkeypatch):
     monkeypatch.delenv("DASHBOARD_DB_PATH", raising=False)
-    from db import _resolve_default_db_path, SCRIPT_DIR
-    assert _resolve_default_db_path() == SCRIPT_DIR / "clients.db"
+    from db import _resolve_default_db_path, REPO_ROOT
+    assert _resolve_default_db_path() == REPO_ROOT / "data" / "clients.db"
