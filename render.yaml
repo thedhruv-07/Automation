@@ -1,0 +1,38 @@
+# Render Blueprint for the FastAPI backend. This is a best-effort convenience
+# file -- Render's Blueprint schema has changed across versions, so verify
+# the field names here against Render's current "Blueprint (render.yaml)"
+# docs before relying on it. docs/DEPLOYMENT.md's manual dashboard steps are
+# the authoritative path if this file is stale by the time you deploy.
+services:
+  - type: web
+    name: absolute-veritas-dashboard-backend
+    runtime: python
+    rootDir: dashboard-app/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    disk:
+      name: dashboard-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_TEMPLATE_NAME
+        value: cert_renewal_alert
+      - key: WHATSAPP_TEMPLATE_LANG
+        value: en
+      - key: EMAIL_SENDER
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: DASHBOARD_DB_PATH
+        value: /data/clients.db
+      - key: DASHBOARD_ALLOWED_ORIGIN
+        sync: false
