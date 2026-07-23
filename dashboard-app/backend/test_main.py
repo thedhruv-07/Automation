@@ -34,6 +34,20 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
+def test_resolve_allowed_origins_includes_localhost_by_default(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_ALLOWED_ORIGIN", raising=False)
+    from main import _resolve_allowed_origins
+    assert _resolve_allowed_origins() == ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def test_resolve_allowed_origins_appends_configured_origin(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_ALLOWED_ORIGIN", "https://example.vercel.app")
+    from main import _resolve_allowed_origins
+    assert _resolve_allowed_origins() == [
+        "http://localhost:5173", "http://127.0.0.1:5173", "https://example.vercel.app",
+    ]
+
+
 def test_protected_route_allows_request_when_auth_env_vars_unset(monkeypatch):
     monkeypatch.delenv("DASHBOARD_USERNAME", raising=False)
     monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
