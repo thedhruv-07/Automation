@@ -26,7 +26,7 @@ from import_helpers import RowCollector, parse_validity_date, compute_status, he
 
 OUTPUT_HEADERS = [
     "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
-    "Certification Name", "Certification ID", "Issue Date", "Expiry Date",
+    "Certification Name", "Scheme", "Certification ID", "Issue Date", "Expiry Date",
     "Renewal Link", "Status",
 ]
 
@@ -95,6 +95,7 @@ def import_bis_isi_workbook(wb, out_ws, today=None):
                 email,
                 None,
                 cert_name,
+                "ISI",
                 str(licence_no).strip(),
                 None,
                 expiry_dt.strftime("%d-%m-%Y"),

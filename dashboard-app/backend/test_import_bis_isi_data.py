@@ -48,7 +48,9 @@ def test_single_sheet_uses_per_row_standard_column_as_cert_name():
     stats = import_bis_isi_workbook(wb, collector)
 
     assert stats["rows_written"] == 2
-    cert_name_by_licence = {row[6]: row[5] for row in collector.rows}
+    # row[6] is now scheme ("ISI" for every row here); the licence number
+    # (what used to be at index 6) shifted to index 7.
+    cert_name_by_licence = {row[7]: row[5] for row in collector.rows}
     assert cert_name_by_licence["4631257"] == "IS 1008"
     assert cert_name_by_licence["6298283"] == "IS 10124 Part 2"
 
@@ -92,3 +94,15 @@ def test_old_multi_sheet_format_without_standard_column_still_uses_sheet_name():
 
     assert stats["rows_written"] == 1
     assert collector.rows[0][5] == "IS 302 (Part 2 Sec 30)"
+
+
+def test_produced_rows_are_tagged_with_isi_scheme():
+    wb = _workbook("Master", SINGLE_SHEET_HEADERS, [
+        [1, "IS 1008", "4631257", "Prayagh Consumer Care Pvt. Unit II", "Addr", "Mahbubnagar",
+         "Telangana", "509316", "info@prayagh.com", "2026-08-31", "Operative", "-", ""],
+    ])
+    collector = RowCollector()
+
+    import_bis_isi_workbook(wb, collector)
+
+    assert collector.rows[0][6] == "ISI"
