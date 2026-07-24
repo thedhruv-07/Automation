@@ -8,6 +8,8 @@ export default function SendAllConfirmModal({
   const cancelButtonRef = useRef(null);
   const confirmButtonRef = useRef(null);
   const closeButtonRef = useRef(null);
+  const scopeAllRadioRef = useRef(null);
+  const scopeFilteredRadioRef = useRef(null);
 
   useEffect(() => {
     if (open) {
@@ -32,13 +34,26 @@ export default function SendAllConfirmModal({
       if (e.key === "Escape") {
         onCancel();
       } else if (e.key === "Tab") {
-        // Only one of these branches is ever mounted at a time (no job:
-        // Cancel+Confirm; job.done: Close; job in progress: neither), so
-        // filtering for whichever refs currently point at a live DOM node
-        // gives us the correct focusable set for whatever is rendered now.
-        const focusable = [cancelButtonRef.current, confirmButtonRef.current, closeButtonRef.current].filter(
-          Boolean
-        );
+        // Only one of these branches is ever mounted at a time (no job: the
+        // two scope radios + Cancel + Confirm; job.done: Close; job in
+        // progress: neither), so filtering for whichever refs currently
+        // point at a live DOM node gives us the correct focusable set, in
+        // visual order, for whatever is rendered now.
+        //
+        // The two scope radios share name="send-all-scope", which makes
+        // them a single native radio group — browsers only give a Tab stop
+        // to one radio per group (arrow keys move within it), so relying on
+        // default Tab traversal would silently skip the unchecked radio.
+        // To keep both radios individually reachable we take over every Tab
+        // press here and move focus explicitly, rather than only
+        // intervening at the first/last boundary.
+        const focusable = [
+          scopeAllRadioRef.current,
+          scopeFilteredRadioRef.current,
+          cancelButtonRef.current,
+          confirmButtonRef.current,
+          closeButtonRef.current,
+        ].filter(Boolean);
         if (focusable.length === 0) {
           // Nothing focusable is currently in the dialog (e.g. progress bar
           // only) — block Tab so focus can't slip out into the page behind
@@ -46,18 +61,15 @@ export default function SendAllConfirmModal({
           e.preventDefault();
           return;
         }
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        } else if (!focusable.includes(document.activeElement)) {
-          e.preventDefault();
-          first.focus();
+        e.preventDefault();
+        const currentIndex = focusable.indexOf(document.activeElement);
+        let nextIndex;
+        if (e.shiftKey) {
+          nextIndex = currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1;
+        } else {
+          nextIndex = currentIndex === -1 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1;
         }
+        focusable[nextIndex].focus();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
@@ -129,6 +141,7 @@ export default function SendAllConfirmModal({
             <div className="mb-6 space-y-2">
               <label className="flex items-center gap-2 text-sm text-ink-primary">
                 <input
+                  ref={scopeAllRadioRef}
                   type="radio"
                   name="send-all-scope"
                   checked={scope === "all"}
@@ -138,6 +151,7 @@ export default function SendAllConfirmModal({
               </label>
               <label className="flex items-center gap-2 text-sm text-ink-primary">
                 <input
+                  ref={scopeFilteredRadioRef}
                   type="radio"
                   name="send-all-scope"
                   checked={scope === "filtered"}

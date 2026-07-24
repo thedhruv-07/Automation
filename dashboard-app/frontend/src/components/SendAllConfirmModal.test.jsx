@@ -221,4 +221,68 @@ describe("SendAllConfirmModal", () => {
     fireEvent.click(screen.getByLabelText(/Currently filtered view/));
     expect(screen.getByText("Confirm Send All")).toBeDisabled();
   });
+
+  it("Tabs forward through both scope radios and the Cancel/Confirm buttons, then wraps", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={5} filteredCount={2} onConfirm={() => {}} onCancel={() => {}}
+      />
+    );
+    const allRadio = screen.getByLabelText(/All eligible clients/);
+    const filteredRadio = screen.getByLabelText(/Currently filtered view/);
+    const cancelButton = screen.getByText("Cancel");
+    const confirmButton = screen.getByText("Confirm Send All");
+
+    // Initial focus lands on Cancel (existing behavior, unchanged).
+    expect(document.activeElement).toBe(cancelButton);
+
+    // Move focus onto the first radio to start the forward walk from the
+    // top of the idle view's visual order.
+    allRadio.focus();
+    expect(document.activeElement).toBe(allRadio);
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(filteredRadio);
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(cancelButton);
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(confirmButton);
+
+    // Tab from the last element wraps back around to the first radio.
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(allRadio);
+  });
+
+  it("Shift+Tab from the first radio wraps back to Confirm in the idle view", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={5} filteredCount={2} onConfirm={() => {}} onCancel={() => {}}
+      />
+    );
+    const allRadio = screen.getByLabelText(/All eligible clients/);
+    const confirmButton = screen.getByText("Confirm Send All");
+
+    allRadio.focus();
+    expect(document.activeElement).toBe(allRadio);
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(confirmButton);
+  });
+
+  it("Shift+Tab walks backward from Cancel into the filtered radio in the idle view", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={5} filteredCount={2} onConfirm={() => {}} onCancel={() => {}}
+      />
+    );
+    const filteredRadio = screen.getByLabelText(/Currently filtered view/);
+    const cancelButton = screen.getByText("Cancel");
+
+    expect(document.activeElement).toBe(cancelButton);
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(filteredRadio);
+  });
 });
