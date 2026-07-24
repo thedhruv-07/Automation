@@ -340,6 +340,38 @@ describe("App", () => {
     );
   });
 
+  it("ignores a stale eligible-count response that resolves after a newer one", async () => {
+    let resolveFirst;
+    let resolveSecond;
+    const firstPromise = new Promise((resolve) => { resolveFirst = resolve; });
+    const secondPromise = new Promise((resolve) => { resolveSecond = resolve; });
+    api.getEligibleCount
+      .mockReturnValueOnce(firstPromise)
+      .mockReturnValueOnce(secondPromise);
+
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    await waitFor(() => expect(api.getEligibleCount).toHaveBeenCalledTimes(1));
+
+    // Change the filter while the modal is still open — this fires a second,
+    // newer eligible-count request without the first one having resolved yet.
+    fireEvent.click(screen.getByText("Critical"));
+    await waitFor(() => expect(api.getEligibleCount).toHaveBeenCalledTimes(2));
+
+    // Resolve out of order: the newer ("Critical") request lands first, then
+    // the stale (original "ALL") request resolves after it.
+    const modal = screen.getByTestId("send-all-confirm-modal-whatsapp");
+    resolveSecond({ whatsapp: 2, email: 2 });
+    await waitFor(() => expect(modal.textContent).toContain("Currently filtered view (2)"));
+
+    resolveFirst({ whatsapp: 9, email: 9 });
+    // Give the stale promise's .then a chance to run before asserting it was ignored.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(modal.textContent).toContain("Currently filtered view (2)");
+    expect(modal.textContent).not.toContain("Currently filtered view (9)");
+  });
+
   it("sends only the filtered scope when 'Currently filtered view' is selected and confirmed", async () => {
     api.getEligibleCount.mockResolvedValue({ whatsapp: 1, email: 1 });
     api.sendAllAlerts.mockResolvedValue({ job_id: "job-1" });

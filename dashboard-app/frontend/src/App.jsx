@@ -97,10 +97,16 @@ export default function App({ onLogout } = {}) {
     loadStats();
   }, [loadStats]);
 
+  const eligibleCountRequestIdRef = useRef(0);
+
   useEffect(() => {
     if (!bulkModalOpen && !emailBulkModalOpen) return;
+    const requestId = ++eligibleCountRequestIdRef.current;
     getEligibleCount({ status: activeStatus, certType, expiryBefore })
-      .then(setFilteredEligibleCount)
+      .then((data) => {
+        if (requestId !== eligibleCountRequestIdRef.current) return; // a newer request has since been issued — ignore this stale response
+        setFilteredEligibleCount(data);
+      })
       .catch(() => {});
   }, [bulkModalOpen, emailBulkModalOpen, activeStatus, certType, expiryBefore]);
 
