@@ -344,3 +344,52 @@ def test_resolve_default_db_path_falls_back_to_repo_data_dir(monkeypatch):
     monkeypatch.delenv("DASHBOARD_DB_PATH", raising=False)
     from db import _resolve_default_db_path, REPO_ROOT
     assert _resolve_default_db_path() == REPO_ROOT / "data" / "clients.db"
+
+
+from db import (
+    record_email_sent, is_email_already_sent, load_email_sent_log, save_email_sent_log,
+)
+
+
+def test_is_email_already_sent_false_then_true_after_record_email_sent(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    assert is_email_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is False
+    record_email_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "brevo-msg-1", "r@x.com", "2026-07-21T10:00:00")
+    assert is_email_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is True
+
+
+def test_email_dedup_is_independent_of_whatsapp_dedup(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "919876543210", "2026-07-21T10:00:00")
+    # WhatsApp was sent, but email for the same client/status/day should still be unsent
+    assert is_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is True
+    assert is_email_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is False
+
+
+def test_save_email_sent_log_then_load_email_sent_log_round_trips_exactly(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    original = {
+        "CLT001|CRITICAL|2026-07-21": {
+            "sent_at": "2026-07-21T10:00:00",
+            "message_id": "brevo-msg-1",
+            "email": "r@x.com",
+        },
+        "CLT002|URGENT|2026-07-21": {
+            "sent_at": "2026-07-21T10:05:00",
+            "message_id": "brevo-msg-2",
+            "email": "p@x.com",
+        },
+    }
+    save_email_sent_log(db_path, original)
+    loaded = load_email_sent_log(db_path)
+    assert loaded == original
+
+
+def test_get_stats_eligible_not_emailed_today_excludes_already_emailed(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    record_email_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "brevo-msg-1", "r@x.com", "2026-07-21T10:00:00")
+    stats = get_stats(db_path, today="2026-07-21")
+    # CRITICAL, URGENT, DUE SOON, EXPIRED = 4 alert-eligible rows; CLT001 already emailed today
+    assert stats["eligible_not_emailed_today"] == 3
+    # WhatsApp's own count is untouched by the email send
+    assert stats["eligible_not_sent_today"] == 4

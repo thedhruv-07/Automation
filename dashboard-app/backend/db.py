@@ -59,6 +59,16 @@ CREATE TABLE IF NOT EXISTS sent_log (
     sent_at     TEXT NOT NULL,
     PRIMARY KEY (client_id, status, sent_date)
 );
+
+CREATE TABLE IF NOT EXISTS email_sent_log (
+    client_id   TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    sent_date   TEXT NOT NULL,
+    message_id  TEXT,
+    email       TEXT,
+    sent_at     TEXT NOT NULL,
+    PRIMARY KEY (client_id, status, sent_date)
+);
 """
 
 
@@ -244,6 +254,10 @@ def get_clients_page(
 
 
 def get_stats(db_path, today: str) -> dict:
+    # Ensures email_sent_log (added after some deployed clients.db files were
+    # created) exists before it's queried below -- without this, get_stats
+    # on a pre-existing db missing that table raises OperationalError.
+    init_db(db_path)
     conn = get_connection(db_path)
     try:
         total = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
@@ -267,6 +281,18 @@ def get_stats(db_path, today: str) -> dict:
             (*alert_statuses, today),
         ).fetchone()[0]
 
+        eligible_not_emailed = conn.execute(
+            f"""
+            SELECT COUNT(*) FROM clients c
+            WHERE c.status IN ({placeholders})
+            AND NOT EXISTS (
+                SELECT 1 FROM email_sent_log s
+                WHERE s.client_id = c.client_id AND s.status = c.status AND s.sent_date = ?
+            )
+            """,
+            (*alert_statuses, today),
+        ).fetchone()[0]
+
         cert_types = [r[0] for r in conn.execute(
             "SELECT DISTINCT cert_name FROM clients WHERE cert_name IS NOT NULL ORDER BY cert_name"
         ).fetchall()]
@@ -280,6 +306,7 @@ def get_stats(db_path, today: str) -> dict:
         return {
             "status_counts": status_counts,
             "eligible_not_sent_today": eligible_not_sent,
+            "eligible_not_emailed_today": eligible_not_emailed,
             "cert_types": cert_types,
             "renewals_by_month": renewals_by_month,
         }
@@ -365,4 +392,55 @@ def save_sent_log(db_path, log: dict) -> None:
         record_sent(
             db_path, client_id, status, sent_date,
             info.get("message_id"), info.get("phone"), info.get("sent_at"),
+        )
+
+
+def record_email_sent(db_path, client_id, status, sent_date, message_id, email, sent_at) -> None:
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO email_sent_log (client_id, status, sent_date, message_id, email, sent_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (client_id, status, sent_date, message_id, email, sent_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def is_email_already_sent(db_path, client_id, status, sent_date) -> bool:
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM email_sent_log WHERE client_id = ? AND status = ? AND sent_date = ?",
+            (client_id, status, sent_date),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def load_email_sent_log(db_path) -> dict:
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT client_id, status, sent_date, message_id, email, sent_at FROM email_sent_log"
+        ).fetchall()
+        log = {}
+        for r in rows:
+            key = f"{r['client_id']}|{r['status']}|{r['sent_date']}"
+            log[key] = {"sent_at": r["sent_at"], "message_id": r["message_id"], "email": r["email"]}
+        return log
+    finally:
+        conn.close()
+
+
+def save_email_sent_log(db_path, log: dict) -> None:
+    for key, info in log.items():
+        client_id, status, sent_date = key.split("|", 2)
+        record_email_sent(
+            db_path, client_id, status, sent_date,
+            info.get("message_id"), info.get("email"), info.get("sent_at"),
         )
