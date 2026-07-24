@@ -30,9 +30,10 @@ sys.stdout.reconfigure(encoding="utf-8")  # Windows console defaults to cp1252, 
 from banner_generator import generate_banner
 from email_template import build_email_html
 
-load_dotenv(Path(__file__).parent / ".env")
+REPO_ROOT = Path(__file__).parent.parent.parent
+load_dotenv(REPO_ROOT / ".env")
 
-LOGO_PATH = Path(__file__).parent / "dashboard-app" / "frontend" / "public" / "company-logo.png"
+LOGO_PATH = Path(__file__).parent.parent / "frontend" / "public" / "company-logo.png"
 LOGO_CID = "company-logo.png"
 
 # ═════════════════════════════════════════════════════════════════════════════
