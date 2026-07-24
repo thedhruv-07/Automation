@@ -22,6 +22,7 @@ import {
 const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
 const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
+const BULK_JOB_POLL_MS = 500;
 
 export default function App({ onLogout } = {}) {
   const [activeView, setActiveView] = useState("clientData");
@@ -171,7 +172,7 @@ export default function App({ onLogout } = {}) {
           setBulkModalOpen(false);
           setToast({ type: "error", message: err.message });
         }
-      }, 500);
+      }, BULK_JOB_POLL_MS);
     } catch (err) {
       setBulkModalOpen(false);
       setToast({ type: "error", message: err.message });
@@ -212,7 +213,7 @@ export default function App({ onLogout } = {}) {
           setEmailBulkModalOpen(false);
           setToast({ type: "error", message: err.message });
         }
-      }, 500);
+      }, BULK_JOB_POLL_MS);
     } catch (err) {
       setEmailBulkModalOpen(false);
       setToast({ type: "error", message: err.message });

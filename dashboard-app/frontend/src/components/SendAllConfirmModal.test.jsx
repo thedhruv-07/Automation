@@ -128,6 +128,28 @@ describe("SendAllConfirmModal", () => {
     expect(document.activeElement).toBe(closeButton);
   });
 
+  it("shows the no-email skip count when job.skipped_no_email is a number", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} channel="email" onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 4, skipped: 1, skipped_no_email: 3, failed: 0, done: false }}
+      />
+    );
+    expect(screen.getByText(/4 sent, 1 skipped, 0 failed/)).toBeInTheDocument();
+    expect(screen.getByText(/3 no email/)).toBeInTheDocument();
+  });
+
+  it("omits the no-email skip count when job.skipped_no_email is absent (WhatsApp job)", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 4, skipped: 1, failed: 0, done: false }}
+      />
+    );
+    expect(screen.getByText(/4 sent, 1 skipped, 0 failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/no email/)).not.toBeInTheDocument();
+  });
+
   it("shows email-specific text and a distinct testid when channel is 'email'", () => {
     render(
       <SendAllConfirmModal

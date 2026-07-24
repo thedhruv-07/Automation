@@ -84,6 +84,7 @@ export default function SendAllConfirmModal({ open, eligibleCount, channel = "wh
           <div className="mb-2">
             <p className="text-sm text-ink-secondary mb-3">
               {job.sent} sent, {job.skipped} skipped, {job.failed} failed
+              {typeof job.skipped_no_email === "number" ? ` (${job.skipped_no_email} no email)` : ""}
               {job.total ? ` (of ${job.total})` : ""}
             </p>
             {job.error && (
