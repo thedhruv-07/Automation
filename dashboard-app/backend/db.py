@@ -410,6 +410,7 @@ def record_email_sent(db_path, client_id, status, sent_date, message_id, email, 
 
 
 def is_email_already_sent(db_path, client_id, status, sent_date) -> bool:
+    init_db(db_path)
     conn = get_connection(db_path)
     try:
         row = conn.execute(
