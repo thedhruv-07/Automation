@@ -16,7 +16,7 @@ import Toast from "./components/Toast";
 import {
   getClients, getStats, sendAlert, sendAllAlerts, getSendAllStatus, uploadClientsFile,
   mergeClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
-  sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus,
+  sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
 } from "./api";
 
 const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
@@ -49,6 +49,7 @@ export default function App({ onLogout } = {}) {
   const [pendingEmailClient, setPendingEmailClient] = useState(null);
   const [emailBulkModalOpen, setEmailBulkModalOpen] = useState(false);
   const [sendAllEmailJob, setSendAllEmailJob] = useState(null);
+  const [filteredEligibleCount, setFilteredEligibleCount] = useState({ whatsapp: 0, email: 0 });
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), SEARCH_DEBOUNCE_MS);
@@ -95,6 +96,13 @@ export default function App({ onLogout } = {}) {
   useEffect(() => {
     loadStats();
   }, [loadStats]);
+
+  useEffect(() => {
+    if (!bulkModalOpen && !emailBulkModalOpen) return;
+    getEligibleCount({ status: activeStatus, certType, expiryBefore })
+      .then(setFilteredEligibleCount)
+      .catch(() => {});
+  }, [bulkModalOpen, emailBulkModalOpen, activeStatus, certType, expiryBefore]);
 
   const certOptions = stats?.cert_types || [];
 
@@ -153,9 +161,10 @@ export default function App({ onLogout } = {}) {
     };
   }, []);
 
-  async function handleConfirmSendAll() {
+  async function handleConfirmSendAll(scope) {
     try {
-      const { job_id: jobId } = await sendAllAlerts();
+      const filters = scope === "filtered" ? { status: activeStatus, certType, expiryBefore } : {};
+      const { job_id: jobId } = await sendAllAlerts(filters);
       setSendAllJob({ total: 0, sent: 0, skipped: 0, failed: 0, done: false });
       jobPollRef.current = setInterval(async () => {
         try {
@@ -194,9 +203,10 @@ export default function App({ onLogout } = {}) {
     };
   }, []);
 
-  async function handleConfirmSendAllEmails() {
+  async function handleConfirmSendAllEmails(scope) {
     try {
-      const { job_id: jobId } = await sendAllEmailAlerts();
+      const filters = scope === "filtered" ? { status: activeStatus, certType, expiryBefore } : {};
+      const { job_id: jobId } = await sendAllEmailAlerts(filters);
       setSendAllEmailJob({ total: 0, sent: 0, skipped: 0, skipped_no_email: 0, failed: 0, done: false });
       emailJobPollRef.current = setInterval(async () => {
         try {
@@ -424,6 +434,7 @@ export default function App({ onLogout } = {}) {
       <SendAllConfirmModal
         open={bulkModalOpen}
         eligibleCount={eligibleCount}
+        filteredCount={filteredEligibleCount.whatsapp}
         channel="whatsapp"
         job={sendAllJob}
         onConfirm={handleConfirmSendAll}
@@ -438,6 +449,7 @@ export default function App({ onLogout } = {}) {
       <SendAllConfirmModal
         open={emailBulkModalOpen}
         eligibleCount={eligibleEmailCount}
+        filteredCount={filteredEligibleCount.email}
         channel="email"
         job={sendAllEmailJob}
         onConfirm={handleConfirmSendAllEmails}

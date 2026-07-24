@@ -24,6 +24,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.getClients.mockResolvedValue(samplePage(sampleClients));
   api.getStats.mockResolvedValue(sampleStats);
+  api.getEligibleCount.mockResolvedValue({ whatsapp: 0, email: 0 });
 });
 
 describe("App", () => {
@@ -328,5 +329,43 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Preview Email"));
     await waitFor(() => expect(api.getEmailPreview).toHaveBeenCalledWith("CLT001"));
     await waitFor(() => expect(screen.getByTestId("email-preview-modal")).toBeInTheDocument());
+  });
+
+  it("fetches the eligible count for the current filters when the bulk send modal opens", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    await waitFor(() =>
+      expect(api.getEligibleCount).toHaveBeenCalledWith({ status: "ALL", certType: "ALL", expiryBefore: "" })
+    );
+  });
+
+  it("sends only the filtered scope when 'Currently filtered view' is selected and confirmed", async () => {
+    api.getEligibleCount.mockResolvedValue({ whatsapp: 1, email: 1 });
+    api.sendAllAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllStatus.mockResolvedValue({ total: 1, sent: 1, skipped: 0, failed: 0, done: true });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+    fireEvent.click(screen.getByText("Critical"));
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    await waitFor(() => expect(api.getEligibleCount).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() =>
+      expect(api.sendAllAlerts).toHaveBeenCalledWith({ status: "CRITICAL", certType: "ALL", expiryBefore: "" })
+    );
+  });
+
+  it("sends with no filters when the default 'all eligible' scope is confirmed, even with an active filter", async () => {
+    api.getEligibleCount.mockResolvedValue({ whatsapp: 1, email: 1 });
+    api.sendAllAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllStatus.mockResolvedValue({ total: 1, sent: 1, skipped: 0, failed: 0, done: true });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+    fireEvent.click(screen.getByText("Critical"));
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    await waitFor(() => expect(api.getEligibleCount).toHaveBeenCalled());
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() => expect(api.sendAllAlerts).toHaveBeenCalledWith({}));
   });
 });
