@@ -207,6 +207,34 @@ _SORTABLE_COLUMNS = {
     "client_id", "name", "company", "cert_name", "cert_id", "status",
 }
 
+ALERT_STATUSES = ("CRITICAL", "URGENT", "DUE SOON", "EXPIRED")
+
+
+def _client_filters_where(
+    status: str | None = None, cert_type: str | None = None,
+    expiry_before: str | None = None, search: str | None = None,
+) -> tuple[list[str], list]:
+    """Builds the WHERE-clause fragments and bound params shared by
+    get_clients_page, export_clients_rows, get_eligible_clients, and
+    get_eligible_count -- so "currently filtered view" always means the
+    same thing everywhere it's used."""
+    where = []
+    params: list = []
+    if status and status != "ALL":
+        where.append("status = ?")
+        params.append(status)
+    if cert_type and cert_type != "ALL":
+        where.append("cert_name = ?")
+        params.append(cert_type)
+    if expiry_before:
+        where.append("expiry_date_iso <= ?")
+        params.append(expiry_before)
+    if search:
+        where.append("(name LIKE ? OR company LIKE ?)")
+        like_term = f"%{search}%"
+        params.extend([like_term, like_term])
+    return where, params
+
 
 def get_clients_page(
     db_path, page: int = 1, page_size: int = 50, status: str | None = None,
@@ -215,21 +243,7 @@ def get_clients_page(
 ) -> tuple[list[dict], int]:
     conn = get_connection(db_path)
     try:
-        where = []
-        params: list = []
-        if status and status != "ALL":
-            where.append("status = ?")
-            params.append(status)
-        if cert_type and cert_type != "ALL":
-            where.append("cert_name = ?")
-            params.append(cert_type)
-        if expiry_before:
-            where.append("expiry_date_iso <= ?")
-            params.append(expiry_before)
-        if search:
-            where.append("(name LIKE ? OR company LIKE ?)")
-            like_term = f"%{search}%"
-            params.extend([like_term, like_term])
+        where, params = _client_filters_where(status, cert_type, expiry_before, search)
         where_clause = f"WHERE {' AND '.join(where)}" if where else ""
 
         total = conn.execute(f"SELECT COUNT(*) FROM clients {where_clause}", params).fetchone()[0]
@@ -267,8 +281,7 @@ def get_stats(db_path, today: str) -> dict:
                 "SELECT COUNT(*) FROM clients WHERE status = ?", (status,)
             ).fetchone()[0]
 
-        alert_statuses = ("CRITICAL", "URGENT", "DUE SOON", "EXPIRED")
-        placeholders = ", ".join(["?"] * len(alert_statuses))
+        placeholders = ", ".join(["?"] * len(ALERT_STATUSES))
         eligible_not_sent = conn.execute(
             f"""
             SELECT COUNT(*) FROM clients c
@@ -278,7 +291,7 @@ def get_stats(db_path, today: str) -> dict:
                 WHERE s.client_id = c.client_id AND s.status = c.status AND s.sent_date = ?
             )
             """,
-            (*alert_statuses, today),
+            (*ALERT_STATUSES, today),
         ).fetchone()[0]
 
         eligible_not_emailed = conn.execute(
@@ -290,7 +303,7 @@ def get_stats(db_path, today: str) -> dict:
                 WHERE s.client_id = c.client_id AND s.status = c.status AND s.sent_date = ?
             )
             """,
-            (*alert_statuses, today),
+            (*ALERT_STATUSES, today),
         ).fetchone()[0]
 
         cert_types = [r[0] for r in conn.execute(
@@ -321,25 +334,71 @@ def export_clients_rows(
     """Yields a dict per matching client, no pagination — for CSV export."""
     conn = get_connection(db_path)
     try:
-        where = []
-        params: list = []
-        if status and status != "ALL":
-            where.append("status = ?")
-            params.append(status)
-        if cert_type and cert_type != "ALL":
-            where.append("cert_name = ?")
-            params.append(cert_type)
-        if expiry_before:
-            where.append("expiry_date_iso <= ?")
-            params.append(expiry_before)
-        if search:
-            where.append("(name LIKE ? OR company LIKE ?)")
-            like_term = f"%{search}%"
-            params.extend([like_term, like_term])
+        where, params = _client_filters_where(status, cert_type, expiry_before, search)
         where_clause = f"WHERE {' AND '.join(where)}" if where else ""
         cursor = conn.execute(f"SELECT {', '.join(RECORD_FIELDS)} FROM clients {where_clause}", params)
         for row in cursor:
             yield _row_to_dict(row)
+    finally:
+        conn.close()
+
+
+def get_eligible_clients(
+    db_path, status: str | None = None, cert_type: str | None = None,
+    expiry_before: str | None = None,
+) -> list[dict]:
+    """Alert-eligible (status in ALERT_STATUSES) client records, optionally
+    further narrowed by the same status/cert_type/expiry_before filters
+    get_clients_page's table view supports -- so bulk-send scope can mirror
+    exactly what's on screen. ORDER BY rowid pins insertion order regardless
+    of which index SQLite's query planner picks for the WHERE clause, so
+    callers that depend on result order (run()'s existing tests) see the
+    same order read_clients() always gave them."""
+    conn = get_connection(db_path)
+    try:
+        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before)
+        placeholders = ", ".join(["?"] * len(ALERT_STATUSES))
+        where = [f"status IN ({placeholders})"] + extra_where
+        params = list(ALERT_STATUSES) + extra_params
+        rows = conn.execute(
+            f"SELECT {', '.join(RECORD_FIELDS)} FROM clients WHERE {' AND '.join(where)} ORDER BY rowid",
+            params,
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_eligible_count(
+    db_path, today: str, channel: str, status: str | None = None,
+    cert_type: str | None = None, expiry_before: str | None = None,
+) -> int:
+    """Counts alert-eligible clients not yet sent today via the given channel
+    ('whatsapp' -> sent_log, 'email' -> email_sent_log), optionally narrowed
+    by status/cert_type/expiry_before -- used to show a live count for the
+    "currently filtered view" bulk-send scope before anything is sent."""
+    if channel not in ("whatsapp", "email"):
+        raise ValueError(f"Unknown channel: {channel!r}")
+    log_table = "sent_log" if channel == "whatsapp" else "email_sent_log"
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before)
+        placeholders = ", ".join(["?"] * len(ALERT_STATUSES))
+        where = [f"c.status IN ({placeholders})"] + extra_where
+        params = list(ALERT_STATUSES) + extra_params
+        count = conn.execute(
+            f"""
+            SELECT COUNT(*) FROM clients c
+            WHERE {' AND '.join(where)}
+            AND NOT EXISTS (
+                SELECT 1 FROM {log_table} s
+                WHERE s.client_id = c.client_id AND s.status = c.status AND s.sent_date = ?
+            )
+            """,
+            params + [today],
+        ).fetchone()[0]
+        return count
     finally:
         conn.close()
 

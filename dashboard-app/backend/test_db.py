@@ -393,3 +393,82 @@ def test_get_stats_eligible_not_emailed_today_excludes_already_emailed(tmp_path)
     assert stats["eligible_not_emailed_today"] == 3
     # WhatsApp's own count is untouched by the email send
     assert stats["eligible_not_sent_today"] == 4
+
+
+from db import get_eligible_clients, get_eligible_count
+
+
+def test_get_eligible_clients_excludes_active_by_default(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows = get_eligible_clients(db_path)
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT002", "CLT003", "CLT005"}
+
+
+def test_get_eligible_clients_preserves_insertion_order(tmp_path):
+    """run()/run_email_alerts() depend on this order matching read_clients()'s
+    order exactly -- see whatsapp_renewal_alerts.py's order-sensitive tests
+    (e.g. test_run_mixed_outcomes_in_single_call_preserves_earlier_successes)."""
+    db_path = _seeded_db(tmp_path)
+    rows = get_eligible_clients(db_path)
+    assert [r["client_id"] for r in rows] == ["CLT001", "CLT002", "CLT003", "CLT005"]
+
+
+def test_get_eligible_clients_filters_by_cert_type(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows = get_eligible_clients(db_path, cert_type="ISO 9001")
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
+
+
+def test_get_eligible_clients_filters_by_expiry_before(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows = get_eligible_clients(db_path, expiry_before="2026-08-01")
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT005"}
+
+
+def test_get_eligible_clients_status_filter_narrows_within_alert_eligible_set(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows = get_eligible_clients(db_path, status="CRITICAL")
+    assert {r["client_id"] for r in rows} == {"CLT001"}
+
+
+def test_get_eligible_clients_status_active_returns_empty(tmp_path):
+    """ACTIVE is never alert-eligible, so filtering to it must yield nothing --
+    the alert-eligibility restriction and the status filter are AND'ed
+    together, not one replacing the other."""
+    db_path = _seeded_db(tmp_path)
+    rows = get_eligible_clients(db_path, status="ACTIVE")
+    assert rows == []
+
+
+def test_get_eligible_count_counts_all_eligible_not_sent_today(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 4
+
+
+def test_get_eligible_count_excludes_already_sent_today(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 3
+
+
+def test_get_eligible_count_email_channel_is_independent_of_whatsapp(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 3
+    assert get_eligible_count(db_path, today="2026-07-21", channel="email") == 4
+
+
+def test_get_eligible_count_filters_by_cert_type(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", cert_type="ISO 9001") == 2
+
+
+def test_get_eligible_count_status_active_returns_zero(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", status="ACTIVE") == 0
+
+
+def test_get_eligible_count_rejects_unknown_channel(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    with pytest.raises(ValueError):
+        get_eligible_count(db_path, today="2026-07-21", channel="carrier-pigeon")
