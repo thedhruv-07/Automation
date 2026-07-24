@@ -25,7 +25,7 @@ def _resolve_default_db_path() -> Path:
 DEFAULT_DB_PATH = _resolve_default_db_path()
 
 RECORD_FIELDS = [
-    "client_id", "name", "company", "email", "phone", "cert_name",
+    "client_id", "name", "company", "email", "phone", "cert_name", "scheme",
     "cert_id", "issue_date", "expiry_date", "renewal_link", "status",
 ]
 
@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS clients (
     email           TEXT,
     phone           TEXT,
     cert_name       TEXT,
+    scheme          TEXT,
     cert_id         TEXT,
     issue_date      TEXT,
     expiry_date     TEXT,
@@ -82,6 +83,18 @@ def init_db(db_path) -> None:
     conn = get_connection(db_path)
     try:
         conn.executescript(SCHEMA)
+        # CREATE TABLE IF NOT EXISTS does not add a column to a table that
+        # already existed before `scheme` was introduced (e.g. Render's
+        # persisted clients.db, or a fresh local db.py predating this
+        # migration). This adds it once, then classifies any row that
+        # predates the migration as 'ISI' -- the only scheme that has ever
+        # existed in this dataset -- without touching a row that already has
+        # an explicit scheme value (a newly-imported or manually-corrected
+        # row is never silently overwritten).
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(clients)")}
+        if "scheme" not in columns:
+            conn.execute("ALTER TABLE clients ADD COLUMN scheme TEXT")
+        conn.execute("UPDATE clients SET scheme = 'ISI' WHERE scheme IS NULL")
         conn.commit()
     finally:
         conn.close()
@@ -128,7 +141,8 @@ def find_client_by_id(db_path, client_id: str) -> dict | None:
 
 
 def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
-    """rows: list of tuples in RECORD_FIELDS order (client_id first).
+    """rows: list of tuples in RECORD_FIELDS order (client_id first, scheme
+    right after cert_name).
     mode="replace": clears the table and inserts all rows.
     mode="merge": inserts only rows whose client_id isn't already present.
 
@@ -151,7 +165,7 @@ def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
     columns = RECORD_FIELDS + ["expiry_date_iso"]
     placeholders = ", ".join(["?"] * len(columns))
     insert_sql = f"INSERT INTO clients ({', '.join(columns)}) VALUES ({placeholders})"
-    prepared_rows = [tuple(row) + (to_iso_date(row[8]),) for row in rows]
+    prepared_rows = [tuple(row) + (to_iso_date(row[9]),) for row in rows]
 
     conn = get_connection(db_path)
     try:
@@ -204,7 +218,7 @@ def upsert_clients(db_path, rows: list[tuple], mode: str) -> dict:
 
 
 _SORTABLE_COLUMNS = {
-    "client_id", "name", "company", "cert_name", "cert_id", "status",
+    "client_id", "name", "company", "cert_name", "scheme", "cert_id", "status",
 }
 
 ALERT_STATUSES = ("CRITICAL", "URGENT", "DUE SOON", "EXPIRED")
@@ -213,6 +227,7 @@ ALERT_STATUSES = ("CRITICAL", "URGENT", "DUE SOON", "EXPIRED")
 def _client_filters_where(
     status: str | None = None, cert_type: str | None = None,
     expiry_before: str | None = None, search: str | None = None,
+    scheme: str | None = None,
 ) -> tuple[list[str], list]:
     """Builds the WHERE-clause fragments and bound params shared by
     get_clients_page, export_clients_rows, get_eligible_clients, and
@@ -226,6 +241,9 @@ def _client_filters_where(
     if cert_type and cert_type != "ALL":
         where.append("cert_name = ?")
         params.append(cert_type)
+    if scheme and scheme != "ALL":
+        where.append("scheme = ?")
+        params.append(scheme)
     if expiry_before:
         where.append("expiry_date_iso <= ?")
         params.append(expiry_before)
@@ -240,10 +258,11 @@ def get_clients_page(
     db_path, page: int = 1, page_size: int = 50, status: str | None = None,
     cert_type: str | None = None, expiry_before: str | None = None,
     search: str | None = None, sort_key: str | None = None, sort_dir: str = "asc",
+    scheme: str | None = None,
 ) -> tuple[list[dict], int]:
     conn = get_connection(db_path)
     try:
-        where, params = _client_filters_where(status, cert_type, expiry_before, search)
+        where, params = _client_filters_where(status, cert_type, expiry_before, search, scheme)
         where_clause = f"WHERE {' AND '.join(where)}" if where else ""
 
         total = conn.execute(f"SELECT COUNT(*) FROM clients {where_clause}", params).fetchone()[0]
@@ -310,6 +329,10 @@ def get_stats(db_path, today: str) -> dict:
             "SELECT DISTINCT cert_name FROM clients WHERE cert_name IS NOT NULL ORDER BY cert_name"
         ).fetchall()]
 
+        schemes = [r[0] for r in conn.execute(
+            "SELECT DISTINCT scheme FROM clients WHERE scheme IS NOT NULL ORDER BY scheme"
+        ).fetchall()]
+
         monthly_rows = conn.execute(
             "SELECT substr(expiry_date_iso, 1, 7) AS ym, COUNT(*) AS cnt "
             "FROM clients WHERE expiry_date_iso IS NOT NULL GROUP BY ym ORDER BY ym"
@@ -321,6 +344,7 @@ def get_stats(db_path, today: str) -> dict:
             "eligible_not_sent_today": eligible_not_sent,
             "eligible_not_emailed_today": eligible_not_emailed,
             "cert_types": cert_types,
+            "schemes": schemes,
             "renewals_by_month": renewals_by_month,
         }
     finally:
@@ -330,11 +354,12 @@ def get_stats(db_path, today: str) -> dict:
 def export_clients_rows(
     db_path, status: str | None = None, cert_type: str | None = None,
     expiry_before: str | None = None, search: str | None = None,
+    scheme: str | None = None,
 ):
     """Yields a dict per matching client, no pagination — for CSV export."""
     conn = get_connection(db_path)
     try:
-        where, params = _client_filters_where(status, cert_type, expiry_before, search)
+        where, params = _client_filters_where(status, cert_type, expiry_before, search, scheme)
         where_clause = f"WHERE {' AND '.join(where)}" if where else ""
         cursor = conn.execute(f"SELECT {', '.join(RECORD_FIELDS)} FROM clients {where_clause}", params)
         for row in cursor:
@@ -346,17 +371,18 @@ def export_clients_rows(
 def get_eligible_clients(
     db_path, status: str | None = None, cert_type: str | None = None,
     expiry_before: str | None = None, search: str | None = None,
+    scheme: str | None = None,
 ) -> list[dict]:
     """Alert-eligible (status in ALERT_STATUSES) client records, optionally
-    further narrowed by the same status/cert_type/expiry_before/search filters
-    get_clients_page's table view supports -- so bulk-send scope can mirror
-    exactly what's on screen. ORDER BY rowid pins insertion order regardless
-    of which index SQLite's query planner picks for the WHERE clause, so
-    callers that depend on result order (run()'s existing tests) see the
-    same order read_clients() always gave them."""
+    further narrowed by the same status/cert_type/expiry_before/search/scheme
+    filters get_clients_page's table view supports -- so bulk-send scope can
+    mirror exactly what's on screen. ORDER BY rowid pins insertion order
+    regardless of which index SQLite's query planner picks for the WHERE
+    clause, so callers that depend on result order (run()'s existing tests)
+    see the same order read_clients() always gave them."""
     conn = get_connection(db_path)
     try:
-        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before, search)
+        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before, search, scheme)
         placeholders = ", ".join(["?"] * len(ALERT_STATUSES))
         where = [f"status IN ({placeholders})"] + extra_where
         params = list(ALERT_STATUSES) + extra_params
@@ -372,19 +398,20 @@ def get_eligible_clients(
 def get_eligible_count(
     db_path, today: str, channel: str, status: str | None = None,
     cert_type: str | None = None, expiry_before: str | None = None,
-    search: str | None = None,
+    search: str | None = None, scheme: str | None = None,
 ) -> int:
     """Counts alert-eligible clients not yet sent today via the given channel
     ('whatsapp' -> sent_log, 'email' -> email_sent_log), optionally narrowed
-    by status/cert_type/expiry_before/search -- used to show a live count for
-    the "currently filtered view" bulk-send scope before anything is sent."""
+    by status/cert_type/expiry_before/search/scheme -- used to show a live
+    count for the "currently filtered view" bulk-send scope before anything
+    is sent."""
     if channel not in ("whatsapp", "email"):
         raise ValueError(f"Unknown channel: {channel!r}")
     log_table = "sent_log" if channel == "whatsapp" else "email_sent_log"
     init_db(db_path)
     conn = get_connection(db_path)
     try:
-        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before, search)
+        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before, search, scheme)
         placeholders = ", ".join(["?"] * len(ALERT_STATUSES))
         where = [f"c.status IN ({placeholders})"] + extra_where
         params = list(ALERT_STATUSES) + extra_params
