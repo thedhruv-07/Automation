@@ -74,3 +74,16 @@ export function sortClients(clients, sortKey, sortAsc) {
   });
   return rows;
 }
+
+export function isoDateMonthsFromToday(monthsAhead) {
+  // Date.setMonth rolls overflow days into the following month (e.g. 31 Jan +
+  // 1 month -> 3 Mar, not a clamped 28/29 Feb) -- that's the native JS
+  // behavior and is treated as an acceptable approximation for a quick
+  // "N months from now" filter preset, not exact calendar-month arithmetic.
+  const d = new Date();
+  d.setMonth(d.getMonth() + monthsAhead);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}

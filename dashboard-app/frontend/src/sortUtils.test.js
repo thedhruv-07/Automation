@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { daysUntil, formatDaysLeft, sortClients, monthlyGroups, initialsFor } from "./sortUtils";
+import { daysUntil, formatDaysLeft, sortClients, monthlyGroups, initialsFor, isoDateMonthsFromToday } from "./sortUtils";
 
 function futureDateStr(offsetDays) {
   const d = new Date();
@@ -34,6 +34,25 @@ describe("formatDaysLeft", () => {
 
   it("returns 'ago' phrasing for past dates", () => {
     expect(formatDaysLeft(futureDateStr(-10))).toBe("10 days ago");
+  });
+});
+
+describe("isoDateMonthsFromToday", () => {
+  function expectedIso(monthsAhead) {
+    const d = new Date();
+    d.setMonth(d.getMonth() + monthsAhead);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  it("returns today's date shifted 3 months ahead in YYYY-MM-DD format", () => {
+    expect(isoDateMonthsFromToday(3)).toBe(expectedIso(3));
+  });
+
+  it("returns today's date shifted 12 months ahead", () => {
+    expect(isoDateMonthsFromToday(12)).toBe(expectedIso(12));
   });
 });
 

@@ -1,3 +1,11 @@
+import { isoDateMonthsFromToday } from "../sortUtils";
+
+const DURATION_PRESETS = [
+  { label: "3 months", months: 3 },
+  { label: "6 months", months: 6 },
+  { label: "1 year", months: 12 },
+];
+
 export default function ClientDataFilters({
   certOptions, certType, onCertTypeChange, expiryBefore, onExpiryBeforeChange, onClearAll,
 }) {
@@ -29,6 +37,18 @@ export default function ClientDataFilters({
           className="bg-surface-page border border-line rounded-lg px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
         />
       </label>
+      <div className="flex items-center gap-1.5">
+        {DURATION_PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            onClick={() => onExpiryBeforeChange(isoDateMonthsFromToday(preset.months))}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold text-ink-secondary border border-line hover:text-ink-primary transition-colors"
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
       {hasFilters && (
         <button
           type="button"

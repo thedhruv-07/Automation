@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ClientDataFilters from "./ClientDataFilters";
+import { isoDateMonthsFromToday } from "../sortUtils";
 
 describe("ClientDataFilters", () => {
   it("calls onCertTypeChange when a cert type is selected", () => {
@@ -33,6 +34,54 @@ describe("ClientDataFilters", () => {
     );
     fireEvent.change(screen.getByLabelText("Filter by expiry before date"), { target: { value: "2026-12-31" } });
     expect(onExpiryBeforeChange).toHaveBeenCalledWith("2026-12-31");
+  });
+
+  it("calls onExpiryBeforeChange with the correct date when '3 months' is clicked", () => {
+    const onExpiryBeforeChange = vi.fn();
+    render(
+      <ClientDataFilters
+        certOptions={[]}
+        certType="ALL"
+        onCertTypeChange={() => {}}
+        expiryBefore=""
+        onExpiryBeforeChange={onExpiryBeforeChange}
+        onClearAll={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByText("3 months"));
+    expect(onExpiryBeforeChange).toHaveBeenCalledWith(isoDateMonthsFromToday(3));
+  });
+
+  it("calls onExpiryBeforeChange with the correct date when '6 months' is clicked", () => {
+    const onExpiryBeforeChange = vi.fn();
+    render(
+      <ClientDataFilters
+        certOptions={[]}
+        certType="ALL"
+        onCertTypeChange={() => {}}
+        expiryBefore=""
+        onExpiryBeforeChange={onExpiryBeforeChange}
+        onClearAll={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByText("6 months"));
+    expect(onExpiryBeforeChange).toHaveBeenCalledWith(isoDateMonthsFromToday(6));
+  });
+
+  it("calls onExpiryBeforeChange with the correct date when '1 year' is clicked", () => {
+    const onExpiryBeforeChange = vi.fn();
+    render(
+      <ClientDataFilters
+        certOptions={[]}
+        certType="ALL"
+        onCertTypeChange={() => {}}
+        expiryBefore=""
+        onExpiryBeforeChange={onExpiryBeforeChange}
+        onClearAll={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByText("1 year"));
+    expect(onExpiryBeforeChange).toHaveBeenCalledWith(isoDateMonthsFromToday(12));
   });
 
   it("only shows Clear All when a filter is active", () => {
