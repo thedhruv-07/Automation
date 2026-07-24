@@ -25,6 +25,7 @@ from db import (  # noqa: E402
     DEFAULT_DB_PATH, get_clients_page, get_stats, export_clients_rows,
     upsert_clients, find_client_by_id, load_sent_log, save_sent_log,
     is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
+    get_eligible_count,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, dedup_key, filter_alertable, normalize_phone,
@@ -165,6 +166,21 @@ def get_clients(
 @app.get("/api/stats", dependencies=[Depends(require_auth)])
 def stats():
     return get_stats(DEFAULT_DB_PATH, _today_str())
+
+
+@app.get("/api/eligible-count", dependencies=[Depends(require_auth)])
+def eligible_count(status: str = "", cert_type: str = "", expiry_before: str = ""):
+    today = _today_str()
+    return {
+        "whatsapp": get_eligible_count(
+            DEFAULT_DB_PATH, today, "whatsapp",
+            status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+        ),
+        "email": get_eligible_count(
+            DEFAULT_DB_PATH, today, "email",
+            status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+        ),
+    }
 
 
 def _csv_escape(value) -> str:
@@ -318,7 +334,10 @@ def send_alert(client_id: str):
 _send_all_jobs: dict[str, dict] = {}
 
 
-def _run_send_all_job(job_id, token, phone_number_id, template_name, template_lang, test_number):
+def _run_send_all_job(
+    job_id, token, phone_number_id, template_name, template_lang, test_number,
+    status=None, cert_type=None, expiry_before=None,
+):
     def progress(result, total):
         job = _send_all_jobs[job_id]
         job["total"] = total
@@ -333,6 +352,7 @@ def _run_send_all_job(job_id, token, phone_number_id, template_name, template_la
         run(
             DEFAULT_DB_PATH, token, phone_number_id, template_name, template_lang,
             dry_run=False, test_number=test_number, on_progress=progress,
+            status=status, cert_type=cert_type, expiry_before=expiry_before,
         )
     except Exception as exc:
         # Without this, an exception here (locked DB, unexpected error mid-
@@ -351,7 +371,7 @@ def _run_send_all_job(job_id, token, phone_number_id, template_name, template_la
 
 
 @app.post("/api/send-all", dependencies=[Depends(require_auth)])
-def send_all_alerts():
+def send_all_alerts(status: str = "", cert_type: str = "", expiry_before: str = ""):
     global _bulk_in_progress
     with _send_lock:
         if _bulk_in_progress:
@@ -376,7 +396,10 @@ def send_all_alerts():
         }
         thread = threading.Thread(
             target=_run_send_all_job,
-            args=(job_id, token, phone_number_id, template_name, template_lang, test_number),
+            args=(
+                job_id, token, phone_number_id, template_name, template_lang, test_number,
+                status or None, cert_type or None, expiry_before or None,
+            ),
             daemon=True,
         )
         thread.start()
@@ -461,7 +484,10 @@ def send_email(client_id: str):
 _send_all_email_jobs: dict[str, dict] = {}
 
 
-def _run_send_all_email_job(job_id, brevo_api_key, email_sender, test_email):
+def _run_send_all_email_job(
+    job_id, brevo_api_key, email_sender, test_email,
+    status=None, cert_type=None, expiry_before=None,
+):
     def progress(result, total):
         job = _send_all_email_jobs[job_id]
         job["total"] = total
@@ -478,6 +504,7 @@ def _run_send_all_email_job(job_id, brevo_api_key, email_sender, test_email):
         run_email_alerts(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
+            status=status, cert_type=cert_type, expiry_before=expiry_before,
         )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
@@ -489,7 +516,7 @@ def _run_send_all_email_job(job_id, brevo_api_key, email_sender, test_email):
 
 
 @app.post("/api/send-all-emails", dependencies=[Depends(require_auth)])
-def send_all_emails():
+def send_all_emails(status: str = "", cert_type: str = "", expiry_before: str = ""):
     global _email_bulk_in_progress
     with _email_send_lock:
         if _email_bulk_in_progress:
@@ -513,7 +540,10 @@ def send_all_emails():
         }
         thread = threading.Thread(
             target=_run_send_all_email_job,
-            args=(job_id, brevo_api_key, email_sender, test_email),
+            args=(
+                job_id, brevo_api_key, email_sender, test_email,
+                status or None, cert_type or None, expiry_before or None,
+            ),
             daemon=True,
         )
         thread.start()
