@@ -182,7 +182,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() =>
       expect(api.sendAllEmailAlerts).toHaveBeenCalledWith({
-        status: "ALL", certType: "ALL", expiryBefore: "", search: "BuildRight",
+        status: "ALL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "BuildRight",
       })
     );
   });
@@ -365,7 +365,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Send All Eligible"));
     await waitFor(() =>
       expect(api.getEligibleCount).toHaveBeenCalledWith({
-        status: "ALL", certType: "ALL", expiryBefore: "", search: "",
+        status: "ALL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "",
       })
     );
   });
@@ -384,7 +384,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Send All Eligible"));
     await waitFor(() =>
       expect(api.getEligibleCount).toHaveBeenCalledWith({
-        status: "ALL", certType: "ALL", expiryBefore: "", search: "BuildRight",
+        status: "ALL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "BuildRight",
       })
     );
   });
@@ -434,7 +434,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() =>
       expect(api.sendAllAlerts).toHaveBeenCalledWith({
-        status: "CRITICAL", certType: "ALL", expiryBefore: "", search: "",
+        status: "CRITICAL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "",
       })
     );
   });
@@ -472,8 +472,36 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() =>
       expect(api.sendAllAlerts).toHaveBeenCalledWith({
-        status: "ALL", certType: "ALL", expiryBefore: "", search: "BuildRight",
+        status: "ALL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "BuildRight",
       })
+    );
+  });
+
+  it("selecting a scheme filters the table and flows into the eligible count and bulk-send scope", async () => {
+    api.getStats.mockResolvedValue({ ...sampleStats, schemes: ["FMCS", "ISI"] });
+    api.getEligibleCount.mockResolvedValue({ whatsapp: 1, email: 1 });
+    api.sendAllAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllStatus.mockResolvedValue({ total: 1, sent: 1, skipped: 0, failed: 0, done: true });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+
+    fireEvent.change(screen.getByLabelText("Filter by scheme"), { target: { value: "FMCS" } });
+    await waitFor(() =>
+      expect(api.getClients).toHaveBeenCalledWith(expect.objectContaining({ scheme: "FMCS" }))
+    );
+
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    await waitFor(() =>
+      expect(api.getEligibleCount).toHaveBeenCalledWith(
+        expect.objectContaining({ scheme: "FMCS" })
+      )
+    );
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() =>
+      expect(api.sendAllAlerts).toHaveBeenCalledWith(
+        expect.objectContaining({ scheme: "FMCS" })
+      )
     );
   });
 });

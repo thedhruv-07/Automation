@@ -34,6 +34,7 @@ export default function App({ onLogout } = {}) {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [certType, setCertType] = useState("ALL");
+  const [scheme, setScheme] = useState("ALL");
   const [expiryBefore, setExpiryBefore] = useState("");
   const [pageNum, setPageNum] = useState(1);
   const [sortKey, setSortKey] = useState(null);
@@ -58,12 +59,12 @@ export default function App({ onLogout } = {}) {
 
   useEffect(() => {
     setPageNum(1);
-  }, [activeStatus, debouncedSearch, certType, expiryBefore, sortKey, sortAsc]);
+  }, [activeStatus, debouncedSearch, certType, scheme, expiryBefore, sortKey, sortAsc]);
 
   const queryParams = useMemo(() => ({
-    page: pageNum, pageSize: PAGE_SIZE, status: activeStatus, certType,
+    page: pageNum, pageSize: PAGE_SIZE, status: activeStatus, certType, scheme,
     expiryBefore, search: debouncedSearch, sortKey, sortDir: sortAsc ? "asc" : "desc",
-  }), [pageNum, activeStatus, certType, expiryBefore, debouncedSearch, sortKey, sortAsc]);
+  }), [pageNum, activeStatus, certType, scheme, expiryBefore, debouncedSearch, sortKey, sortAsc]);
 
   const requestIdRef = useRef(0);
 
@@ -102,15 +103,16 @@ export default function App({ onLogout } = {}) {
   useEffect(() => {
     if (!bulkModalOpen && !emailBulkModalOpen) return;
     const requestId = ++eligibleCountRequestIdRef.current;
-    getEligibleCount({ status: activeStatus, certType, expiryBefore, search: debouncedSearch })
+    getEligibleCount({ status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch })
       .then((data) => {
         if (requestId !== eligibleCountRequestIdRef.current) return; // a newer request has since been issued — ignore this stale response
         setFilteredEligibleCount(data);
       })
       .catch(() => {});
-  }, [bulkModalOpen, emailBulkModalOpen, activeStatus, certType, expiryBefore, debouncedSearch]);
+  }, [bulkModalOpen, emailBulkModalOpen, activeStatus, certType, scheme, expiryBefore, debouncedSearch]);
 
   const certOptions = stats?.cert_types || [];
+  const schemeOptions = stats?.schemes || [];
 
   function handleRefreshClick() {
     setRefreshing(true);
@@ -120,6 +122,7 @@ export default function App({ onLogout } = {}) {
   function handleClearAllFilters() {
     setActiveStatus("ALL");
     setCertType("ALL");
+    setScheme("ALL");
     setExpiryBefore("");
   }
 
@@ -167,10 +170,10 @@ export default function App({ onLogout } = {}) {
     };
   }, []);
 
-  async function handleConfirmSendAll(scope) {
+  async function handleConfirmSendAll(sendScope) {
     try {
-      const filters = scope === "filtered"
-        ? { status: activeStatus, certType, expiryBefore, search: debouncedSearch }
+      const filters = sendScope === "filtered"
+        ? { status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch }
         : {};
       const { job_id: jobId } = await sendAllAlerts(filters);
       setSendAllJob({ total: 0, sent: 0, skipped: 0, failed: 0, done: false });
@@ -211,10 +214,10 @@ export default function App({ onLogout } = {}) {
     };
   }, []);
 
-  async function handleConfirmSendAllEmails(scope) {
+  async function handleConfirmSendAllEmails(sendScope) {
     try {
-      const filters = scope === "filtered"
-        ? { status: activeStatus, certType, expiryBefore, search: debouncedSearch }
+      const filters = sendScope === "filtered"
+        ? { status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch }
         : {};
       const { job_id: jobId } = await sendAllEmailAlerts(filters);
       setSendAllEmailJob({ total: 0, sent: 0, skipped: 0, skipped_no_email: 0, failed: 0, done: false });
@@ -405,6 +408,9 @@ export default function App({ onLogout } = {}) {
                 certOptions={certOptions}
                 certType={certType}
                 onCertTypeChange={setCertType}
+                schemeOptions={schemeOptions}
+                scheme={scheme}
+                onSchemeChange={setScheme}
                 expiryBefore={expiryBefore}
                 onExpiryBeforeChange={setExpiryBefore}
                 onClearAll={handleClearAllFilters}
@@ -420,7 +426,7 @@ export default function App({ onLogout } = {}) {
                 onSendSelected={bulkSelectedSending ? () => {} : setPendingSelected}
                 onPreviewEmail={setPreviewClientId}
                 onSendEmailClick={setPendingEmailClient}
-                exportFilters={{ status: activeStatus, certType, expiryBefore, search: debouncedSearch }}
+                exportFilters={{ status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch }}
               />
             </>
           )}
@@ -442,7 +448,8 @@ export default function App({ onLogout } = {}) {
         onCancel={() => setPendingClient(null)}
       />
       <SendAllConfirmModal
-        open={bulkModalOpen}
+
+open={bulkModalOpen}
         eligibleCount={eligibleCount}
         filteredCount={filteredEligibleCount.whatsapp}
         channel="whatsapp"
