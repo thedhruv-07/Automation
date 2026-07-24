@@ -94,7 +94,7 @@ def init_db(db_path) -> None:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(clients)")}
         if "scheme" not in columns:
             conn.execute("ALTER TABLE clients ADD COLUMN scheme TEXT")
-        conn.execute("UPDATE clients SET scheme = 'ISI' WHERE scheme IS NULL")
+            conn.execute("UPDATE clients SET scheme = 'ISI' WHERE scheme IS NULL")
         conn.commit()
     finally:
         conn.close()
