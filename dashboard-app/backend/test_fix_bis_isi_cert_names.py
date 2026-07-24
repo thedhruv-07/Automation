@@ -7,9 +7,9 @@ import openpyxl
 from db import upsert_clients
 from fix_bis_isi_cert_names import find_cert_name_corrections, load_correct_standards
 
-ROW_A = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "1", "IS 12600", "CLT001",
+ROW_A = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "1", "IS 12600", "ISI", "CLT001",
          "01-01-2025", "24-07-2026", "https://x", "ACTIVE")
-ROW_B = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "2", "IS 12600", "CLT002",
+ROW_B = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "2", "IS 12600", "ISI", "CLT002",
          "01-01-2025", "11-08-2026", "https://x", "ACTIVE")
 
 
