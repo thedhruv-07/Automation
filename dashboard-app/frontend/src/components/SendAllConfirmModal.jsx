@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-export default function SendAllConfirmModal({ open, eligibleCount, channel = "whatsapp", onConfirm, onCancel, job = null }) {
+export default function SendAllConfirmModal({
+  open, eligibleCount, filteredCount = 0, channel = "whatsapp", onConfirm, onCancel, job = null,
+}) {
   const [confirming, setConfirming] = useState(false);
+  const [scope, setScope] = useState("all");
   const cancelButtonRef = useRef(null);
   const confirmButtonRef = useRef(null);
   const closeButtonRef = useRef(null);
@@ -9,6 +12,7 @@ export default function SendAllConfirmModal({ open, eligibleCount, channel = "wh
   useEffect(() => {
     if (open) {
       setConfirming(false);
+      setScope("all");
       cancelButtonRef.current?.focus();
     }
   }, [open]);
@@ -62,10 +66,12 @@ export default function SendAllConfirmModal({ open, eligibleCount, channel = "wh
 
   if (!open) return null;
 
+  const selectedCount = scope === "filtered" ? filteredCount : eligibleCount;
+
   function handleConfirmClick() {
     if (confirming) return;
     setConfirming(true);
-    onConfirm();
+    onConfirm(scope);
   }
 
   return (
@@ -117,11 +123,29 @@ export default function SendAllConfirmModal({ open, eligibleCount, channel = "wh
           </div>
         ) : (
           <>
-            <p className="text-sm text-ink-secondary mb-6">
-              {channel === "email" ? "Send a renewal email" : "Send a real WhatsApp renewal alert"} to all{" "}
-              <strong>{eligibleCount}</strong> eligible client{eligibleCount === 1 ? "" : "s"} (Critical,
-              Urgent, Due Soon, or Expired, not yet {channel === "email" ? "emailed" : "sent"} today)?
+            <p className="text-sm text-ink-secondary mb-3">
+              {channel === "email" ? "Send a renewal email" : "Send a real WhatsApp renewal alert"} to:
             </p>
+            <div className="mb-6 space-y-2">
+              <label className="flex items-center gap-2 text-sm text-ink-primary">
+                <input
+                  type="radio"
+                  name="send-all-scope"
+                  checked={scope === "all"}
+                  onChange={() => setScope("all")}
+                />
+                All eligible clients (<strong>{eligibleCount}</strong>)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink-primary">
+                <input
+                  type="radio"
+                  name="send-all-scope"
+                  checked={scope === "filtered"}
+                  onChange={() => setScope("filtered")}
+                />
+                Currently filtered view (<strong>{filteredCount}</strong>)
+              </label>
+            </div>
             <div className="flex justify-end gap-3">
               <button
                 ref={cancelButtonRef}
@@ -135,7 +159,7 @@ export default function SendAllConfirmModal({ open, eligibleCount, channel = "wh
                 ref={confirmButtonRef}
                 type="button"
                 onClick={handleConfirmClick}
-                disabled={confirming}
+                disabled={confirming || selectedCount === 0}
                 className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors disabled:opacity-50"
               >
                 Confirm Send All

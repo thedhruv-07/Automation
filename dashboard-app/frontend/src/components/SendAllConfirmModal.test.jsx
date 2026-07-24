@@ -160,7 +160,7 @@ describe("SendAllConfirmModal", () => {
         onCancel={() => {}}
       />
     );
-    expect(screen.getByText(/Send a renewal email to all/)).toBeInTheDocument();
+    expect(screen.getByText(/Send a renewal email to:/)).toBeInTheDocument();
     expect(screen.getByTestId("send-all-confirm-modal-email")).toBeInTheDocument();
   });
 
@@ -168,7 +168,57 @@ describe("SendAllConfirmModal", () => {
     render(
       <SendAllConfirmModal open={true} eligibleCount={5} onConfirm={() => {}} onCancel={() => {}} />
     );
-    expect(screen.getByText(/Send a real WhatsApp renewal alert to all/)).toBeInTheDocument();
+    expect(screen.getByText(/Send a real WhatsApp renewal alert to:/)).toBeInTheDocument();
     expect(screen.getByTestId("send-all-confirm-modal-whatsapp")).toBeInTheDocument();
+  });
+
+  it("shows the filtered count and defaults to the 'all eligible' scope", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={5} filteredCount={2} onConfirm={() => {}} onCancel={() => {}}
+      />
+    );
+    expect(screen.getByLabelText(/All eligible clients/)).toBeChecked();
+    expect(screen.getByLabelText(/Currently filtered view/)).not.toBeChecked();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("passes 'all' to onConfirm when the default scope is confirmed", () => {
+    const onConfirm = vi.fn();
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={5} filteredCount={2} onConfirm={onConfirm} onCancel={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    expect(onConfirm).toHaveBeenCalledWith("all");
+  });
+
+  it("passes 'filtered' to onConfirm after switching scope", () => {
+    const onConfirm = vi.fn();
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={5} filteredCount={2} onConfirm={onConfirm} onCancel={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    expect(onConfirm).toHaveBeenCalledWith("filtered");
+  });
+
+  it("disables Confirm when the filtered scope is selected and its count is 0", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={5} filteredCount={0} onConfirm={() => {}} onCancel={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    expect(screen.getByText("Confirm Send All")).toBeDisabled();
+  });
+
+  it("defaults filteredCount to 0 when the prop is omitted", () => {
+    render(<SendAllConfirmModal open={true} eligibleCount={5} onConfirm={() => {}} onCancel={() => {}} />);
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    expect(screen.getByText("Confirm Send All")).toBeDisabled();
   });
 });
