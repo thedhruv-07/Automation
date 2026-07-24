@@ -97,10 +97,11 @@ redeploys automatically.
 2. Sign in with the `DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD` you set in
    step 1.3. You should land on the dashboard with real client data loaded.
 3. Confirm pagination, search, filters, and CSV export all work.
-4. **Do not** test "Send Alert" / "Send All Eligible" against this deployment
-   unless `DASHBOARD_TEST_NUMBER` is also set on Render to a verified test
-   number — otherwise a test click sends a real WhatsApp message to a real
-   client.
+4. **Do not** test "Send Alert" / "Send All Eligible" (WhatsApp) or "Send
+   Email" / "Send All Emails" against this deployment unless
+   `DASHBOARD_TEST_NUMBER` / `DASHBOARD_TEST_EMAIL` are also set on Render to
+   a verified test number/address — otherwise a test click sends a real
+   message to a real client.
 
 ## Updating later
 
