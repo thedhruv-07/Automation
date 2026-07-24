@@ -40,7 +40,7 @@ def dedup_key(client_id: str, status: str, date_str: str) -> str:
 
 from db import (  # noqa: E402
     DEFAULT_DB_PATH, read_clients, find_client_by_id, load_sent_log, save_sent_log,
-    RECORD_FIELDS,
+    RECORD_FIELDS, get_eligible_clients,
 )
 
 ALERT_STATUSES = {"CRITICAL", "URGENT", "DUE SOON", "EXPIRED"}
@@ -161,9 +161,12 @@ def run(
     today: str | None = None,
     send_fn=send_message,
     on_progress=None,
+    status: str | None = None,
+    cert_type: str | None = None,
+    expiry_before: str | None = None,
 ) -> list[dict]:
     today = today or datetime.now().strftime("%Y-%m-%d")
-    records = filter_alertable(read_clients(db_path))
+    records = get_eligible_clients(db_path, status=status, cert_type=cert_type, expiry_before=expiry_before)
     sent_log = load_sent_log(db_path)
     persist_log = not dry_run and not test_number
     log_dirty = False
