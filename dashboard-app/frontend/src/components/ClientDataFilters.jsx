@@ -7,15 +7,28 @@ const DURATION_PRESETS = [
 ];
 
 export default function ClientDataFilters({
-  certOptions, certType, onCertTypeChange, expiryBefore, onExpiryBeforeChange, onClearAll,
+  certOptions, certType, onCertTypeChange,
+  schemeOptions = [], scheme = "ALL", onSchemeChange = () => {},
+  expiryBefore, onExpiryBeforeChange, onClearAll,
 }) {
-  const hasFilters = certType !== "ALL" || expiryBefore !== "";
+  const hasFilters = certType !== "ALL" || scheme !== "ALL" || expiryBefore !== "";
 
   return (
     <div className="bg-surface border border-line rounded-xl p-4 flex flex-wrap gap-4 items-center">
       <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">
         Filter by
       </span>
+      <select
+        value={scheme}
+        onChange={(e) => onSchemeChange(e.target.value)}
+        aria-label="Filter by scheme"
+        className="min-w-[150px] bg-surface-page border border-line rounded-lg px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+      >
+        <option value="ALL">All Schemes</option>
+        {schemeOptions.map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
       <select
         value={certType}
         onChange={(e) => onCertTypeChange(e.target.value)}

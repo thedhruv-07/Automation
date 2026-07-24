@@ -20,6 +20,42 @@ describe("ClientDataFilters", () => {
     expect(onCertTypeChange).toHaveBeenCalledWith("OSHA");
   });
 
+  it("calls onSchemeChange when a scheme is selected", () => {
+    const onSchemeChange = vi.fn();
+    render(
+      <ClientDataFilters
+        certOptions={[]}
+        certType="ALL"
+        onCertTypeChange={() => {}}
+        schemeOptions={["ISI", "FMCS"]}
+        scheme="ALL"
+        onSchemeChange={onSchemeChange}
+        expiryBefore=""
+        onExpiryBeforeChange={() => {}}
+        onClearAll={() => {}}
+      />
+    );
+    fireEvent.change(screen.getByLabelText("Filter by scheme"), { target: { value: "FMCS" } });
+    expect(onSchemeChange).toHaveBeenCalledWith("FMCS");
+  });
+
+  it("shows Clear All when a scheme filter is active", () => {
+    render(
+      <ClientDataFilters
+        certOptions={[]}
+        certType="ALL"
+        onCertTypeChange={() => {}}
+        schemeOptions={["ISI", "FMCS"]}
+        scheme="FMCS"
+        onSchemeChange={() => {}}
+        expiryBefore=""
+        onExpiryBeforeChange={() => {}}
+        onClearAll={() => {}}
+      />
+    );
+    expect(screen.getByText("Clear All")).toBeInTheDocument();
+  });
+
   it("calls onExpiryBeforeChange when the date input changes", () => {
     const onExpiryBeforeChange = vi.fn();
     render(
