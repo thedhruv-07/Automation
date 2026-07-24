@@ -8,9 +8,9 @@ from db import (
 )
 
 ROW_A = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-          "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
+          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
 ROW_B = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-          "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
+          "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
 
 
 def _insert_raw(db_path, rows):
@@ -96,7 +96,7 @@ def test_upsert_merge_adds_new_and_skips_existing_ids(tmp_path):
     upsert_clients(db_path, [ROW_A], mode="replace")
 
     updated_row_a = ("CLT001", "SHOULD NOT OVERWRITE", "TechCorp", "r@x.com",
-                       "919876543210", "ISO 9001", "ISO-1", "01-01-2025",
+                       "919876543210", "ISO 9001", "ISI", "ISO-1", "01-01-2025",
                        "24-07-2026", "https://x", "CRITICAL")
     stats = upsert_clients(db_path, [updated_row_a, ROW_B], mode="merge")
 
@@ -119,9 +119,9 @@ def test_upsert_merge_drops_rows_with_blank_or_none_client_id(tmp_path):
     upsert_clients(db_path, [ROW_A], mode="replace")
 
     blank_id_row = ("", "No ID Person", "Acme", "n@x.com", "919999999999",
-                     "ISO 9001", "ISO-2", "01-01-2025", "01-01-2027", "https://x", "OK")
+                     "ISO 9001", "ISI", "ISO-2", "01-01-2025", "01-01-2027", "https://x", "OK")
     none_id_row = (None, "Also No ID", "Acme", "n2@x.com", "919999999998",
-                    "ISO 9001", "ISO-3", "01-01-2025", "01-01-2027", "https://x", "OK")
+                    "ISO 9001", "ISI", "ISO-3", "01-01-2025", "01-01-2027", "https://x", "OK")
 
     stats = upsert_clients(db_path, [blank_id_row, none_id_row, ROW_B], mode="merge")
 
@@ -140,7 +140,7 @@ def test_upsert_merge_raises_on_constraint_violation_not_miscounted_as_duplicate
     # which violates the `name TEXT NOT NULL` constraint.
     invalid_row = (
         "CLT099", None, "TechCorp", "r@x.com", "919876543210",
-        "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
+        "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
     )
 
     with pytest.raises(sqlite3.IntegrityError):
@@ -163,7 +163,7 @@ def test_upsert_merge_rolls_back_whole_batch_on_constraint_violation(tmp_path):
     valid_new_row = ROW_B  # CLT002, new and valid
     invalid_row = (
         "CLT099", None, "TechCorp", "r@x.com", "919876543210",
-        "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
+        "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
     )
 
     with pytest.raises(sqlite3.IntegrityError):
@@ -178,15 +178,15 @@ def test_upsert_merge_rolls_back_whole_batch_on_constraint_violation(tmp_path):
 from db import get_clients_page
 
 FIVE_ROWS = [
-    ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "1", "ISO 9001", "ISO-1",
+    ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "1", "ISO 9001", "ISI", "ISO-1",
      "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
-    ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "2", "OSHA", "OSHA-1",
+    ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "2", "OSHA", "ISI", "OSHA-1",
      "01-01-2025", "11-08-2026", "https://x", "URGENT"),
-    ("CLT003", "Amit Verma", "HealthFirst", "a@x.com", "3", "ISO 9001", "ISO27-1",
+    ("CLT003", "Amit Verma", "HealthFirst", "a@x.com", "3", "ISO 9001", "ISI", "ISO27-1",
      "01-01-2025", "10-09-2026", "https://x", "DUE SOON"),
-    ("CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "4", "GMP", "GMP-1",
+    ("CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "4", "GMP", "FMCS", "GMP-1",
      "01-01-2025", "15-10-2026", "https://x", "ACTIVE"),
-    ("CLT005", "Rajesh Nair", "Logistics Plus", "raj@x.com", "5", "HACCP", "HACCP-1",
+    ("CLT005", "Rajesh Nair", "Logistics Plus", "raj@x.com", "5", "HACCP", "ISI", "HACCP-1",
      "01-01-2025", "12-01-2026", "https://x", "EXPIRED"),
 ]
 
@@ -489,3 +489,82 @@ def test_get_eligible_count_rejects_unknown_channel(tmp_path):
     db_path = _seeded_db(tmp_path)
     with pytest.raises(ValueError):
         get_eligible_count(db_path, today="2026-07-21", channel="carrier-pigeon")
+
+
+def test_init_db_migrates_pre_scheme_database_and_backfills_isi(tmp_path):
+    """A database created before the scheme column existed (simulated here
+    by creating the clients table without it, bypassing init_db/SCHEMA) must
+    gain the column and have every existing row classified as 'ISI' the next
+    time init_db runs -- this is what makes the migration self-healing after
+    a Render free-tier reset restores an old clients.db."""
+    db_path = tmp_path / "clients.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE clients (
+            client_id TEXT PRIMARY KEY, name TEXT NOT NULL, company TEXT, email TEXT,
+            phone TEXT, cert_name TEXT, cert_id TEXT, issue_date TEXT, expiry_date TEXT,
+            expiry_date_iso TEXT, renewal_link TEXT, status TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO clients (client_id, name, cert_name, status) VALUES (?, ?, ?, ?)",
+        ("CLT001", "Pre-Migration Client", "IS 1717", "CRITICAL"),
+    )
+    conn.commit()
+    conn.close()
+
+    init_db(db_path)
+
+    conn = sqlite3.connect(str(db_path))
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(clients)")}
+    scheme = conn.execute("SELECT scheme FROM clients WHERE client_id = 'CLT001'").fetchone()[0]
+    conn.close()
+    assert "scheme" in columns
+    assert scheme == "ISI"
+
+
+def test_init_db_migration_does_not_overwrite_an_existing_scheme_value(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Future Scheme Client", "Co", "c@x.com", "1", "FMCS-1", "FMCS", "FMCS-ID-1",
+         "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+    ], mode="replace")
+
+    init_db(db_path)  # must not re-run the backfill over an already-set value
+
+    record = find_client_by_id(db_path, "CLT001")
+    assert record["scheme"] == "FMCS"
+
+
+def test_get_clients_page_filters_by_scheme(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows, total = get_clients_page(db_path, page=1, page_size=50, scheme="FMCS")
+    assert total == 1
+    assert rows[0]["client_id"] == "CLT004"
+
+
+def test_export_clients_rows_filters_by_scheme(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows = list(export_clients_rows(db_path, scheme="FMCS"))
+    assert {r["client_id"] for r in rows} == {"CLT004"}
+
+
+def test_get_stats_schemes_are_distinct_and_sorted(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    stats = get_stats(db_path, today="2026-07-21")
+    assert stats["schemes"] == ["FMCS", "ISI"]
+
+
+def test_get_eligible_clients_filters_by_scheme(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    rows = get_eligible_clients(db_path, scheme="ISI")
+    # CLT004 is scheme FMCS but also ACTIVE (not alert-eligible) -- this
+    # confirms the scheme filter and alert-eligibility both apply, not
+    # either alone.
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT002", "CLT003", "CLT005"}
+
+
+def test_get_eligible_count_filters_by_scheme(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", scheme="FMCS") == 0
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", scheme="ISI") == 4
