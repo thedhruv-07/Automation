@@ -75,19 +75,19 @@ def test_read_clients_and_filter_alertable(tmp_path):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
          "https://x/renew?id=ISO-1", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026",
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026",
          "https://x/renew?id=OSHA-1", "URGENT"],
         ["CLT003", "Amit Verma", "HealthFirst", "a@x.com", "919898765432",
-         "GMP", "GMP-1", "01-01-2025", "10-09-2026",
+         "GMP", "ISI", "GMP-1", "01-01-2025", "10-09-2026",
          "https://x/renew?id=GMP-1", "DUE SOON"],
         ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
-         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026",
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026",
          "https://x/renew?id=ISO27-1", "ACTIVE"],
         ["CLT005", "Rajesh Nair", "Logistics Plus", "raj@x.com", "919654321098",
-         "HACCP", "HACCP-1", "01-01-2025", "12-07-2026",
+         "HACCP", "ISI", "HACCP-1", "01-01-2025", "12-07-2026",
          "https://x/renew?id=HACCP-1", "EXPIRED"],
     ])
 
@@ -104,10 +104,10 @@ def test_read_clients_and_filter_alertable(tmp_path):
 def test_read_clients_skips_blank_rows(tmp_path):
     db_path = tmp_path / "test.db"
     _write_db(db_path, [
-        ["CLT001", "Name", "Co", "e@x.com", "919876543210", "Cert", "C-1",
+        ["CLT001", "Name", "Co", "e@x.com", "919876543210", "Cert", "ISI", "C-1",
          "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
-        [None, None, None, None, None, None, None, None, None, None, None],
-        ["CLT002", "Name2", "Co2", "e2@x.com", "919876543211", "Cert2", "C-2",
+        [None, None, None, None, None, None, None, None, None, None, None, None],
+        ["CLT002", "Name2", "Co2", "e2@x.com", "919876543211", "Cert2", "ISI", "C-2",
          "01-01-2025", "24-07-2026", "https://x", "URGENT"],
     ])
     records = read_clients(db_path)
@@ -193,7 +193,7 @@ from whatsapp_renewal_alerts import run
 
 ONE_CRITICAL_ROW = [
     ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-     "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026",
+     "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
      "https://x/renew?id=ISO-1", "CRITICAL"],
 ]
 
@@ -219,10 +219,10 @@ def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Already Sent", "Co1", "a@x.com", "919111111111",
-         "Cert1", "C-1", "01-01-2025", "24-07-2026",
+         "Cert1", "ISI", "C-1", "01-01-2025", "24-07-2026",
          "https://x/renew?id=C-1", "CRITICAL"],
         ["CLT002", "Not Sent Yet", "Co2", "b@x.com", "919222222222",
-         "Cert2", "C-2", "01-01-2025", "24-07-2026",
+         "Cert2", "ISI", "C-2", "01-01-2025", "24-07-2026",
          "https://x/renew?id=C-2", "URGENT"],
     ])
     save_sent_log(db_path, {"CLT001|CRITICAL|2026-07-17": {
@@ -292,13 +292,13 @@ def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path)
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Already Sent", "Co1", "a@x.com", "919111111111",
-         "Cert1", "C-1", "01-01-2025", "24-07-2026",
+         "Cert1", "ISI", "C-1", "01-01-2025", "24-07-2026",
          "https://x/renew?id=C-1", "CRITICAL"],
         ["CLT002", "New Success", "Co2", "b@x.com", "919222222222",
-         "Cert2", "C-2", "01-01-2025", "24-07-2026",
+         "Cert2", "ISI", "C-2", "01-01-2025", "24-07-2026",
          "https://x/renew?id=C-2", "URGENT"],
         ["CLT003", "Bad Date", "Co3", "c@x.com", "919333333333",
-         "Cert3", "C-3", "01-01-2025", "not-a-date",
+         "Cert3", "ISI", "C-3", "01-01-2025", "not-a-date",
          "https://x/renew?id=C-3", "DUE SOON"],
     ])
     save_sent_log(db_path, {"CLT001|CRITICAL|2026-07-17": {
@@ -324,10 +324,10 @@ def test_run_filters_by_cert_type(tmp_path):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
          "https://x/renew?id=ISO-1", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026",
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026",
          "https://x/renew?id=OSHA-1", "URGENT"],
     ])
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
@@ -344,10 +344,10 @@ def test_run_filters_by_search(tmp_path):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
          "https://x/renew?id=ISO-1", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026",
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026",
          "https://x/renew?id=OSHA-1", "URGENT"],
     ])
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
@@ -360,13 +360,33 @@ def test_run_filters_by_search(tmp_path):
     assert results[0]["client_id"] == "CLT002"
 
 
+def test_run_filters_by_scheme(tmp_path):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
+         "https://x/renew?id=ISO-1", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "FMCS-Cert", "FMCS", "FMCS-1", "01-01-2025", "11-08-2026",
+         "https://x/renew?id=FMCS-1", "URGENT"],
+    ])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    results = run(db_path=db_path, token="tok", phone_number_id="pid",
+                  template_name="cert_renewal_alert", template_lang="en_US",
+                  today="2026-07-17", send_fn=send_fn, scheme="FMCS")
+
+    assert len(results) == 1
+    assert results[0]["client_id"] == "CLT002"
+
+
 def test_run_calls_on_progress_for_each_record(tmp_path):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "URGENT"],
     ])
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
     progress_calls = []
@@ -385,9 +405,9 @@ def test_run_survives_raising_on_progress_and_still_persists_sent_log(tmp_path):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "URGENT"],
     ])
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
