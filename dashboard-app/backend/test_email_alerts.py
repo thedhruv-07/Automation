@@ -1,8 +1,11 @@
 """Tests for email_alerts.py."""
-from unittest.mock import Mock
+import base64
+from unittest.mock import Mock, patch
+
+import requests
 
 from db import upsert_clients, save_email_sent_log
-from email_alerts import send_one_email_alert, run_email_alerts
+from email_alerts import send_one_email_alert, run_email_alerts, send_email_via_brevo
 
 ROW_WITH_EMAIL = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
                     "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
@@ -96,8 +99,7 @@ def test_send_one_email_alert_test_email_override_redirects_recipient():
         to_email_override="test-inbox@x.com", send_fn=send_fn,
     )
 
-    call_kwargs = send_fn.call_args
-    assert call_kwargs.kwargs.get("to_email") == "test-inbox@x.com" or "test-inbox@x.com" in call_kwargs.args
+    assert send_fn.call_args.kwargs["to_email"] == "test-inbox@x.com"
 
 
 def test_run_email_alerts_processes_all_alert_eligible_clients(tmp_path):
@@ -115,6 +117,89 @@ def test_run_email_alerts_processes_all_alert_eligible_clients(tmp_path):
     assert actions["CLT002"] == "skipped_no_email"
     assert actions["CLT003"] == "skipped_no_email"
     assert send_fn.call_count == 1
+
+
+def test_send_email_via_brevo_success():
+    record = _record_dict(ROW_WITH_EMAIL)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        ok, info = send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    assert ok is True
+    assert info == {"message_id": "brevo-msg-1"}
+    mock_post.assert_called_once()
+    assert mock_post.call_args.args[0] == "https://api.brevo.com/v3/smtp/email"
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["to"] == [{"email": "r@x.com", "name": "Rahul Sharma"}]
+    assert payload["subject"] == "[Action Required] Renew ISO 9001 — TechCorp"
+
+
+def test_send_email_via_brevo_api_error():
+    record = _record_dict(ROW_WITH_EMAIL)
+    mock_response = Mock(status_code=400)
+    mock_response.json.return_value = {"message": "Invalid sender email"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response):
+        ok, info = send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    assert ok is False
+    assert info == {"error": "Invalid sender email"}
+
+
+def test_send_email_via_brevo_network_error():
+    record = _record_dict(ROW_WITH_EMAIL)
+
+    with patch("email_alerts.requests.post", side_effect=requests.exceptions.ConnectionError("boom")):
+        ok, info = send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    assert ok is False
+    assert "boom" in info["error"]
+
+
+def test_send_email_via_brevo_success_status_with_malformed_body_still_reports_sent():
+    record = _record_dict(ROW_WITH_EMAIL)
+    mock_response = Mock(status_code=200)
+    mock_response.json.side_effect = ValueError("not JSON")
+
+    with patch("email_alerts.requests.post", return_value=mock_response):
+        ok, info = send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    assert ok is True
+    assert info == {"message_id": None}
+
+
+def test_send_email_via_brevo_omits_attachment_when_logo_missing(tmp_path):
+    record = _record_dict(ROW_WITH_EMAIL)
+    missing_logo = tmp_path / "no-such-logo.png"
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {"messageId": "brevo-1"}
+
+    with patch("email_alerts.LOGO_PATH", missing_logo), \
+         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert "attachment" not in payload
+
+
+def test_send_email_via_brevo_includes_attachment_when_logo_present(tmp_path):
+    record = _record_dict(ROW_WITH_EMAIL)
+    logo_path = tmp_path / "company-logo.png"
+    logo_bytes = b"fake-png-bytes"
+    logo_path.write_bytes(logo_bytes)
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {"messageId": "brevo-1"}
+
+    with patch("email_alerts.LOGO_PATH", logo_path), \
+         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["attachment"] == [
+        {"name": "company-logo.png", "content": base64.b64encode(logo_bytes).decode("ascii")}
+    ]
 
 
 def test_run_email_alerts_calls_on_progress_for_each_record(tmp_path):

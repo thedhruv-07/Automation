@@ -13,7 +13,7 @@ import requests
 
 from db import read_clients, load_email_sent_log, save_email_sent_log
 from email_template import build_email_html
-from whatsapp_renewal_alerts import ALERT_STATUSES, dedup_key, filter_alertable
+from whatsapp_renewal_alerts import dedup_key, filter_alertable
 
 SCRIPT_DIR = Path(__file__).parent
 LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
@@ -49,25 +49,27 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
         "expiry_formatted": expiry_dt.strftime("%d %B %Y"),
     }
 
-    logo_src = f"cid:{LOGO_CID}" if LOGO_PATH.exists() else ""
+    logo_exists = LOGO_PATH.exists()
+    logo_src = f"cid:{LOGO_CID}" if logo_exists else ""
     html = build_email_html(
         template_rec, org_name=org_name, org_website="", org_contact="",
         org_email="cs@absoluteveritas.com", logo_src=logo_src,
     )
     subject = f"[Action Required] Renew {rec['cert_name']} — {rec['company']}"
 
-    attachments = []
-    if LOGO_PATH.exists():
-        logo_b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
-        attachments.append({"name": LOGO_CID, "content": logo_b64})
-
     payload = {
         "sender": {"name": org_name, "email": email_sender},
         "to": [{"email": to_email, "name": rec["name"]}],
         "subject": subject,
         "htmlContent": html,
-        "attachment": attachments,
     }
+    # Brevo's API doc doesn't guarantee an empty `attachment: []` is accepted,
+    # so the key is only included when there's an actual attachment to send --
+    # avoids relying on unverified behavior for the common case (no logo file
+    # present, e.g. in dev/test environments).
+    if logo_exists:
+        logo_b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+        payload["attachment"] = [{"name": LOGO_CID, "content": logo_b64}]
     headers = {
         "api-key": brevo_api_key,
         "Content-Type": "application/json",
