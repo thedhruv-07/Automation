@@ -159,11 +159,13 @@ describe("sendAllAlerts", () => {
     );
   });
 
-  it("adds status/cert_type/expiry_before as query params when given", async () => {
+  it("adds status/cert_type/expiry_before/search as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
-    await sendAllAlerts({ status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31" });
+    await sendAllAlerts({
+      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight",
+    });
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/send-all?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31",
+      "/api/send-all?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight",
       { method: "POST", credentials: "include", headers: {} }
     );
   });
@@ -250,11 +252,13 @@ describe("sendAllEmailAlerts", () => {
     expect(global.fetch).toHaveBeenCalledWith("/api/send-all-emails", { method: "POST", credentials: "include", headers: {} });
   });
 
-  it("adds status/cert_type/expiry_before as query params when given", async () => {
+  it("adds status/cert_type/expiry_before/search as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
-    await sendAllEmailAlerts({ status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31" });
+    await sendAllEmailAlerts({
+      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight",
+    });
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/send-all-emails?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31",
+      "/api/send-all-emails?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight",
       { method: "POST", credentials: "include", headers: {} }
     );
   });
@@ -288,11 +292,13 @@ describe("getEligibleCount", () => {
     expect(global.fetch).toHaveBeenCalledWith("/api/eligible-count", { credentials: "include", headers: {} });
   });
 
-  it("passes status/cert_type/expiry_before as query params when given", async () => {
+  it("passes status/cert_type/expiry_before/search as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ whatsapp: 1, email: 1 }) });
-    await getEligibleCount({ status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31" });
+    await getEligibleCount({
+      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight",
+    });
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/eligible-count?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31",
+      "/api/eligible-count?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight",
       { credentials: "include", headers: {} }
     );
   });

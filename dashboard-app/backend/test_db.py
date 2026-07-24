@@ -440,6 +440,15 @@ def test_get_eligible_clients_status_active_returns_empty(tmp_path):
     assert rows == []
 
 
+def test_get_eligible_clients_filters_by_search(tmp_path):
+    """CLT004 (EduTech, "tech" match) is ACTIVE and thus excluded from the
+    alert-eligible set regardless of the search term, so only CLT001
+    (TechCorp) should match."""
+    db_path = _seeded_db(tmp_path)
+    rows = get_eligible_clients(db_path, search="tech")
+    assert {r["client_id"] for r in rows} == {"CLT001"}
+
+
 def test_get_eligible_count_counts_all_eligible_not_sent_today(tmp_path):
     db_path = _seeded_db(tmp_path)
     assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 4
@@ -461,6 +470,14 @@ def test_get_eligible_count_email_channel_is_independent_of_whatsapp(tmp_path):
 def test_get_eligible_count_filters_by_cert_type(tmp_path):
     db_path = _seeded_db(tmp_path)
     assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", cert_type="ISO 9001") == 2
+
+
+def test_get_eligible_count_filters_by_search(tmp_path):
+    """CLT004 (EduTech, "tech" match) is ACTIVE and thus excluded from the
+    alert-eligible set regardless of the search term, so only CLT001
+    (TechCorp) should be counted."""
+    db_path = _seeded_db(tmp_path)
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", search="tech") == 1
 
 
 def test_get_eligible_count_status_active_returns_zero(tmp_path):

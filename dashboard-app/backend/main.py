@@ -168,16 +168,18 @@ def stats():
 
 
 @app.get("/api/eligible-count", dependencies=[Depends(require_auth)])
-def eligible_count(status: str = "", cert_type: str = "", expiry_before: str = ""):
+def eligible_count(status: str = "", cert_type: str = "", expiry_before: str = "", search: str = ""):
     today = _today_str()
     return {
         "whatsapp": get_eligible_count(
             DEFAULT_DB_PATH, today, "whatsapp",
             status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+            search=search or None,
         ),
         "email": get_eligible_count(
             DEFAULT_DB_PATH, today, "email",
             status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+            search=search or None,
         ),
     }
 
@@ -335,7 +337,7 @@ _send_all_jobs: dict[str, dict] = {}
 
 def _run_send_all_job(
     job_id, token, phone_number_id, template_name, template_lang, test_number,
-    status=None, cert_type=None, expiry_before=None,
+    status=None, cert_type=None, expiry_before=None, search=None,
 ):
     def progress(result, total):
         job = _send_all_jobs[job_id]
@@ -351,7 +353,7 @@ def _run_send_all_job(
         run(
             DEFAULT_DB_PATH, token, phone_number_id, template_name, template_lang,
             dry_run=False, test_number=test_number, on_progress=progress,
-            status=status, cert_type=cert_type, expiry_before=expiry_before,
+            status=status, cert_type=cert_type, expiry_before=expiry_before, search=search,
         )
     except Exception as exc:
         # Without this, an exception here (locked DB, unexpected error mid-
@@ -370,7 +372,7 @@ def _run_send_all_job(
 
 
 @app.post("/api/send-all", dependencies=[Depends(require_auth)])
-def send_all_alerts(status: str = "", cert_type: str = "", expiry_before: str = ""):
+def send_all_alerts(status: str = "", cert_type: str = "", expiry_before: str = "", search: str = ""):
     global _bulk_in_progress
     with _send_lock:
         if _bulk_in_progress:
@@ -397,7 +399,7 @@ def send_all_alerts(status: str = "", cert_type: str = "", expiry_before: str = 
             target=_run_send_all_job,
             args=(
                 job_id, token, phone_number_id, template_name, template_lang, test_number,
-                status or None, cert_type or None, expiry_before or None,
+                status or None, cert_type or None, expiry_before or None, search or None,
             ),
             daemon=True,
         )
@@ -485,7 +487,7 @@ _send_all_email_jobs: dict[str, dict] = {}
 
 def _run_send_all_email_job(
     job_id, brevo_api_key, email_sender, test_email,
-    status=None, cert_type=None, expiry_before=None,
+    status=None, cert_type=None, expiry_before=None, search=None,
 ):
     def progress(result, total):
         job = _send_all_email_jobs[job_id]
@@ -503,7 +505,7 @@ def _run_send_all_email_job(
         run_email_alerts(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
-            status=status, cert_type=cert_type, expiry_before=expiry_before,
+            status=status, cert_type=cert_type, expiry_before=expiry_before, search=search,
         )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
@@ -515,7 +517,7 @@ def _run_send_all_email_job(
 
 
 @app.post("/api/send-all-emails", dependencies=[Depends(require_auth)])
-def send_all_emails(status: str = "", cert_type: str = "", expiry_before: str = ""):
+def send_all_emails(status: str = "", cert_type: str = "", expiry_before: str = "", search: str = ""):
     global _email_bulk_in_progress
     with _email_send_lock:
         if _email_bulk_in_progress:
@@ -541,7 +543,7 @@ def send_all_emails(status: str = "", cert_type: str = "", expiry_before: str = 
             target=_run_send_all_email_job,
             args=(
                 job_id, brevo_api_key, email_sender, test_email,
-                status or None, cert_type or None, expiry_before or None,
+                status or None, cert_type or None, expiry_before or None, search or None,
             ),
             daemon=True,
         )

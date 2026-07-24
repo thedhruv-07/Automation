@@ -68,6 +68,7 @@ function scopeQueryString(params = {}) {
   if (params.status && params.status !== "ALL") query.set("status", params.status);
   if (params.certType && params.certType !== "ALL") query.set("cert_type", params.certType);
   if (params.expiryBefore) query.set("expiry_before", params.expiryBefore);
+  if (params.search) query.set("search", params.search);
   return query.toString();
 }
 

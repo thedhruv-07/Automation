@@ -340,6 +340,26 @@ def test_run_filters_by_cert_type(tmp_path):
     assert results[0]["client_id"] == "CLT002"
 
 
+def test_run_filters_by_search(tmp_path):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026",
+         "https://x/renew?id=ISO-1", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026",
+         "https://x/renew?id=OSHA-1", "URGENT"],
+    ])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    results = run(db_path=db_path, token="tok", phone_number_id="pid",
+                  template_name="cert_renewal_alert", template_lang="en_US",
+                  today="2026-07-17", send_fn=send_fn, search="BuildRight")
+
+    assert len(results) == 1
+    assert results[0]["client_id"] == "CLT002"
+
+
 def test_run_calls_on_progress_for_each_record(tmp_path):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [

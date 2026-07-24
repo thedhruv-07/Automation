@@ -159,6 +159,34 @@ describe("App", () => {
     expect(api.getSendAllEmailsStatus.mock.calls.length).toBe(callsAfterError);
   });
 
+  it("includes the header search term when 'Currently filtered view' is confirmed for Send All Emails", async () => {
+    api.getStats.mockResolvedValue({ ...sampleStats, eligible_not_emailed_today: 1 });
+    api.getEligibleCount.mockResolvedValue({ whatsapp: 1, email: 1 });
+    api.sendAllEmailAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllEmailsStatus.mockResolvedValue({
+      total: 1, sent: 1, skipped: 0, skipped_no_email: 0, failed: 0, done: true,
+    });
+    render(<App />);
+    await waitFor(() => screen.getByText("Rahul Sharma"));
+    api.getClients.mockResolvedValue(samplePage([]));
+    fireEvent.change(screen.getByPlaceholderText("Search name or company..."), {
+      target: { value: "BuildRight" },
+    });
+    await waitFor(
+      () => expect(api.getClients).toHaveBeenCalledWith(expect.objectContaining({ search: "BuildRight" })),
+      { timeout: 1000 }
+    );
+    fireEvent.click(screen.getByText("Send All Emails"));
+    await waitFor(() => expect(api.getEligibleCount).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() =>
+      expect(api.sendAllEmailAlerts).toHaveBeenCalledWith({
+        status: "ALL", certType: "ALL", expiryBefore: "", search: "BuildRight",
+      })
+    );
+  });
+
   it("ignores a stale paginated response that resolves after a newer one for a changed filter", async () => {
     const manyClients = Array.from({ length: 16 }, (_, i) => ({
       client_id: `CLT${i}`, name: `Client ${i}`, company: "Co", email: "",
@@ -336,7 +364,28 @@ describe("App", () => {
     await waitFor(() => screen.getByText("Send Alert"));
     fireEvent.click(screen.getByText("Send All Eligible"));
     await waitFor(() =>
-      expect(api.getEligibleCount).toHaveBeenCalledWith({ status: "ALL", certType: "ALL", expiryBefore: "" })
+      expect(api.getEligibleCount).toHaveBeenCalledWith({
+        status: "ALL", certType: "ALL", expiryBefore: "", search: "",
+      })
+    );
+  });
+
+  it("includes the header search term in the eligible count fetched when the bulk send modal opens", async () => {
+    render(<App />);
+    await waitFor(() => screen.getByText("Rahul Sharma"));
+    api.getClients.mockResolvedValue(samplePage([]));
+    fireEvent.change(screen.getByPlaceholderText("Search name or company..."), {
+      target: { value: "BuildRight" },
+    });
+    await waitFor(
+      () => expect(api.getClients).toHaveBeenCalledWith(expect.objectContaining({ search: "BuildRight" })),
+      { timeout: 1000 }
+    );
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    await waitFor(() =>
+      expect(api.getEligibleCount).toHaveBeenCalledWith({
+        status: "ALL", certType: "ALL", expiryBefore: "", search: "BuildRight",
+      })
     );
   });
 
@@ -384,7 +433,9 @@ describe("App", () => {
     fireEvent.click(screen.getByLabelText(/Currently filtered view/));
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() =>
-      expect(api.sendAllAlerts).toHaveBeenCalledWith({ status: "CRITICAL", certType: "ALL", expiryBefore: "" })
+      expect(api.sendAllAlerts).toHaveBeenCalledWith({
+        status: "CRITICAL", certType: "ALL", expiryBefore: "", search: "",
+      })
     );
   });
 
@@ -399,5 +450,30 @@ describe("App", () => {
     await waitFor(() => expect(api.getEligibleCount).toHaveBeenCalled());
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() => expect(api.sendAllAlerts).toHaveBeenCalledWith({}));
+  });
+
+  it("includes the header search term when 'Currently filtered view' is confirmed for Send All Eligible", async () => {
+    api.getEligibleCount.mockResolvedValue({ whatsapp: 1, email: 1 });
+    api.sendAllAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllStatus.mockResolvedValue({ total: 1, sent: 1, skipped: 0, failed: 0, done: true });
+    render(<App />);
+    await waitFor(() => screen.getByText("Rahul Sharma"));
+    api.getClients.mockResolvedValue(samplePage([]));
+    fireEvent.change(screen.getByPlaceholderText("Search name or company..."), {
+      target: { value: "BuildRight" },
+    });
+    await waitFor(
+      () => expect(api.getClients).toHaveBeenCalledWith(expect.objectContaining({ search: "BuildRight" })),
+      { timeout: 1000 }
+    );
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    await waitFor(() => expect(api.getEligibleCount).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() =>
+      expect(api.sendAllAlerts).toHaveBeenCalledWith({
+        status: "ALL", certType: "ALL", expiryBefore: "", search: "BuildRight",
+      })
+    );
   });
 });

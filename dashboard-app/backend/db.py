@@ -345,10 +345,10 @@ def export_clients_rows(
 
 def get_eligible_clients(
     db_path, status: str | None = None, cert_type: str | None = None,
-    expiry_before: str | None = None,
+    expiry_before: str | None = None, search: str | None = None,
 ) -> list[dict]:
     """Alert-eligible (status in ALERT_STATUSES) client records, optionally
-    further narrowed by the same status/cert_type/expiry_before filters
+    further narrowed by the same status/cert_type/expiry_before/search filters
     get_clients_page's table view supports -- so bulk-send scope can mirror
     exactly what's on screen. ORDER BY rowid pins insertion order regardless
     of which index SQLite's query planner picks for the WHERE clause, so
@@ -356,7 +356,7 @@ def get_eligible_clients(
     same order read_clients() always gave them."""
     conn = get_connection(db_path)
     try:
-        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before)
+        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before, search)
         placeholders = ", ".join(["?"] * len(ALERT_STATUSES))
         where = [f"status IN ({placeholders})"] + extra_where
         params = list(ALERT_STATUSES) + extra_params
@@ -372,18 +372,19 @@ def get_eligible_clients(
 def get_eligible_count(
     db_path, today: str, channel: str, status: str | None = None,
     cert_type: str | None = None, expiry_before: str | None = None,
+    search: str | None = None,
 ) -> int:
     """Counts alert-eligible clients not yet sent today via the given channel
     ('whatsapp' -> sent_log, 'email' -> email_sent_log), optionally narrowed
-    by status/cert_type/expiry_before -- used to show a live count for the
-    "currently filtered view" bulk-send scope before anything is sent."""
+    by status/cert_type/expiry_before/search -- used to show a live count for
+    the "currently filtered view" bulk-send scope before anything is sent."""
     if channel not in ("whatsapp", "email"):
         raise ValueError(f"Unknown channel: {channel!r}")
     log_table = "sent_log" if channel == "whatsapp" else "email_sent_log"
     init_db(db_path)
     conn = get_connection(db_path)
     try:
-        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before)
+        extra_where, extra_params = _client_filters_where(status, cert_type, expiry_before, search)
         placeholders = ", ".join(["?"] * len(ALERT_STATUSES))
         where = [f"c.status IN ({placeholders})"] + extra_where
         params = list(ALERT_STATUSES) + extra_params

@@ -102,13 +102,13 @@ export default function App({ onLogout } = {}) {
   useEffect(() => {
     if (!bulkModalOpen && !emailBulkModalOpen) return;
     const requestId = ++eligibleCountRequestIdRef.current;
-    getEligibleCount({ status: activeStatus, certType, expiryBefore })
+    getEligibleCount({ status: activeStatus, certType, expiryBefore, search: debouncedSearch })
       .then((data) => {
         if (requestId !== eligibleCountRequestIdRef.current) return; // a newer request has since been issued — ignore this stale response
         setFilteredEligibleCount(data);
       })
       .catch(() => {});
-  }, [bulkModalOpen, emailBulkModalOpen, activeStatus, certType, expiryBefore]);
+  }, [bulkModalOpen, emailBulkModalOpen, activeStatus, certType, expiryBefore, debouncedSearch]);
 
   const certOptions = stats?.cert_types || [];
 
@@ -169,7 +169,9 @@ export default function App({ onLogout } = {}) {
 
   async function handleConfirmSendAll(scope) {
     try {
-      const filters = scope === "filtered" ? { status: activeStatus, certType, expiryBefore } : {};
+      const filters = scope === "filtered"
+        ? { status: activeStatus, certType, expiryBefore, search: debouncedSearch }
+        : {};
       const { job_id: jobId } = await sendAllAlerts(filters);
       setSendAllJob({ total: 0, sent: 0, skipped: 0, failed: 0, done: false });
       jobPollRef.current = setInterval(async () => {
@@ -211,7 +213,9 @@ export default function App({ onLogout } = {}) {
 
   async function handleConfirmSendAllEmails(scope) {
     try {
-      const filters = scope === "filtered" ? { status: activeStatus, certType, expiryBefore } : {};
+      const filters = scope === "filtered"
+        ? { status: activeStatus, certType, expiryBefore, search: debouncedSearch }
+        : {};
       const { job_id: jobId } = await sendAllEmailAlerts(filters);
       setSendAllEmailJob({ total: 0, sent: 0, skipped: 0, skipped_no_email: 0, failed: 0, done: false });
       emailJobPollRef.current = setInterval(async () => {

@@ -164,9 +164,12 @@ def run(
     status: str | None = None,
     cert_type: str | None = None,
     expiry_before: str | None = None,
+    search: str | None = None,
 ) -> list[dict]:
     today = today or datetime.now().strftime("%Y-%m-%d")
-    records = get_eligible_clients(db_path, status=status, cert_type=cert_type, expiry_before=expiry_before)
+    records = get_eligible_clients(
+        db_path, status=status, cert_type=cert_type, expiry_before=expiry_before, search=search,
+    )
     sent_log = load_sent_log(db_path)
     persist_log = not dry_run and not test_number
     log_dirty = False

@@ -190,6 +190,21 @@ def test_eligible_count_filters_by_cert_type(tmp_path, monkeypatch):
     assert response.json() == {"whatsapp": 1, "email": 1}
 
 
+def test_eligible_count_filters_by_search(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/eligible-count", params={"search": "BuildRight"})
+    assert response.json() == {"whatsapp": 1, "email": 1}
+
+
 def test_eligible_count_excludes_already_sent_today(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
@@ -239,6 +254,41 @@ def test_send_all_respects_cert_type_filter(tmp_path, monkeypatch):
     assert final["sent"] == 1
 
 
+def test_send_all_respects_search_filter(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-all", params={"search": "BuildRight"})
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["total"] == 1
+    assert final["sent"] == 1
+
+
 def test_send_all_emails_respects_cert_type_filter(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
@@ -259,6 +309,43 @@ def test_send_all_emails_respects_cert_type_filter(tmp_path, monkeypatch):
     })()
     with patch("email_alerts.requests.post", return_value=mock_response):
         start_response = client.post("/api/send-all-emails", params={"cert_type": "OSHA"})
+        assert start_response.status_code == 200
+        job_id = start_response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all-emails/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["total"] == 1
+    assert final["sent"] == 1
+
+
+def test_send_all_emails_respects_search_filter(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_SENDER", "sender@x.com")
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messageId": "brevo-1"},
+    })()
+    with patch("email_alerts.requests.post", return_value=mock_response):
+        start_response = client.post("/api/send-all-emails", params={"search": "BuildRight"})
         assert start_response.status_code == 200
         job_id = start_response.json()["job_id"]
 
