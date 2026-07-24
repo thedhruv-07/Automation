@@ -11,9 +11,9 @@ from pathlib import Path
 
 import requests
 
-from db import read_clients, load_email_sent_log, save_email_sent_log
+from db import get_eligible_clients, load_email_sent_log, save_email_sent_log
 from email_template import build_email_html
-from whatsapp_renewal_alerts import dedup_key, filter_alertable
+from whatsapp_renewal_alerts import dedup_key
 
 SCRIPT_DIR = Path(__file__).parent
 LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
@@ -162,9 +162,12 @@ def run_email_alerts(
     today: str | None = None,
     send_fn=send_email_via_brevo,
     on_progress=None,
+    status: str | None = None,
+    cert_type: str | None = None,
+    expiry_before: str | None = None,
 ) -> list[dict]:
     today = today or datetime.now().strftime("%Y-%m-%d")
-    records = filter_alertable(read_clients(db_path))
+    records = get_eligible_clients(db_path, status=status, cert_type=cert_type, expiry_before=expiry_before)
     sent_log = load_email_sent_log(db_path)
     persist_log = not dry_run and not test_email
     log_dirty = False
