@@ -127,4 +127,26 @@ describe("SendAllConfirmModal", () => {
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
     expect(document.activeElement).toBe(closeButton);
   });
+
+  it("shows email-specific text and a distinct testid when channel is 'email'", () => {
+    render(
+      <SendAllConfirmModal
+        open={true}
+        eligibleCount={5}
+        channel="email"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText(/Send a renewal email to all/)).toBeInTheDocument();
+    expect(screen.getByTestId("send-all-confirm-modal-email")).toBeInTheDocument();
+  });
+
+  it("defaults to WhatsApp text and testid when channel is omitted", () => {
+    render(
+      <SendAllConfirmModal open={true} eligibleCount={5} onConfirm={() => {}} onCancel={() => {}} />
+    );
+    expect(screen.getByText(/Send a real WhatsApp renewal alert to all/)).toBeInTheDocument();
+    expect(screen.getByTestId("send-all-confirm-modal-whatsapp")).toBeInTheDocument();
+  });
 });

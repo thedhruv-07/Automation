@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export default function SendConfirmModal({ client, onConfirm, onCancel }) {
+export default function SendConfirmModal({ client, channel = "whatsapp", onConfirm, onCancel }) {
   const [confirming, setConfirming] = useState(false);
   const cancelButtonRef = useRef(null);
   const confirmButtonRef = useRef(null);
@@ -52,8 +52,9 @@ export default function SendConfirmModal({ client, onConfirm, onCancel }) {
       <div className="bg-surface rounded-2xl shadow-xl p-6 max-w-sm w-full border border-line">
         <h3 id="send-confirm-title" className="text-lg font-bold text-ink-primary mb-2">Send renewal alert?</h3>
         <p className="text-sm text-ink-secondary mb-6">
-          Send a real WhatsApp renewal alert to <strong>{client.name}</strong> at{" "}
-          <strong>{client.company}</strong>?
+          {channel === "email"
+            ? <>Send a renewal email to <strong>{client.name}</strong> at <strong>{client.company}</strong>?</>
+            : <>Send a real WhatsApp renewal alert to <strong>{client.name}</strong> at <strong>{client.company}</strong>?</>}
         </p>
         <div className="flex justify-end gap-3">
           <button

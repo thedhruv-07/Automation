@@ -44,4 +44,27 @@ describe("SendConfirmModal", () => {
     fireEvent.click(confirmButton);
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
+
+  it("shows email-specific text when channel is 'email'", () => {
+    render(
+      <SendConfirmModal
+        client={{ name: "Rahul Sharma", company: "TechCorp" }}
+        channel="email"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText(/Send a renewal email/)).toBeInTheDocument();
+  });
+
+  it("defaults to WhatsApp text when channel is omitted", () => {
+    render(
+      <SendConfirmModal
+        client={{ name: "Rahul Sharma", company: "TechCorp" }}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText(/Send a real WhatsApp renewal alert/)).toBeInTheDocument();
+  });
 });

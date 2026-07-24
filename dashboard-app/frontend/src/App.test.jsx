@@ -76,7 +76,7 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => screen.getByText("Send Alert"));
     fireEvent.click(screen.getByText("Send All Eligible"));
-    expect(screen.getByTestId("send-all-confirm-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("send-all-confirm-modal-whatsapp")).toBeInTheDocument();
     expect(api.sendAllAlerts).not.toHaveBeenCalled();
   });
 
@@ -102,7 +102,7 @@ describe("App", () => {
     await waitFor(() => expect(api.getSendAllStatus).toHaveBeenCalledWith("job-1"));
     await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
     // The modal should have closed and the interval should be cleared — no further polling.
-    expect(screen.queryByTestId("send-all-confirm-modal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("send-all-confirm-modal-whatsapp")).not.toBeInTheDocument();
     const callsAfterError = api.getSendAllStatus.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(api.getSendAllStatus.mock.calls.length).toBe(callsAfterError);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, onCancel, job = null }) {
+export default function SendAllConfirmModal({ open, eligibleCount, channel = "whatsapp", onConfirm, onCancel, job = null }) {
   const [confirming, setConfirming] = useState(false);
   const cancelButtonRef = useRef(null);
   const confirmButtonRef = useRef(null);
@@ -71,7 +71,7 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
   return (
     <div
       className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50"
-      data-testid="send-all-confirm-modal"
+      data-testid={`send-all-confirm-modal-${channel}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="send-all-confirm-title"
@@ -117,8 +117,9 @@ export default function SendAllConfirmModal({ open, eligibleCount, onConfirm, on
         ) : (
           <>
             <p className="text-sm text-ink-secondary mb-6">
-              Send a real WhatsApp renewal alert to all <strong>{eligibleCount}</strong> eligible
-              client{eligibleCount === 1 ? "" : "s"} (Critical, Urgent, Due Soon, or Expired, not yet sent today)?
+              {channel === "email" ? "Send a renewal email" : "Send a real WhatsApp renewal alert"} to all{" "}
+              <strong>{eligibleCount}</strong> eligible client{eligibleCount === 1 ? "" : "s"} (Critical,
+              Urgent, Due Soon, or Expired, not yet {channel === "email" ? "emailed" : "sent"} today)?
             </p>
             <div className="flex justify-end gap-3">
               <button
