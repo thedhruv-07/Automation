@@ -35,9 +35,8 @@ from email_alerts import (  # noqa: E402
     send_email_via_brevo, send_one_email_alert, run_email_alerts,
 )
 from email_template import build_email_html  # noqa: E402
-from import_bis_isi_data import (  # noqa: E402
-    looks_like_bis_isi_workbook, import_bis_isi_workbook, RowCollector,
-)
+from import_helpers import RowCollector  # noqa: E402
+from import_formats import IMPORT_FORMATS  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -627,23 +626,25 @@ async def upload_clients(file: UploadFile = File(...)):
         stats = _upsert_clients_or_400(rows, mode="replace")
         return {"status": "ok", "row_count": stats["row_count"], "format": "roster"}
 
-    if looks_like_bis_isi_workbook(wb):
+    for format_name, detector, importer in IMPORT_FORMATS:
+        if not detector(wb):
+            continue
         collector = RowCollector()
-        bis_stats = import_bis_isi_workbook(wb, collector)
+        format_stats = importer(wb, collector)
         wb.close()
         tmp_path.unlink(missing_ok=True)
 
-        if bis_stats["rows_written"] == 0:
+        if format_stats["rows_written"] == 0:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Recognized this as a BIS ISI licence file, but no rows had both a "
-                    "licence number and a validity date to import."
+                    f"Recognized this as a {format_name} file, but no rows had both a "
+                    "required identifier and a validity date to import."
                 ),
             )
 
         stats = _upsert_clients_or_400(collector.rows, mode="replace")
-        return {"status": "ok", "row_count": stats["row_count"], "format": "bis_isi", "stats": bis_stats}
+        return {"status": "ok", "row_count": stats["row_count"], "format": format_name, "stats": format_stats}
 
     wb.close()
     tmp_path.unlink(missing_ok=True)
@@ -686,7 +687,7 @@ async def merge_clients(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Could not read the uploaded file as a valid .xlsx spreadsheet")
 
     actual_headers = list(header_row[: len(REQUIRED_HEADERS)]) if header_row else None
-    bis_stats = None
+    format_stats = None
 
     if actual_headers == REQUIRED_HEADERS:
         rows_iter = wb.active.iter_rows(values_only=True)
@@ -694,43 +695,50 @@ async def merge_clients(file: UploadFile = File(...)):
         new_rows = [tuple(row[:len(REQUIRED_HEADERS)]) for row in rows_iter if row and row[0] is not None]
         wb.close()
         upload_format = "roster"
-    elif looks_like_bis_isi_workbook(wb):
-        collector = RowCollector()
-        bis_stats = import_bis_isi_workbook(wb, collector)
-        new_rows = collector.rows
-        wb.close()
-        upload_format = "bis_isi"
-        if bis_stats["rows_written"] == 0:
-            tmp_path.unlink(missing_ok=True)
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Recognized this as a BIS ISI licence file, but no rows had both a "
-                    "licence number and a validity date to import."
-                ),
-            )
     else:
-        wb.close()
-        tmp_path.unlink(missing_ok=True)
-        if header_row is None:
+        new_rows = None
+        upload_format = None
+        for format_name, detector, importer in IMPORT_FORMATS:
+            if not detector(wb):
+                continue
+            collector = RowCollector()
+            format_stats = importer(wb, collector)
+            new_rows = collector.rows
+            wb.close()
+            upload_format = format_name
+            if format_stats["rows_written"] == 0:
+                tmp_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Recognized this as a {format_name} file, but no rows had both a "
+                        "required identifier and a validity date to import."
+                    ),
+                )
+            break
+
+        if new_rows is None:
+            wb.close()
+            tmp_path.unlink(missing_ok=True)
+            if header_row is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"The active sheet ('{active_title}') has no rows. If this file has "
+                        "multiple sheets, make sure the one with your client data is the sheet "
+                        "selected/visible when the file was last saved."
+                    ),
+                )
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    f"The active sheet ('{active_title}') has no rows. If this file has "
-                    "multiple sheets, make sure the one with your client data is the sheet "
-                    "selected/visible when the file was last saved."
-                ),
+                detail=f"Column headers don't match the expected format. Expected: {', '.join(REQUIRED_HEADERS)}",
             )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Column headers don't match the expected format. Expected: {', '.join(REQUIRED_HEADERS)}",
-        )
 
     tmp_path.unlink(missing_ok=True)
     stats = _upsert_clients_or_400(new_rows, mode="merge")
     return {
         "status": "ok", "row_count": stats["row_count"], "added": stats["added"],
-        "skipped_duplicates": stats["skipped_duplicates"], "format": upload_format, "stats": bis_stats,
+        "skipped_duplicates": stats["skipped_duplicates"], "format": upload_format, "stats": format_stats,
     }
 
 
