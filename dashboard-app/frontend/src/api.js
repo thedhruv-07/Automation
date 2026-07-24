@@ -63,8 +63,17 @@ export async function sendAlert(clientId) {
   return data;
 }
 
-export async function sendAllAlerts() {
-  const res = await fetch(`${API_BASE}/api/send-all`, {
+function scopeQueryString(params = {}) {
+  const query = new URLSearchParams();
+  if (params.status && params.status !== "ALL") query.set("status", params.status);
+  if (params.certType && params.certType !== "ALL") query.set("cert_type", params.certType);
+  if (params.expiryBefore) query.set("expiry_before", params.expiryBefore);
+  return query.toString();
+}
+
+export async function sendAllAlerts(params = {}) {
+  const qs = scopeQueryString(params);
+  const res = await fetch(`${API_BASE}${qs ? `/api/send-all?${qs}` : "/api/send-all"}`, {
     method: "POST", credentials: "include", headers: authHeaders(),
   });
   const data = await res.json().catch(() => ({}));
@@ -93,8 +102,9 @@ export async function sendEmailAlert(clientId) {
   return data;
 }
 
-export async function sendAllEmailAlerts() {
-  const res = await fetch(`${API_BASE}/api/send-all-emails`, {
+export async function sendAllEmailAlerts(params = {}) {
+  const qs = scopeQueryString(params);
+  const res = await fetch(`${API_BASE}${qs ? `/api/send-all-emails?${qs}` : "/api/send-all-emails"}`, {
     method: "POST", credentials: "include", headers: authHeaders(),
   });
   const data = await res.json().catch(() => ({}));
@@ -109,6 +119,15 @@ export async function getSendAllEmailsStatus(jobId) {
     credentials: "include", headers: authHeaders(),
   });
   if (!res.ok) throw new Error(`Failed to load send-all status: ${res.status}`);
+  return res.json();
+}
+
+export async function getEligibleCount(params = {}) {
+  const qs = scopeQueryString(params);
+  const res = await fetch(`${API_BASE}${qs ? `/api/eligible-count?${qs}` : "/api/eligible-count"}`, {
+    credentials: "include", headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to load eligible count: ${res.status}`);
   return res.json();
 }
 

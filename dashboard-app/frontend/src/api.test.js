@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getClients, sendAlert, sendAllAlerts, uploadClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
   getStats, getSendAllStatus, verifyCredentials,
-  sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus,
+  sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
 } from "./api";
 import { setStoredAuthHeader } from "./auth";
 
@@ -159,6 +159,15 @@ describe("sendAllAlerts", () => {
     );
   });
 
+  it("adds status/cert_type/expiry_before as query params when given", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
+    await sendAllAlerts({ status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/send-all?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31",
+      { method: "POST", credentials: "include", headers: {} }
+    );
+  });
+
   it("throws the backend's detail message on failure", async () => {
     global.fetch.mockResolvedValue({
       ok: false, status: 409,
@@ -241,6 +250,15 @@ describe("sendAllEmailAlerts", () => {
     expect(global.fetch).toHaveBeenCalledWith("/api/send-all-emails", { method: "POST", credentials: "include", headers: {} });
   });
 
+  it("adds status/cert_type/expiry_before as query params when given", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
+    await sendAllEmailAlerts({ status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/send-all-emails?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31",
+      { method: "POST", credentials: "include", headers: {} }
+    );
+  });
+
   it("throws the backend's detail message on failure", async () => {
     global.fetch.mockResolvedValue({
       ok: false, status: 409,
@@ -259,6 +277,29 @@ describe("getSendAllEmailsStatus", () => {
     const status = await getSendAllEmailsStatus("abc-123");
     expect(status).toEqual({ total: 5, sent: 2, skipped: 1, skipped_no_email: 0, failed: 0, done: false });
     expect(global.fetch).toHaveBeenCalledWith("/api/send-all-emails/status/abc-123", { credentials: "include", headers: {} });
+  });
+});
+
+describe("getEligibleCount", () => {
+  it("returns parsed JSON with no query string when no filters are given", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ whatsapp: 3, email: 2 }) });
+    const result = await getEligibleCount();
+    expect(result).toEqual({ whatsapp: 3, email: 2 });
+    expect(global.fetch).toHaveBeenCalledWith("/api/eligible-count", { credentials: "include", headers: {} });
+  });
+
+  it("passes status/cert_type/expiry_before as query params when given", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ whatsapp: 1, email: 1 }) });
+    await getEligibleCount({ status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/eligible-count?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31",
+      { credentials: "include", headers: {} }
+    );
+  });
+
+  it("throws when the response is not ok", async () => {
+    global.fetch.mockResolvedValue({ ok: false, status: 500 });
+    await expect(getEligibleCount()).rejects.toThrow("Failed to load eligible count: 500");
   });
 });
 
