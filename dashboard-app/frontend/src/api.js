@@ -82,6 +82,36 @@ export async function getSendAllStatus(jobId) {
   return res.json();
 }
 
+export async function sendEmailAlert(clientId) {
+  const res = await fetch(`${API_BASE}/api/send-email/${clientId}`, {
+    method: "POST", credentials: "include", headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || `Send failed: ${res.status}`);
+  }
+  return data;
+}
+
+export async function sendAllEmailAlerts() {
+  const res = await fetch(`${API_BASE}/api/send-all-emails`, {
+    method: "POST", credentials: "include", headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Send-all failed: ${res.status}`);
+  }
+  return data;
+}
+
+export async function getSendAllEmailsStatus(jobId) {
+  const res = await fetch(`${API_BASE}/api/send-all-emails/status/${jobId}`, {
+    credentials: "include", headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to load send-all status: ${res.status}`);
+  return res.json();
+}
+
 export function clientsExportUrl({ status, certType, expiryBefore, search } = {}) {
   const query = new URLSearchParams();
   if (status && status !== "ALL") query.set("status", status);

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getClients, sendAlert, sendAllAlerts, uploadClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
   getStats, getSendAllStatus, verifyCredentials,
+  sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus,
 } from "./api";
 import { setStoredAuthHeader } from "./auth";
 
@@ -206,6 +207,58 @@ describe("authenticated requests", () => {
       "/api/stats",
       { credentials: "include", headers: { Authorization: "Basic dGVzdDp0ZXN0" } }
     );
+  });
+});
+
+describe("sendEmailAlert", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "sent", message_id: "brevo-1" }),
+    });
+    const result = await sendEmailAlert("CLT001");
+    expect(result).toEqual({ status: "sent", message_id: "brevo-1" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/send-email/CLT001",
+      { method: "POST", credentials: "include", headers: {} }
+    );
+  });
+
+  it("throws the backend's detail message on failure", async () => {
+    global.fetch.mockResolvedValue({
+      ok: false, status: 400,
+      json: async () => ({ detail: "This client has no valid email on file" }),
+    });
+    await expect(sendEmailAlert("CLT005")).rejects.toThrow("This client has no valid email on file");
+  });
+});
+
+describe("sendAllEmailAlerts", () => {
+  it("returns a job id on success", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
+    const result = await sendAllEmailAlerts();
+    expect(result).toEqual({ job_id: "abc-123" });
+    expect(global.fetch).toHaveBeenCalledWith("/api/send-all-emails", { method: "POST", credentials: "include", headers: {} });
+  });
+
+  it("throws the backend's detail message on failure", async () => {
+    global.fetch.mockResolvedValue({
+      ok: false, status: 409,
+      json: async () => ({ detail: "A bulk email send is already in progress" }),
+    });
+    await expect(sendAllEmailAlerts()).rejects.toThrow("A bulk email send is already in progress");
+  });
+});
+
+describe("getSendAllEmailsStatus", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ total: 5, sent: 2, skipped: 1, skipped_no_email: 0, failed: 0, done: false }),
+    });
+    const status = await getSendAllEmailsStatus("abc-123");
+    expect(status).toEqual({ total: 5, sent: 2, skipped: 1, skipped_no_email: 0, failed: 0, done: false });
+    expect(global.fetch).toHaveBeenCalledWith("/api/send-all-emails/status/abc-123", { credentials: "include", headers: {} });
   });
 });
 
