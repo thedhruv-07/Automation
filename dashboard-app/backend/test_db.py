@@ -524,11 +524,35 @@ def test_init_db_migrates_pre_scheme_database_and_backfills_isi(tmp_path):
 
 
 def test_init_db_migration_does_not_overwrite_an_existing_scheme_value(tmp_path):
+    """Build a pre-migration table (no scheme column, same as the sibling
+    backfill test), let the first init_db() call add the column and backfill
+    to 'ISI', then explicitly set one row's scheme to a different value via
+    raw sqlite3 and call init_db() again. The second call must not clobber
+    that explicit value back to 'ISI' -- proving the backfill's
+    `WHERE scheme IS NULL` guard actually holds across repeated calls,
+    not just that a fresh scheme column defaults correctly once."""
     db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
-        ("CLT001", "Future Scheme Client", "Co", "c@x.com", "1", "FMCS-1", "FMCS", "FMCS-ID-1",
-         "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
-    ], mode="replace")
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE clients (
+            client_id TEXT PRIMARY KEY, name TEXT NOT NULL, company TEXT, email TEXT,
+            phone TEXT, cert_name TEXT, cert_id TEXT, issue_date TEXT, expiry_date TEXT,
+            expiry_date_iso TEXT, renewal_link TEXT, status TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO clients (client_id, name, cert_name, status) VALUES (?, ?, ?, ?)",
+        ("CLT001", "Future Scheme Client", "FMCS-1", "CRITICAL"),
+    )
+    conn.commit()
+    conn.close()
+
+    init_db(db_path)  # adds scheme column, backfills CLT001 to 'ISI'
+
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("UPDATE clients SET scheme = 'FMCS' WHERE client_id = 'CLT001'")
+    conn.commit()
+    conn.close()
 
     init_db(db_path)  # must not re-run the backfill over an already-set value
 
@@ -562,6 +586,11 @@ def test_get_eligible_clients_filters_by_scheme(tmp_path):
     # confirms the scheme filter and alert-eligibility both apply, not
     # either alone.
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT002", "CLT003", "CLT005"}
+    # The only FMCS row (CLT004) is ACTIVE and thus never alert-eligible
+    # regardless of scheme, so filtering to scheme="FMCS" must yield nothing --
+    # this proves the scheme filter itself has an effect, not just that
+    # alert-eligibility filtering still works.
+    assert get_eligible_clients(db_path, scheme="FMCS") == []
 
 
 def test_get_eligible_count_filters_by_scheme(tmp_path):
