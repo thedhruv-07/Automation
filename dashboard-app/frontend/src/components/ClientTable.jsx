@@ -25,7 +25,7 @@ const COLUMNS = [
 
 export default function ClientTable({
   page, loading, sortKey, sortAsc, onSort, onPageChange,
-  onSendClick, onSendSelected, onPreviewEmail, exportFilters = {},
+  onSendClick, onSendSelected, onPreviewEmail, onSendEmailClick, exportFilters = {},
 }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const { rows, total, page: currentPage, page_size: pageSize } = page;
@@ -158,7 +158,7 @@ export default function ClientTable({
                   </span>
                 </td>
                 <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {!ALERT_ELIGIBLE.has(c.status) ? (
                       <span className="text-ink-muted">—</span>
                     ) : c.alert_sent_today ? (
@@ -172,6 +172,17 @@ export default function ClientTable({
                         className="px-3 py-1 rounded-full text-xs font-semibold text-white bg-accent hover:bg-accent-dark transition-colors"
                       >
                         Send Alert
+                      </button>
+                    )}
+                    {ALERT_ELIGIBLE.has(c.status) && (
+                      <button
+                        type="button"
+                        onClick={() => onSendEmailClick(c)}
+                        disabled={!c.email || !c.email.includes("@")}
+                        title={!c.email || !c.email.includes("@") ? "No email on file" : undefined}
+                        className="px-3 py-1 rounded-full text-xs font-semibold border border-accent text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      >
+                        Send Email
                       </button>
                     )}
                     {c.email && (

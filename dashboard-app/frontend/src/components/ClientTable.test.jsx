@@ -143,4 +143,42 @@ describe("ClientTable", () => {
     );
     expect(screen.getByText("0 selected")).toBeInTheDocument();
   });
+
+  it("shows a Send Email button for an alert-eligible client with a valid email", () => {
+    render(
+      <ClientTable
+        page={pageOf([oneClient])} loading={false} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}} onSendEmailClick={() => {}}
+      />
+    );
+    expect(screen.getByText("Send Email")).toBeInTheDocument();
+  });
+
+  it("calls onSendEmailClick with the client when Send Email is clicked", () => {
+    const onSendEmailClick = vi.fn();
+    render(
+      <ClientTable
+        page={pageOf([oneClient])} loading={false} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}} onSendEmailClick={onSendEmailClick}
+      />
+    );
+    fireEvent.click(screen.getByText("Send Email"));
+    expect(onSendEmailClick).toHaveBeenCalledWith(expect.objectContaining({ client_id: "CLT001" }));
+  });
+
+  it("disables Send Email with a title tooltip when the client has no valid email", () => {
+    const noEmailClient = { ...oneClient, email: null };
+    render(
+      <ClientTable
+        page={pageOf([noEmailClient])} loading={false} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}} onSendEmailClick={() => {}}
+      />
+    );
+    const button = screen.getByText("Send Email").closest("button");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "No email on file");
+  });
 });
