@@ -10,7 +10,7 @@ client = TestClient(app)
 
 HEADERS = [
     "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
-    "Certification Name", "Certification ID", "Issue Date", "Expiry Date",
+    "Certification Name", "Scheme", "Certification ID", "Issue Date", "Expiry Date",
     "Renewal Link", "Status",
 ]
 
@@ -88,9 +88,9 @@ def test_get_clients_paginates_and_reports_total(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
-         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -107,9 +107,9 @@ def test_get_clients_merges_alert_sent_today(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
-         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
     ])
     record_sent(db_path, "CLT001", "CRITICAL", "2026-07-18", "wamid.ABC", "919876543210", "2026-07-18T10:00:00")
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
@@ -128,9 +128,9 @@ def test_get_clients_filters_by_status_param(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
         ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
-         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -145,7 +145,7 @@ def test_get_stats_returns_counts_and_cert_types(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -161,11 +161,11 @@ def test_eligible_count_returns_both_channels(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
         ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
-         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -179,9 +179,9 @@ def test_eligible_count_filters_by_cert_type(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -194,9 +194,9 @@ def test_eligible_count_filters_by_search(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -209,7 +209,7 @@ def test_eligible_count_excludes_already_sent_today(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     record_sent(db_path, "CLT001", "CRITICAL", "2026-07-18", "wamid.ABC", "919876543210", "2026-07-18T10:00:00")
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
@@ -219,13 +219,96 @@ def test_eligible_count_excludes_already_sent_today(tmp_path, monkeypatch):
     assert response.json() == {"whatsapp": 0, "email": 1}
 
 
+def test_get_clients_filters_by_scheme_param(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "FMCS-Cert", "FMCS", "FMCS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/clients", params={"scheme": "FMCS", "page_size": 50})
+    data = response.json()["rows"]
+    assert len(data) == 1
+    assert data[0]["client_id"] == "CLT002"
+
+
+def test_eligible_count_filters_by_scheme(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "FMCS-Cert", "FMCS", "FMCS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/eligible-count", params={"scheme": "FMCS"})
+    assert response.json() == {"whatsapp": 1, "email": 1}
+
+
+def test_send_all_respects_scheme_filter(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "FMCS-Cert", "FMCS", "FMCS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-all", params={"scheme": "FMCS"})
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["total"] == 1
+    assert final["sent"] == 1
+
+
+def test_export_clients_includes_scheme_column(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    response = client.get("/api/clients/export")
+    assert response.status_code == 200
+    lines = response.text.splitlines()
+    assert lines[0].split(",")[6] == "Scheme"
+    data_line = next(line for line in lines if "CLT001" in line)
+    assert data_line.split(",")[6] == "ISI"
+
+
 def test_send_all_respects_cert_type_filter(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
@@ -258,9 +341,9 @@ def test_send_all_respects_search_filter(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
@@ -293,9 +376,9 @@ def test_send_all_emails_respects_cert_type_filter(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -330,9 +413,9 @@ def test_send_all_emails_respects_search_filter(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -367,9 +450,9 @@ def test_export_clients_streams_csv_with_all_matching_rows(tmp_path, monkeypatch
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
@@ -385,7 +468,7 @@ def test_get_clients_rejects_out_of_range_pagination_params(tmp_path, monkeypatc
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
@@ -399,9 +482,9 @@ def test_get_clients_sort_dir_is_case_insensitive(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "B Name", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "A Name", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
@@ -429,7 +512,7 @@ def test_export_clients_escapes_leading_formula_characters(tmp_path, monkeypatch
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "=cmd|'/c calc'!A1", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
@@ -446,7 +529,7 @@ def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
@@ -490,7 +573,7 @@ def test_message_log_returns_entries_joined_with_client_data(tmp_path, monkeypat
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     record_sent(db_path, "CLT001", "CRITICAL", "2026-07-18", "wamid.OLD", "919876543210", "2026-07-18T10:00:00")
     record_sent(db_path, "CLT001", "CRITICAL", "2026-07-19", "wamid.NEW", "919876543210", "2026-07-19T10:00:00")
@@ -524,7 +607,7 @@ def _setup_one_client(tmp_path, monkeypatch, status="CRITICAL"):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", status],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", status],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -651,7 +734,7 @@ def test_send_all_starts_job_and_reports_progress(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
@@ -691,11 +774,11 @@ def test_send_all_reports_sent_for_all_alertable_statuses(tmp_path, monkeypatch)
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
         ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
-         "ISO 27001", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
@@ -728,7 +811,7 @@ def test_send_all_uses_dashboard_test_number_override(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
@@ -763,7 +846,7 @@ def test_send_all_job_reports_error_when_run_raises(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
@@ -799,7 +882,7 @@ def test_send_all_job_error_is_none_on_success(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
@@ -843,7 +926,7 @@ def test_send_all_missing_env_var_resets_bulk_in_progress_flag(tmp_path, monkeyp
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.delenv("WHATSAPP_TOKEN", raising=False)
@@ -918,7 +1001,7 @@ def test_upload_clients_success(tmp_path, monkeypatch):
     upload_path = tmp_path / "upload.xlsx"
     _write_xlsx(upload_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
 
     with open(upload_path, "rb") as f:
@@ -1073,14 +1156,14 @@ def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
-         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+         "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
 
     with open(upload_path, "rb") as f:
@@ -1103,14 +1186,14 @@ def test_upload_clients_rejects_blank_name_with_400_not_500(tmp_path, monkeypatc
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
-         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+         "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "blank_name.xlsx"
     _write_xlsx(upload_path, [
         ["CLT001", None, "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
 
     with open(upload_path, "rb") as f:
@@ -1132,14 +1215,14 @@ def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
-         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+         "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
 
     with open(upload_path, "rb") as f:
@@ -1164,16 +1247,16 @@ def test_merge_clients_skips_duplicate_client_ids(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma (old data)", "TechCorp", "old@x.com", "919999999999",
-         "ISO 9001", "ISO-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
         ["CLT001", "Rahul Sharma (new data)", "TechCorp", "new@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
 
     with open(upload_path, "rb") as f:
@@ -1198,7 +1281,7 @@ def test_merge_clients_converts_and_merges_raw_bis_isi_workbook(tmp_path, monkey
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["9512485121", "Existing Firm Name", "Existing Firm Name", "existing@x.com", None,
-         "IS 302 (Part 2 Sec 30)", "9512485121", None, "01-01-2026", None, "ACTIVE"],
+         "IS 302 (Part 2 Sec 30)", "ISI", "9512485121", None, "01-01-2026", None, "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
@@ -1237,7 +1320,7 @@ def test_merge_clients_into_empty_roster(tmp_path, monkeypatch):
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
 
     with open(upload_path, "rb") as f:
@@ -1260,16 +1343,16 @@ def test_merge_clients_rejects_blank_name_with_400_and_rolls_back_batch(tmp_path
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
-         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+         "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
         ["CLT002", None, "BuildRight", "p@x.com", "919812345678",
-         "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
     ])
 
     with open(upload_path, "rb") as f:
@@ -1300,14 +1383,14 @@ def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
-         "Old Cert", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
+         "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
     _write_xlsx(upload_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
 
     with open(upload_path, "rb") as f:
@@ -1329,7 +1412,7 @@ def _setup_one_email_client(tmp_path, monkeypatch, status="CRITICAL"):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", status],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", status],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
@@ -1369,7 +1452,7 @@ def test_send_email_no_email_on_file_returns_400(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
         ["CLT005", "No Email Co", "No Email Co", None, "919000000000",
-         "ISO 9001", "ISO-5", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-5", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("BREVO_API_KEY", "test-key")
