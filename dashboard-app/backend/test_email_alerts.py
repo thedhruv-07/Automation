@@ -8,11 +8,11 @@ from db import upsert_clients, save_email_sent_log
 from email_alerts import send_one_email_alert, run_email_alerts, send_email_via_brevo
 
 ROW_WITH_EMAIL = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-                    "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
+                    "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
 ROW_NO_EMAIL = ("CLT002", "Priya Mehta", "BuildRight", None, "919812345678",
-                 "OSHA", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
+                 "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
 ROW_INVALID_EMAIL = ("CLT003", "Amit Verma", "HealthFirst", "not-an-email", "919800000000",
-                       "ISO 9001", "ISO27-1", "01-01-2025", "10-09-2026", "https://x", "DUE SOON")
+                       "ISO 9001", "ISI", "ISO27-1", "01-01-2025", "10-09-2026", "https://x", "DUE SOON")
 
 
 def _record_dict(row):
@@ -147,6 +147,22 @@ def test_run_email_alerts_filters_by_search(tmp_path):
     assert len(results) == 1
     assert results[0]["client_id"] == "CLT002"
     assert results[0]["action"] == "skipped_no_email"  # ROW_NO_EMAIL has no email on file
+
+
+def test_run_email_alerts_filters_by_scheme(tmp_path):
+    db_path = tmp_path / "clients.db"
+    fmcs_row = ("CLT004", "Deepa Rao", "FreshFoods", "d@x.com", "919000000001",
+                "FMCS-Cert", "FMCS", "FMCS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
+    upsert_clients(db_path, [ROW_WITH_EMAIL, fmcs_row], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
+
+    results = run_email_alerts(
+        db_path, "api-key", "sender@x.com", "Absolute Veritas",
+        today="2026-07-17", send_fn=send_fn, scheme="FMCS",
+    )
+
+    assert len(results) == 1
+    assert results[0]["client_id"] == "CLT004"
 
 
 def test_send_email_via_brevo_success():
