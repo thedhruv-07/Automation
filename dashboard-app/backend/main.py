@@ -24,11 +24,14 @@ from datetime import datetime
 from db import (  # noqa: E402
     DEFAULT_DB_PATH, get_clients_page, get_stats, export_clients_rows,
     upsert_clients, find_client_by_id, load_sent_log, save_sent_log,
-    is_already_sent,
+    is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, dedup_key, filter_alertable, normalize_phone,
     send_one_alert, run,
+)
+from email_alerts import (  # noqa: E402
+    send_email_via_brevo, send_one_email_alert, run_email_alerts,
 )
 from email_template import build_email_html  # noqa: E402
 from import_bis_isi_data import (  # noqa: E402
@@ -69,6 +72,11 @@ _send_lock = threading.Lock()
 _pending_sends: set[str] = set()
 
 _bulk_in_progress = False
+
+_email_send_lock = threading.Lock()
+_pending_email_sends: set[str] = set()
+
+_email_bulk_in_progress = False
 
 REQUIRED_HEADERS = [
     "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
@@ -382,6 +390,143 @@ def send_all_alerts():
 @app.get("/api/send-all/status/{job_id}", dependencies=[Depends(require_auth)])
 def send_all_status(job_id: str):
     job = _send_all_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    return job
+
+
+@app.post("/api/send-email/{client_id}", dependencies=[Depends(require_auth)])
+def send_email(client_id: str):
+    today = _today_str()
+    record = find_client_by_id(DEFAULT_DB_PATH, client_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Unknown client_id: {client_id}")
+    if record["status"] not in ALERT_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Status {record['status']} is not alert-eligible",
+        )
+    if not record.get("email") or "@" not in record["email"]:
+        raise HTTPException(
+            status_code=400,
+            detail="This client has no valid email on file",
+        )
+
+    sent_log = load_email_sent_log(DEFAULT_DB_PATH)
+    key = dedup_key(record["client_id"], record["status"], today)
+    if key in sent_log:
+        raise HTTPException(
+            status_code=409,
+            detail="Email already sent today for this client/status",
+        )
+
+    with _email_send_lock:
+        if client_id in _pending_email_sends:
+            raise HTTPException(
+                status_code=409,
+                detail="An email send for this client is already in progress",
+            )
+        if _email_bulk_in_progress:
+            raise HTTPException(
+                status_code=409,
+                detail="A bulk email send is in progress; try again after it completes",
+            )
+        _pending_email_sends.add(client_id)
+
+    try:
+        brevo_api_key = os.environ["BREVO_API_KEY"]
+        email_sender = os.environ["EMAIL_SENDER"]
+        test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
+
+        result = send_one_email_alert(
+            record, sent_log, today, brevo_api_key, email_sender, "Absolute Veritas",
+            to_email_override=test_email,
+        )
+
+        if result["action"] == "sent":
+            if not test_email:
+                save_email_sent_log(DEFAULT_DB_PATH, sent_log)
+            return {"status": "sent", "message_id": result["message_id"]}
+        if result["action"] == "skipped_duplicate":
+            raise HTTPException(
+                status_code=409,
+                detail="Email already sent today for this client/status",
+            )
+        raise HTTPException(status_code=502, detail=result.get("error", "Unknown error"))
+    finally:
+        with _email_send_lock:
+            _pending_email_sends.discard(client_id)
+
+
+_send_all_email_jobs: dict[str, dict] = {}
+
+
+def _run_send_all_email_job(job_id, brevo_api_key, email_sender, test_email):
+    def progress(result, total):
+        job = _send_all_email_jobs[job_id]
+        job["total"] = total
+        if result["action"] == "sent":
+            job["sent"] += 1
+        elif result["action"] == "skipped_duplicate":
+            job["skipped"] += 1
+        elif result["action"] == "skipped_no_email":
+            job["skipped_no_email"] += 1
+        elif result["action"] == "failed":
+            job["failed"] += 1
+
+    try:
+        run_email_alerts(
+            DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
+            dry_run=False, test_email=test_email, on_progress=progress,
+        )
+    except Exception as exc:
+        _send_all_email_jobs[job_id]["error"] = str(exc)
+    finally:
+        _send_all_email_jobs[job_id]["done"] = True
+        global _email_bulk_in_progress
+        with _email_send_lock:
+            _email_bulk_in_progress = False
+
+
+@app.post("/api/send-all-emails", dependencies=[Depends(require_auth)])
+def send_all_emails():
+    global _email_bulk_in_progress
+    with _email_send_lock:
+        if _email_bulk_in_progress:
+            raise HTTPException(status_code=409, detail="A bulk email send is already in progress")
+        if _pending_email_sends:
+            raise HTTPException(
+                status_code=409,
+                detail="One or more per-client email sends are in progress; try again shortly",
+            )
+        _email_bulk_in_progress = True
+
+    try:
+        brevo_api_key = os.environ["BREVO_API_KEY"]
+        email_sender = os.environ["EMAIL_SENDER"]
+        test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
+
+        job_id = str(uuid.uuid4())
+        _send_all_email_jobs[job_id] = {
+            "total": 0, "sent": 0, "skipped": 0, "skipped_no_email": 0, "failed": 0,
+            "done": False, "error": None,
+        }
+        thread = threading.Thread(
+            target=_run_send_all_email_job,
+            args=(job_id, brevo_api_key, email_sender, test_email),
+            daemon=True,
+        )
+        thread.start()
+        return {"job_id": job_id}
+    except Exception:
+        with _email_send_lock:
+            _email_bulk_in_progress = False
+        raise HTTPException(status_code=500, detail="Server is not configured to send emails")
+
+
+@app.get("/api/send-all-emails/status/{job_id}", dependencies=[Depends(require_auth)])
+def send_all_emails_status(job_id: str):
+    job = _send_all_email_jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job

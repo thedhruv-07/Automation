@@ -1114,3 +1114,119 @@ def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
 
     backup_path = db_path.parent / "clients.backup.db"
     assert backup_path.exists()
+
+
+from db import load_email_sent_log, save_email_sent_log
+
+
+def _setup_one_email_client(tmp_path, monkeypatch, status="CRITICAL"):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISO-1", "01-01-2025", "24-07-2026", "https://x", status],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_SENDER", "sender@x.com")
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+    return db_path
+
+
+def test_send_email_success(tmp_path, monkeypatch):
+    db_path = _setup_one_email_client(tmp_path, monkeypatch)
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messageId": "brevo-1"},
+    })()
+    with patch("email_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-email/CLT001")
+    assert response.status_code == 200
+    assert response.json() == {"status": "sent", "message_id": "brevo-1"}
+    log = load_email_sent_log(db_path)
+    assert "CLT001|CRITICAL|2026-07-18" in log
+
+
+def test_send_email_unknown_client_returns_404(tmp_path, monkeypatch):
+    _setup_one_email_client(tmp_path, monkeypatch)
+    response = client.post("/api/send-email/NOPE")
+    assert response.status_code == 404
+
+
+def test_send_email_ineligible_status_returns_400(tmp_path, monkeypatch):
+    _setup_one_email_client(tmp_path, monkeypatch, status="ACTIVE")
+    response = client.post("/api/send-email/CLT001")
+    assert response.status_code == 400
+
+
+def test_send_email_no_email_on_file_returns_400(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT005", "No Email Co", "No Email Co", None, "919000000000",
+         "ISO 9001", "ISO-5", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_SENDER", "sender@x.com")
+    response = client.post("/api/send-email/CLT005")
+    assert response.status_code == 400
+    assert "email" in response.json()["detail"].lower()
+
+
+def test_send_email_duplicate_returns_409(tmp_path, monkeypatch):
+    db_path = _setup_one_email_client(tmp_path, monkeypatch)
+    save_email_sent_log(db_path, {
+        "CLT001|CRITICAL|2026-07-18": {"sent_at": "x", "message_id": "y", "email": "r@x.com"},
+    })
+    response = client.post("/api/send-email/CLT001")
+    assert response.status_code == 409
+
+
+def test_send_all_emails_starts_job_and_reports_progress(tmp_path, monkeypatch):
+    _setup_one_email_client(tmp_path, monkeypatch)
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messageId": "brevo-1"},
+    })()
+    with patch("email_alerts.requests.post", return_value=mock_response):
+        start_response = client.post("/api/send-all-emails")
+        assert start_response.status_code == 200
+        job_id = start_response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all-emails/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["sent"] == 1
+    assert final["total"] == 1
+
+
+def test_send_all_emails_status_returns_404_for_unknown_job():
+    response = client.get("/api/send-all-emails/status/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_send_all_emails_blocks_concurrent_calls(tmp_path, monkeypatch):
+    _setup_one_email_client(tmp_path, monkeypatch)
+    monkeypatch.setattr(main_module, "_email_bulk_in_progress", True)
+    response = client.post("/api/send-all-emails")
+    assert response.status_code == 409
+
+
+def test_send_all_emails_does_not_block_on_whatsapp_bulk_in_progress(tmp_path, monkeypatch):
+    """The two channels' bulk-send locks must be independent."""
+    _setup_one_email_client(tmp_path, monkeypatch)
+    monkeypatch.setattr(main_module, "_bulk_in_progress", True)  # WhatsApp's flag, not email's
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messageId": "brevo-1"},
+    })()
+    with patch("email_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-all-emails")
+    assert response.status_code == 200
