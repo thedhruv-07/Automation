@@ -108,6 +108,56 @@ describe("App", () => {
     expect(api.getSendAllStatus.mock.calls.length).toBe(callsAfterError);
   });
 
+  it("sends an email and shows a success toast after confirming", async () => {
+    api.sendEmailAlert.mockResolvedValue({ status: "sent", message_id: "brevo-1" });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Email"));
+    fireEvent.click(screen.getByText("Send Email"));
+    fireEvent.click(screen.getByText("Confirm Send"));
+    await waitFor(() => expect(api.sendEmailAlert).toHaveBeenCalledWith("CLT001"));
+    await waitFor(() => expect(screen.getByText("Emailed Rahul Sharma")).toBeInTheDocument());
+  });
+
+  it("does not send-all-emails until the bulk email confirmation modal is accepted", async () => {
+    api.getStats.mockResolvedValue({ ...sampleStats, eligible_not_emailed_today: 1 });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Email"));
+    fireEvent.click(screen.getByText("Send All Emails"));
+    expect(screen.getByTestId("send-all-confirm-modal-email")).toBeInTheDocument();
+    expect(api.sendAllEmailAlerts).not.toHaveBeenCalled();
+  });
+
+  it("sends all emails and shows a summary toast once the job finishes", async () => {
+    api.getStats.mockResolvedValue({ ...sampleStats, eligible_not_emailed_today: 1 });
+    api.sendAllEmailAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllEmailsStatus.mockResolvedValue({
+      total: 1, sent: 1, skipped: 0, skipped_no_email: 0, failed: 0, done: true,
+    });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Email"));
+    fireEvent.click(screen.getByText("Send All Emails"));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() => expect(api.sendAllEmailAlerts).toHaveBeenCalled());
+    await waitFor(() => expect(api.getSendAllEmailsStatus).toHaveBeenCalledWith("job-1"));
+    await waitFor(() => expect(screen.getByText(/1 sent, 0 skipped, 0 failed/)).toBeInTheDocument());
+  });
+
+  it("stops polling and shows an error toast if checking send-all-emails status fails", async () => {
+    api.getStats.mockResolvedValue({ ...sampleStats, eligible_not_emailed_today: 1 });
+    api.sendAllEmailAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllEmailsStatus.mockRejectedValue(new Error("Network error"));
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Email"));
+    fireEvent.click(screen.getByText("Send All Emails"));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() => expect(api.getSendAllEmailsStatus).toHaveBeenCalledWith("job-1"));
+    await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
+    expect(screen.queryByTestId("send-all-confirm-modal-email")).not.toBeInTheDocument();
+    const callsAfterError = api.getSendAllEmailsStatus.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(api.getSendAllEmailsStatus.mock.calls.length).toBe(callsAfterError);
+  });
+
   it("ignores a stale paginated response that resolves after a newer one for a changed filter", async () => {
     const manyClients = Array.from({ length: 16 }, (_, i) => ({
       client_id: `CLT${i}`, name: `Client ${i}`, company: "Co", email: "",

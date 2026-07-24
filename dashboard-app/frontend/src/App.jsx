@@ -16,6 +16,7 @@ import Toast from "./components/Toast";
 import {
   getClients, getStats, sendAlert, sendAllAlerts, getSendAllStatus, uploadClientsFile,
   mergeClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
+  sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus,
 } from "./api";
 
 const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
@@ -44,6 +45,9 @@ export default function App({ onLogout } = {}) {
   const [pendingSelected, setPendingSelected] = useState([]);
   const [bulkSelectedSending, setBulkSelectedSending] = useState(false);
   const [previewClientId, setPreviewClientId] = useState(null);
+  const [pendingEmailClient, setPendingEmailClient] = useState(null);
+  const [emailBulkModalOpen, setEmailBulkModalOpen] = useState(false);
+  const [sendAllEmailJob, setSendAllEmailJob] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), SEARCH_DEBOUNCE_MS);
@@ -126,6 +130,19 @@ export default function App({ onLogout } = {}) {
     }
   }
 
+  async function handleConfirmSendEmail() {
+    const client = pendingEmailClient;
+    setPendingEmailClient(null);
+    try {
+      await sendEmailAlert(client.client_id);
+      setToast({ type: "success", message: `Emailed ${client.name}` });
+      loadClients();
+      loadStats();
+    } catch (err) {
+      setToast({ type: "error", message: err.message });
+    }
+  }
+
   const eligibleCount = stats?.eligible_not_sent_today || 0;
   const jobPollRef = useRef(null);
 
@@ -165,6 +182,47 @@ export default function App({ onLogout } = {}) {
     if (jobPollRef.current) clearInterval(jobPollRef.current);
     setSendAllJob(null);
     setBulkModalOpen(false);
+  }
+
+  const eligibleEmailCount = stats?.eligible_not_emailed_today || 0;
+  const emailJobPollRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (emailJobPollRef.current) clearInterval(emailJobPollRef.current);
+    };
+  }, []);
+
+  async function handleConfirmSendAllEmails() {
+    try {
+      const { job_id: jobId } = await sendAllEmailAlerts();
+      setSendAllEmailJob({ total: 0, sent: 0, skipped: 0, skipped_no_email: 0, failed: 0, done: false });
+      emailJobPollRef.current = setInterval(async () => {
+        try {
+          const status = await getSendAllEmailsStatus(jobId);
+          setSendAllEmailJob(status);
+          if (status.done) {
+            clearInterval(emailJobPollRef.current);
+            loadClients();
+            loadStats();
+          }
+        } catch (err) {
+          clearInterval(emailJobPollRef.current);
+          setSendAllEmailJob(null);
+          setEmailBulkModalOpen(false);
+          setToast({ type: "error", message: err.message });
+        }
+      }, 500);
+    } catch (err) {
+      setEmailBulkModalOpen(false);
+      setToast({ type: "error", message: err.message });
+    }
+  }
+
+  function handleCloseSendAllEmailsModal() {
+    if (emailJobPollRef.current) clearInterval(emailJobPollRef.current);
+    setSendAllEmailJob(null);
+    setEmailBulkModalOpen(false);
   }
 
   async function handleConfirmSendSelected() {
@@ -277,6 +335,16 @@ export default function App({ onLogout } = {}) {
                 Send All Eligible
               </button>
             )}
+            {activeView === "clientData" && (
+              <button
+                type="button"
+                onClick={() => setEmailBulkModalOpen(true)}
+                disabled={(sendAllEmailJob !== null && !sendAllEmailJob.done) || eligibleEmailCount === 0}
+                className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+              >
+                Send All Emails
+              </button>
+            )}
           </div>
         </header>
 
@@ -330,6 +398,7 @@ export default function App({ onLogout } = {}) {
                 onSendClick={setPendingClient}
                 onSendSelected={bulkSelectedSending ? () => {} : setPendingSelected}
                 onPreviewEmail={setPreviewClientId}
+                onSendEmailClick={setPendingEmailClient}
                 exportFilters={{ status: activeStatus, certType, expiryBefore, search: debouncedSearch }}
               />
             </>
@@ -347,15 +416,31 @@ export default function App({ onLogout } = {}) {
 
       <SendConfirmModal
         client={pendingClient}
+        channel="whatsapp"
         onConfirm={handleConfirmSend}
         onCancel={() => setPendingClient(null)}
       />
       <SendAllConfirmModal
         open={bulkModalOpen}
         eligibleCount={eligibleCount}
+        channel="whatsapp"
         job={sendAllJob}
         onConfirm={handleConfirmSendAll}
         onCancel={sendAllJob ? handleCloseSendAllModal : () => setBulkModalOpen(false)}
+      />
+      <SendConfirmModal
+        client={pendingEmailClient}
+        channel="email"
+        onConfirm={handleConfirmSendEmail}
+        onCancel={() => setPendingEmailClient(null)}
+      />
+      <SendAllConfirmModal
+        open={emailBulkModalOpen}
+        eligibleCount={eligibleEmailCount}
+        channel="email"
+        job={sendAllEmailJob}
+        onConfirm={handleConfirmSendAllEmails}
+        onCancel={sendAllEmailJob ? handleCloseSendAllEmailsModal : () => setEmailBulkModalOpen(false)}
       />
       <SendSelectedConfirmModal
         clients={pendingSelected}
