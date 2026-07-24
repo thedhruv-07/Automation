@@ -29,6 +29,18 @@ describe("getClients", () => {
     global.fetch.mockResolvedValue({ ok: false, status: 500 });
     await expect(getClients({})).rejects.toThrow("Failed to load clients: 500");
   });
+
+  it("passes scheme as a query param when given", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ rows: [], total: 0, page: 1, page_size: 50 }),
+    });
+    await getClients({ scheme: "FMCS" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/clients?scheme=FMCS",
+      { credentials: "include", headers: {} }
+    );
+  });
 });
 
 describe("getStats", () => {
@@ -159,13 +171,13 @@ describe("sendAllAlerts", () => {
     );
   });
 
-  it("adds status/cert_type/expiry_before/search as query params when given", async () => {
+  it("adds status/cert_type/expiry_before/search/scheme as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
     await sendAllAlerts({
-      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight",
+      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
     });
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/send-all?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight",
+      "/api/send-all?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight&scheme=ISI",
       { method: "POST", credentials: "include", headers: {} }
     );
   });
@@ -252,13 +264,13 @@ describe("sendAllEmailAlerts", () => {
     expect(global.fetch).toHaveBeenCalledWith("/api/send-all-emails", { method: "POST", credentials: "include", headers: {} });
   });
 
-  it("adds status/cert_type/expiry_before/search as query params when given", async () => {
+  it("adds status/cert_type/expiry_before/search/scheme as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
     await sendAllEmailAlerts({
-      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight",
+      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
     });
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/send-all-emails?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight",
+      "/api/send-all-emails?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight&scheme=ISI",
       { method: "POST", credentials: "include", headers: {} }
     );
   });
@@ -292,13 +304,13 @@ describe("getEligibleCount", () => {
     expect(global.fetch).toHaveBeenCalledWith("/api/eligible-count", { credentials: "include", headers: {} });
   });
 
-  it("passes status/cert_type/expiry_before/search as query params when given", async () => {
+  it("passes status/cert_type/expiry_before/search/scheme as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ whatsapp: 1, email: 1 }) });
     await getEligibleCount({
-      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight",
+      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
     });
     expect(global.fetch).toHaveBeenCalledWith(
-      "/api/eligible-count?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight",
+      "/api/eligible-count?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight&scheme=ISI",
       { credentials: "include", headers: {} }
     );
   });
