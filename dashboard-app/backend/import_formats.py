@@ -12,7 +12,9 @@ changes needed -- both /api/upload-clients and /api/merge-clients loop over
 this list already.
 """
 from import_bis_isi_data import looks_like_bis_isi_workbook, import_bis_isi_workbook
+from import_crs import looks_like_crs_workbook, import_crs_workbook
 
 IMPORT_FORMATS = [
     ("bis_isi", looks_like_bis_isi_workbook, import_bis_isi_workbook),
+    ("crs", looks_like_crs_workbook, import_crs_workbook),
 ]

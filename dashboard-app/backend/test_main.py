@@ -1228,6 +1228,44 @@ def test_upload_clients_converts_single_sheet_bis_isi_workbook_with_standard_col
     assert rows["6298283"]["cert_name"] == "IS 10124 Part 2"
 
 
+def test_upload_clients_converts_raw_crs_workbook(tmp_path, monkeypatch):
+    """A raw BIS CRS registration export (govt column names, one sheet per
+    Indian Standard, no Client ID/Company columns) should be auto-detected
+    and converted into the roster schema, not rejected as a header mismatch."""
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    upload_path = tmp_path / "CRS Data.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "IS 13252"
+    ws.append(["Application No.", "License No.", "Organization Name", "Country", "Indian Standard",
+               "Product Name", "Product Category", "Grant Date", "Status", "E-mail", "Phone No."])
+    ws.append(["0846", "R-7019869", "Panache Digilife Limited", "India",
+               "Is 13252(Part 1):2010/ Iec 60950-1: 2005", "Notebook", "Laptop/Notebook/Tablet",
+               "2024-01-15", "Register", "jitendra.d@vardhamantechnology.com", "913322634755"])
+    wb.save(upload_path)
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("CRS Data.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["format"] == "crs"
+    assert body["row_count"] == 1
+    assert body["stats"]["rows_written"] == 1
+
+    rows = read_clients(db_path)
+    assert rows[0]["client_id"] == "R-7019869"
+    assert rows[0]["name"] == "Panache Digilife Limited"
+    assert rows[0]["scheme"] == "CRS"
+    assert rows[0]["cert_name"] == "Is 13252(Part 1):2010/ Iec 60950-1: 2005"
+
+
 def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
