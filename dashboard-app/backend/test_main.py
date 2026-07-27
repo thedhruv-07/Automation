@@ -1742,3 +1742,113 @@ def test_send_all_emails_does_not_block_on_whatsapp_bulk_in_progress(tmp_path, m
     with patch("email_alerts.requests.post", return_value=mock_response):
         response = client.post("/api/send-all-emails")
     assert response.status_code == 200
+
+
+def test_notices_list_includes_transition_facilitation_2026():
+    response = client.get("/api/notices")
+    assert response.status_code == 200
+    ids = {n["id"] for n in response.json()}
+    assert "transition_facilitation_2026" in ids
+
+
+def test_notice_eligible_count_unknown_notice_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+    response = client.get("/api/notices/does_not_exist/eligible-count")
+    assert response.status_code == 404
+
+
+def test_notice_eligible_count_reflects_scheme_filter(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    response = client.get("/api/notices/transition_facilitation_2026/eligible-count", params={"scheme": "CRS"})
+    assert response.status_code == 200
+    assert response.json() == {"whatsapp": 1, "email": 1}
+
+
+def test_send_notice_whatsapp_unknown_notice_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+    response = client.post("/api/notices/does_not_exist/send-whatsapp")
+    assert response.status_code == 404
+
+
+def test_send_notice_whatsapp_starts_job_and_reports_progress(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+    monkeypatch.setenv("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_NAME", "transition_notice_2026")
+    monkeypatch.setenv("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_LANG", "en")
+
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/notices/transition_facilitation_2026/send-whatsapp", params={"scheme": "CRS"})
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/notices/transition_facilitation_2026/send-whatsapp/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["sent"] == 1
+
+
+def test_send_notice_whatsapp_status_returns_404_for_unknown_job():
+    response = client.get("/api/notices/transition_facilitation_2026/send-whatsapp/status/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_send_notice_email_starts_job_and_reports_progress(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("BREVO_API_KEY", "key")
+    monkeypatch.setenv("EMAIL_SENDER", "sender@x.com")
+
+    mock_response = type("Resp", (), {
+        "status_code": 201,
+        "json": lambda self: {"messageId": "brevo-1"},
+    })()
+    with patch("email_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/notices/transition_facilitation_2026/send-email", params={"scheme": "CRS"})
+        assert response.status_code == 200
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/notices/transition_facilitation_2026/send-email/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["sent"] == 1
+
+
+def test_send_notice_email_status_returns_404_for_unknown_job():
+    response = client.get("/api/notices/transition_facilitation_2026/send-email/status/does-not-exist")
+    assert response.status_code == 404

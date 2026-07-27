@@ -25,7 +25,7 @@ from db import (  # noqa: E402
     DEFAULT_DB_PATH, get_clients_page, get_stats, export_clients_rows,
     upsert_clients, find_client_by_id, load_sent_log, save_sent_log,
     is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
-    get_eligible_count,
+    get_eligible_count, get_notice_eligible_count,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, dedup_key, filter_alertable, normalize_phone,
@@ -38,6 +38,8 @@ from email_template import build_email_html  # noqa: E402
 from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
 from import_formats import IMPORT_FORMATS, FORMAT_DISPLAY_NAMES  # noqa: E402
 from scheme_templates import get_email_content  # noqa: E402
+from notices import list_notices, get_notice_module  # noqa: E402
+from notice_sender import send_notice_whatsapp, send_notice_email  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -567,6 +569,172 @@ def send_all_emails(
 @app.get("/api/send-all-emails/status/{job_id}", dependencies=[Depends(require_auth)])
 def send_all_emails_status(job_id: str):
     job = _send_all_email_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    return job
+
+
+@app.get("/api/notices", dependencies=[Depends(require_auth)])
+def notices_list():
+    return list_notices()
+
+
+@app.get("/api/notices/{notice_id}/eligible-count", dependencies=[Depends(require_auth)])
+def notice_eligible_count(
+    notice_id: str, status: str = "", cert_type: str = "", expiry_before: str = "",
+    search: str = "", scheme: str = "",
+):
+    if get_notice_module(notice_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
+    return {
+        "whatsapp": get_notice_eligible_count(
+            DEFAULT_DB_PATH, notice_id, "whatsapp",
+            status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+            search=search or None, scheme=scheme or None,
+        ),
+        "email": get_notice_eligible_count(
+            DEFAULT_DB_PATH, notice_id, "email",
+            status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+            search=search or None, scheme=scheme or None,
+        ),
+    }
+
+
+_send_notice_jobs: dict[str, dict] = {}
+
+
+def _run_send_notice_whatsapp_job(
+    job_id, notice_id, token, phone_number_id, test_number,
+    status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
+):
+    def progress(result, total):
+        job = _send_notice_jobs[job_id]
+        job["total"] = total
+        if result["action"] == "sent":
+            job["sent"] += 1
+        elif result["action"] == "skipped_duplicate":
+            job["skipped"] += 1
+        elif result["action"] == "skipped_no_template":
+            job["skipped_no_template"] += 1
+        elif result["action"] == "failed":
+            job["failed"] += 1
+
+    try:
+        send_notice_whatsapp(
+            DEFAULT_DB_PATH, notice_id, token, phone_number_id,
+            dry_run=False, test_number=test_number, on_progress=progress,
+            status=status, cert_type=cert_type, expiry_before=expiry_before, search=search, scheme=scheme,
+        )
+    except Exception as exc:
+        _send_notice_jobs[job_id]["error"] = str(exc)
+    finally:
+        _send_notice_jobs[job_id]["done"] = True
+
+
+@app.post("/api/notices/{notice_id}/send-whatsapp", dependencies=[Depends(require_auth)])
+def send_notice_whatsapp_endpoint(
+    notice_id: str, status: str = "", cert_type: str = "", expiry_before: str = "",
+    search: str = "", scheme: str = "",
+):
+    if get_notice_module(notice_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
+    try:
+        token = os.environ["WHATSAPP_TOKEN"]
+        phone_number_id = os.environ["PHONE_NUMBER_ID"]
+        test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
+
+        job_id = str(uuid.uuid4())
+        _send_notice_jobs[job_id] = {
+            "total": 0, "sent": 0, "skipped": 0, "skipped_no_template": 0, "failed": 0,
+            "done": False, "error": None,
+        }
+        thread = threading.Thread(
+            target=_run_send_notice_whatsapp_job,
+            args=(
+                job_id, notice_id, token, phone_number_id, test_number,
+                status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
+            ),
+            daemon=True,
+        )
+        thread.start()
+        return {"job_id": job_id}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Server is not configured to send WhatsApp messages")
+
+
+@app.get("/api/notices/{notice_id}/send-whatsapp/status/{job_id}", dependencies=[Depends(require_auth)])
+def send_notice_whatsapp_status(notice_id: str, job_id: str):
+    job = _send_notice_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    return job
+
+
+_send_notice_email_jobs: dict[str, dict] = {}
+
+
+def _run_send_notice_email_job(
+    job_id, notice_id, brevo_api_key, email_sender, test_email,
+    status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
+):
+    def progress(result, total):
+        job = _send_notice_email_jobs[job_id]
+        job["total"] = total
+        if result["action"] == "sent":
+            job["sent"] += 1
+        elif result["action"] == "skipped_duplicate":
+            job["skipped"] += 1
+        elif result["action"] == "skipped_no_email":
+            job["skipped_no_email"] += 1
+        elif result["action"] == "failed":
+            job["failed"] += 1
+
+    try:
+        send_notice_email(
+            DEFAULT_DB_PATH, notice_id, brevo_api_key, email_sender, "Absolute Veritas",
+            dry_run=False, test_email=test_email, on_progress=progress,
+            status=status, cert_type=cert_type, expiry_before=expiry_before, search=search, scheme=scheme,
+        )
+    except Exception as exc:
+        _send_notice_email_jobs[job_id]["error"] = str(exc)
+    finally:
+        _send_notice_email_jobs[job_id]["done"] = True
+
+
+@app.post("/api/notices/{notice_id}/send-email", dependencies=[Depends(require_auth)])
+def send_notice_email_endpoint(
+    notice_id: str, status: str = "", cert_type: str = "", expiry_before: str = "",
+    search: str = "", scheme: str = "",
+):
+    if get_notice_module(notice_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
+    try:
+        brevo_api_key = os.environ["BREVO_API_KEY"]
+        email_sender = os.environ["EMAIL_SENDER"]
+        test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
+
+        job_id = str(uuid.uuid4())
+        _send_notice_email_jobs[job_id] = {
+            "total": 0, "sent": 0, "skipped": 0, "skipped_no_email": 0, "failed": 0,
+            "done": False, "error": None,
+        }
+        thread = threading.Thread(
+            target=_run_send_notice_email_job,
+            args=(
+                job_id, notice_id, brevo_api_key, email_sender, test_email,
+                status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
+            ),
+            daemon=True,
+        )
+        thread.start()
+        return {"job_id": job_id}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Server is not configured to send emails")
+
+
+@app.get("/api/notices/{notice_id}/send-email/status/{job_id}", dependencies=[Depends(require_auth)])
+def send_notice_email_status(notice_id: str, job_id: str):
+    job = _send_notice_email_jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job
