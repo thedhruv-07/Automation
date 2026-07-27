@@ -103,6 +103,7 @@ export default function SendAllConfirmModal({
             <p className="text-sm text-ink-secondary mb-3">
               {job.sent} sent, {job.skipped} skipped, {job.failed} failed
               {typeof job.skipped_no_email === "number" ? ` (${job.skipped_no_email} no email)` : ""}
+              {typeof job.skipped_no_template === "number" ? ` (${job.skipped_no_template} no template)` : ""}
               {job.total ? ` (of ${job.total})` : ""}
             </p>
             {job.error && (

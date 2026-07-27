@@ -150,6 +150,28 @@ describe("SendAllConfirmModal", () => {
     expect(screen.queryByText(/no email/)).not.toBeInTheDocument();
   });
 
+  it("shows the no-template skip count when job.skipped_no_template is a number", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 4, skipped: 1, skipped_no_template: 2, failed: 0, done: false }}
+      />
+    );
+    expect(screen.getByText(/4 sent, 1 skipped, 0 failed/)).toBeInTheDocument();
+    expect(screen.getByText(/2 no template/)).toBeInTheDocument();
+  });
+
+  it("omits the no-template skip count when job.skipped_no_template is absent (email job)", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} channel="email" onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 4, skipped: 1, skipped_no_email: 0, failed: 0, done: false }}
+      />
+    );
+    expect(screen.getByText(/4 sent, 1 skipped, 0 failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/no template/)).not.toBeInTheDocument();
+  });
+
   it("shows email-specific text and a distinct testid when channel is 'email'", () => {
     render(
       <SendAllConfirmModal
