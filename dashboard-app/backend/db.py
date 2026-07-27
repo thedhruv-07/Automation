@@ -70,6 +70,15 @@ CREATE TABLE IF NOT EXISTS email_sent_log (
     sent_at     TEXT NOT NULL,
     PRIMARY KEY (client_id, status, sent_date)
 );
+
+CREATE TABLE IF NOT EXISTS notice_sent_log (
+    client_id   TEXT NOT NULL,
+    notice_id   TEXT NOT NULL,
+    channel     TEXT NOT NULL,
+    message_id  TEXT,
+    sent_at     TEXT NOT NULL,
+    PRIMARY KEY (client_id, notice_id, channel)
+);
 """
 
 
@@ -395,6 +404,32 @@ def get_eligible_clients(
         conn.close()
 
 
+def get_broadcast_clients(
+    db_path, status: str | None = None, cert_type: str | None = None,
+    expiry_before: str | None = None, search: str | None = None,
+    scheme: str | None = None,
+) -> list[dict]:
+    """Every client matching the given filters, regardless of alert status --
+    used for one-time broadcast notices (see notices.py), which aren't about
+    any individual client's own renewal state, unlike get_eligible_clients.
+    _client_filters_where already treats `status` as an optional exact-match
+    filter on its own -- the ALERT_STATUSES restriction is something
+    get_eligible_clients adds on top of it, not something this function
+    needs. ORDER BY rowid pins insertion order the same way
+    get_eligible_clients does."""
+    conn = get_connection(db_path)
+    try:
+        where, params = _client_filters_where(status, cert_type, expiry_before, search, scheme)
+        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+        rows = conn.execute(
+            f"SELECT {', '.join(RECORD_FIELDS)} FROM clients {where_clause} ORDER BY rowid",
+            params,
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def get_eligible_count(
     db_path, today: str, channel: str, status: str | None = None,
     cert_type: str | None = None, expiry_before: str | None = None,
@@ -425,6 +460,32 @@ def get_eligible_count(
             )
             """,
             params + [today],
+        ).fetchone()[0]
+        return count
+    finally:
+        conn.close()
+
+
+def get_notice_eligible_count(
+    db_path, notice_id: str, channel: str, status: str | None = None,
+    cert_type: str | None = None, expiry_before: str | None = None,
+    search: str | None = None, scheme: str | None = None,
+) -> int:
+    """Counts clients matching the given filters (any status -- see
+    get_broadcast_clients) who haven't already received this notice via this
+    channel, per notice_sent_log -- used to show a live count for the
+    Notices page's audience before anything is sent."""
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        where, params = _client_filters_where(status, cert_type, expiry_before, search, scheme)
+        where.append(
+            "NOT EXISTS (SELECT 1 FROM notice_sent_log n "
+            "WHERE n.client_id = clients.client_id AND n.notice_id = ? AND n.channel = ?)"
+        )
+        params = params + [notice_id, channel]
+        count = conn.execute(
+            f"SELECT COUNT(*) FROM clients WHERE {' AND '.join(where)}", params,
         ).fetchone()[0]
         return count
     finally:
@@ -532,3 +593,30 @@ def save_email_sent_log(db_path, log: dict) -> None:
             db_path, client_id, status, sent_date,
             info.get("message_id"), info.get("email"), info.get("sent_at"),
         )
+
+
+def is_notice_already_sent(db_path, client_id, notice_id, channel) -> bool:
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM notice_sent_log WHERE client_id = ? AND notice_id = ? AND channel = ?",
+            (client_id, notice_id, channel),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def record_notice_sent(db_path, client_id, notice_id, channel, message_id, sent_at) -> None:
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO notice_sent_log (client_id, notice_id, channel, message_id, sent_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (client_id, notice_id, channel, message_id, sent_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()

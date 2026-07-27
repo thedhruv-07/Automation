@@ -396,6 +396,9 @@ def test_get_stats_eligible_not_emailed_today_excludes_already_emailed(tmp_path)
 
 
 from db import get_eligible_clients, get_eligible_count
+from db import (
+    is_notice_already_sent, record_notice_sent, get_broadcast_clients, get_notice_eligible_count,
+)
 
 
 def test_get_eligible_clients_excludes_active_by_default(tmp_path):
@@ -597,3 +600,87 @@ def test_get_eligible_count_filters_by_scheme(tmp_path):
     db_path = _seeded_db(tmp_path)
     assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", scheme="FMCS") == 0
     assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", scheme="ISI") == 4
+
+
+def test_init_db_creates_notice_sent_log_table(tmp_path):
+    db_path = tmp_path / "clients.db"
+    init_db(db_path)
+
+    conn = sqlite3.connect(str(db_path))
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    conn.close()
+    assert "notice_sent_log" in tables
+
+
+def test_record_and_check_notice_sent(tmp_path):
+    db_path = tmp_path / "clients.db"
+    init_db(db_path)
+
+    assert is_notice_already_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp") is False
+
+    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+
+    assert is_notice_already_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp") is True
+    # A different channel for the same client/notice is tracked independently.
+    assert is_notice_already_sent(db_path, "CLT001", "transition_facilitation_2026", "email") is False
+    # A different notice_id for the same client/channel is tracked independently.
+    assert is_notice_already_sent(db_path, "CLT001", "some_other_notice", "whatsapp") is False
+
+
+def test_get_broadcast_clients_returns_every_status(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+        ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
+    ], mode="replace")
+
+    records = get_broadcast_clients(db_path)
+
+    assert {r["client_id"] for r in records} == {"CLT001", "CLT002"}
+
+
+def test_get_broadcast_clients_honors_scheme_filter(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+        ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
+    ], mode="replace")
+
+    records = get_broadcast_clients(db_path, scheme="CRS")
+
+    assert {r["client_id"] for r in records} == {"CLT002"}
+
+
+def test_get_notice_eligible_count_excludes_already_sent(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+        ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
+    ], mode="replace")
+    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+
+    count = get_notice_eligible_count(db_path, "transition_facilitation_2026", "whatsapp", scheme="CRS")
+
+    assert count == 1
+
+
+def test_get_notice_eligible_count_is_independent_per_notice_and_channel(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+    ], mode="replace")
+    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+
+    # Already sent via whatsapp for this notice -- excluded.
+    assert get_notice_eligible_count(db_path, "transition_facilitation_2026", "whatsapp") == 0
+    # Not yet sent via email for this same notice -- still counted.
+    assert get_notice_eligible_count(db_path, "transition_facilitation_2026", "email") == 1
+    # Not yet sent (via any channel) for a different notice -- still counted.
+    assert get_notice_eligible_count(db_path, "some_other_notice", "whatsapp") == 1
