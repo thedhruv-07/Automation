@@ -205,7 +205,6 @@ def test_run_dry_run_makes_no_calls_and_no_log_writes(tmp_path):
 
     results = run(
         db_path=db_path, token="tok", phone_number_id="pid",
-        template_name="cert_renewal_alert", template_lang="en_US",
         dry_run=True, today="2026-07-17", send_fn=send_fn,
     )
 
@@ -232,7 +231,6 @@ def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path):
 
     results = run(
         db_path=db_path, token="tok", phone_number_id="pid",
-        template_name="cert_renewal_alert", template_lang="en_US",
         dry_run=True, today="2026-07-17", send_fn=send_fn,
     )
 
@@ -247,14 +245,12 @@ def test_run_live_sends_and_dedups_on_second_call(tmp_path):
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
     first = run(db_path=db_path, token="tok", phone_number_id="pid",
-                template_name="cert_renewal_alert", template_lang="en_US",
                 today="2026-07-17", send_fn=send_fn)
     assert first[0]["action"] == "sent"
     assert send_fn.call_count == 1
     assert "CLT001|CRITICAL|2026-07-17" in load_sent_log(db_path)
 
     second = run(db_path=db_path, token="tok", phone_number_id="pid",
-                 template_name="cert_renewal_alert", template_lang="en_US",
                  today="2026-07-17", send_fn=send_fn)
     assert second[0]["action"] == "skipped_duplicate"
     assert send_fn.call_count == 1
@@ -266,7 +262,6 @@ def test_run_test_number_overrides_phone_and_skips_log_write(tmp_path):
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
     results = run(db_path=db_path, token="tok", phone_number_id="pid",
-                  template_name="cert_renewal_alert", template_lang="en_US",
                   test_number="+919999999999", today="2026-07-17", send_fn=send_fn)
 
     assert results[0]["action"] == "sent"
@@ -280,7 +275,6 @@ def test_run_failed_send_does_not_write_log(tmp_path):
     send_fn = Mock(return_value=(False, {"error": "Invalid parameter"}))
 
     results = run(db_path=db_path, token="tok", phone_number_id="pid",
-                  template_name="cert_renewal_alert", template_lang="en_US",
                   today="2026-07-17", send_fn=send_fn)
 
     assert results[0]["action"] == "failed"
@@ -307,7 +301,6 @@ def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path)
     send_fn = Mock(return_value=(True, {"message_id": "wamid.NEW"}))
 
     results = run(db_path=db_path, token="tok", phone_number_id="pid",
-                  template_name="cert_renewal_alert", template_lang="en_US",
                   today="2026-07-17", send_fn=send_fn)
 
     assert results[0]["action"] == "skipped_duplicate"
@@ -333,7 +326,6 @@ def test_run_filters_by_cert_type(tmp_path):
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
     results = run(db_path=db_path, token="tok", phone_number_id="pid",
-                  template_name="cert_renewal_alert", template_lang="en_US",
                   today="2026-07-17", send_fn=send_fn, cert_type="OSHA")
 
     assert len(results) == 1
@@ -353,7 +345,6 @@ def test_run_filters_by_search(tmp_path):
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
     results = run(db_path=db_path, token="tok", phone_number_id="pid",
-                  template_name="cert_renewal_alert", template_lang="en_US",
                   today="2026-07-17", send_fn=send_fn, search="BuildRight")
 
     assert len(results) == 1
@@ -373,7 +364,6 @@ def test_run_filters_by_scheme(tmp_path):
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
     results = run(db_path=db_path, token="tok", phone_number_id="pid",
-                  template_name="cert_renewal_alert", template_lang="en_US",
                   today="2026-07-17", send_fn=send_fn, scheme="FMCS")
 
     assert len(results) == 1
@@ -393,7 +383,6 @@ def test_run_calls_on_progress_for_each_record(tmp_path):
 
     run(
         db_path=db_path, token="tok", phone_number_id="pid",
-        template_name="cert_renewal_alert", template_lang="en_US",
         today="2026-07-17", send_fn=send_fn,
         on_progress=lambda result, total: progress_calls.append((result["action"], total)),
     )
@@ -416,7 +405,6 @@ def test_run_survives_raising_on_progress_and_still_persists_sent_log(tmp_path):
 
     results = run(
         db_path=db_path, token="tok", phone_number_id="pid",
-        template_name="cert_renewal_alert", template_lang="en_US",
         today="2026-07-17", send_fn=send_fn,
         on_progress=flaky_on_progress,
     )
@@ -436,7 +424,7 @@ from whatsapp_renewal_alerts import send_one_alert
 def test_send_one_alert_success_updates_log_in_place():
     record = {
         "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
-        "cert_name": "ISO 9001", "cert_id": "ISO-1",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1", "scheme": "ISI",
         "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
     }
     sent_log = {}
@@ -445,8 +433,7 @@ def test_send_one_alert_success_updates_log_in_place():
         return True, {"message_id": "wamid.ABC"}
 
     result = send_one_alert(
-        record, sent_log, "2026-07-18", "tok", "pid123",
-        "cert_renewal_alert", "en", send_fn=fake_send,
+        record, sent_log, "2026-07-18", "tok", "pid123", send_fn=fake_send,
     )
 
     assert result == {
@@ -460,7 +447,7 @@ def test_send_one_alert_success_updates_log_in_place():
 def test_send_one_alert_skips_when_already_in_log():
     record = {
         "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
-        "cert_name": "ISO 9001", "cert_id": "ISO-1",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1", "scheme": "ISI",
         "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
     }
     sent_log = {"CLT001|CRITICAL|2026-07-18": {"message_id": "wamid.OLD"}}
@@ -469,8 +456,7 @@ def test_send_one_alert_skips_when_already_in_log():
         raise AssertionError("should not be called when already sent")
 
     result = send_one_alert(
-        record, sent_log, "2026-07-18", "tok", "pid123",
-        "cert_renewal_alert", "en", send_fn=fake_send,
+        record, sent_log, "2026-07-18", "tok", "pid123", send_fn=fake_send,
     )
 
     assert result == {
@@ -482,7 +468,7 @@ def test_send_one_alert_skips_when_already_in_log():
 def test_send_one_alert_uses_override_phone_and_reports_failure():
     record = {
         "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
-        "cert_name": "ISO 9001", "cert_id": "ISO-1",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1", "scheme": "ISI",
         "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
     }
     sent_log = {}
@@ -492,8 +478,7 @@ def test_send_one_alert_uses_override_phone_and_reports_failure():
 
     result = send_one_alert(
         record, sent_log, "2026-07-18", "tok", "pid123",
-        "cert_renewal_alert", "en", to_phone_override="919000000000",
-        send_fn=fake_send,
+        to_phone_override="919000000000", send_fn=fake_send,
     )
 
     assert result == {
@@ -501,6 +486,71 @@ def test_send_one_alert_uses_override_phone_and_reports_failure():
         "action": "failed", "to": "919000000000", "error": "Invalid parameter",
     }
     assert sent_log == {}
+
+
+def test_run_resolves_template_per_record_in_mixed_scheme_batch(tmp_path, monkeypatch):
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_NAME_CRS", "crs_renewal_alert")
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_LANG_CRS", "en")
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
+         "https://x/renew?id=ISO-1", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "11-08-2026",
+         "https://x/renew?id=CRS-1", "URGENT"],
+    ])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    results = run(db_path=db_path, token="tok", phone_number_id="pid",
+                  today="2026-07-17", send_fn=send_fn)
+
+    assert [r["action"] for r in results] == ["sent", "sent"]
+    isi_payload, crs_payload = (call.args[0] for call in send_fn.call_args_list)
+    assert isi_payload["template"]["name"] == "cert_renewal_alert"
+    assert crs_payload["template"]["name"] == "crs_renewal_alert"
+
+
+def test_run_skips_records_when_scheme_has_no_configured_template(tmp_path, monkeypatch):
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_NAME_CRS", raising=False)
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_LANG_CRS", raising=False)
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "11-08-2026",
+         "https://x/renew?id=CRS-1", "URGENT"],
+    ])
+    send_fn = Mock()
+
+    results = run(db_path=db_path, token="tok", phone_number_id="pid",
+                  today="2026-07-17", send_fn=send_fn)
+
+    assert results[0]["action"] == "skipped_no_template"
+    send_fn.assert_not_called()
+    assert load_sent_log(db_path) == {}
+
+
+def test_send_one_alert_skips_when_scheme_has_no_configured_template(monkeypatch):
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_NAME_CRS", raising=False)
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_LANG_CRS", raising=False)
+    record = {
+        "client_id": "CLT002", "name": "Priya Mehta", "company": "BuildRight",
+        "cert_name": "CRS-Cert", "cert_id": "CRS-1", "scheme": "CRS",
+        "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919812345678",
+    }
+    sent_log = {}
+
+    def fake_send(payload, token, phone_number_id):
+        raise AssertionError("should not be called when scheme has no configured template")
+
+    result = send_one_alert(
+        record, sent_log, "2026-07-18", "tok", "pid123", send_fn=fake_send,
+    )
+
+    assert result == {
+        "client_id": "CLT002", "name": "Priya Mehta", "status": "CRITICAL",
+        "action": "skipped_no_template", "to": "919812345678",
+    }
 
 
 from whatsapp_renewal_alerts import parse_args
@@ -538,6 +588,12 @@ def test_format_result_line_skipped():
     result = {"action": "skipped_duplicate", "client_id": "CLT001",
               "name": "Rahul Sharma", "status": "CRITICAL"}
     assert format_result_line(result) == "⏭ SKIP | CLT001 Rahul Sharma | CRITICAL"
+
+
+def test_format_result_line_skipped_no_template():
+    result = {"action": "skipped_no_template", "client_id": "CLT001",
+              "name": "Rahul Sharma", "status": "CRITICAL"}
+    assert format_result_line(result) == "⏭ SKIP (no template) | CLT001 Rahul Sharma | CRITICAL"
 
 
 def test_append_text_log_writes_lines(tmp_path):

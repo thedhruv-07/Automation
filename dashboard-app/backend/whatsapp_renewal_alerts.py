@@ -42,6 +42,7 @@ from db import (  # noqa: E402
     DEFAULT_DB_PATH, read_clients, find_client_by_id, load_sent_log, save_sent_log,
     RECORD_FIELDS, get_eligible_clients,
 )
+from scheme_templates import get_whatsapp_template  # noqa: E402
 
 ALERT_STATUSES = {"CRITICAL", "URGENT", "DUE SOON", "EXPIRED"}
 
@@ -102,14 +103,13 @@ def send_one_alert(
     today: str,
     token: str,
     phone_number_id: str,
-    template_name: str,
-    template_lang: str,
     to_phone_override: str | None = None,
     send_fn=send_message,
 ) -> dict:
-    """Send (or skip if already sent today) one alert-eligible client's WhatsApp
-    renewal message. Mutates sent_log in place on a successful send. Returns a
-    result dict with action one of 'sent' / 'skipped_duplicate' / 'failed'."""
+    """Send (or skip) one alert-eligible client's WhatsApp renewal message.
+    Mutates sent_log in place on a successful send. Returns a result dict
+    with action one of 'sent' / 'skipped_duplicate' / 'skipped_no_template' /
+    'failed'."""
     key = dedup_key(record["client_id"], record["status"], today)
     to_phone = (
         normalize_phone(to_phone_override) if to_phone_override
@@ -122,6 +122,15 @@ def send_one_alert(
             "status": record["status"], "action": "skipped_duplicate",
             "to": to_phone,
         }
+
+    template = get_whatsapp_template(record["scheme"])
+    if template is None:
+        return {
+            "client_id": record["client_id"], "name": record["name"],
+            "status": record["status"], "action": "skipped_no_template",
+            "to": to_phone,
+        }
+    template_name, template_lang = template
 
     try:
         payload = build_payload(record, to_phone, template_name, template_lang)
@@ -154,8 +163,6 @@ def run(
     db_path,
     token: str,
     phone_number_id: str,
-    template_name: str,
-    template_lang: str,
     dry_run: bool = False,
     test_number: str | None = None,
     today: str | None = None,
@@ -187,21 +194,29 @@ def run(
                 "status": rec["status"], "action": "skipped_duplicate",
                 "to": to_phone,
             }
-        elif dry_run:
-            payload = build_payload(rec, to_phone, template_name, template_lang)
-            result = {
-                "client_id": rec["client_id"], "name": rec["name"],
-                "status": rec["status"], "action": "dry_run",
-                "to": to_phone, "payload": payload,
-            }
         else:
-            result = send_one_alert(
-                rec, sent_log, today, token, phone_number_id,
-                template_name, template_lang,
-                to_phone_override=test_number, send_fn=send_fn,
-            )
-            if result["action"] == "sent":
-                log_dirty = True
+            template = get_whatsapp_template(rec["scheme"])
+            if template is None:
+                result = {
+                    "client_id": rec["client_id"], "name": rec["name"],
+                    "status": rec["status"], "action": "skipped_no_template",
+                    "to": to_phone,
+                }
+            elif dry_run:
+                template_name, template_lang = template
+                payload = build_payload(rec, to_phone, template_name, template_lang)
+                result = {
+                    "client_id": rec["client_id"], "name": rec["name"],
+                    "status": rec["status"], "action": "dry_run",
+                    "to": to_phone, "payload": payload,
+                }
+            else:
+                result = send_one_alert(
+                    rec, sent_log, today, token, phone_number_id,
+                    to_phone_override=test_number, send_fn=send_fn,
+                )
+                if result["action"] == "sent":
+                    log_dirty = True
 
         results.append(result)
         if on_progress:
@@ -235,6 +250,7 @@ def parse_args(argv=None):
 
 def format_result_line(result: dict) -> str:
     icons = {"sent": "✅ SENT", "skipped_duplicate": "⏭ SKIP",
+              "skipped_no_template": "⏭ SKIP (no template)",
               "failed": "❌ FAIL", "dry_run": "🧪 DRY-RUN"}
     label = icons[result["action"]]
     line = f"{label} | {result['client_id']} {result['name']} | {result['status']}"
@@ -266,15 +282,10 @@ def main(argv=None) -> int:
         print("❌ WHATSAPP_TOKEN and PHONE_NUMBER_ID must be set in .env (not required for --dry-run).")
         return 1
 
-    template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
-    template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
-
     results = run(
         db_path=args.db,
         token=token,
         phone_number_id=phone_number_id,
-        template_name=template_name,
-        template_lang=template_lang,
         dry_run=args.dry_run,
         test_number=args.test_number,
     )
@@ -287,9 +298,13 @@ def main(argv=None) -> int:
 
     sent = sum(1 for r in results if r["action"] == "sent")
     skipped = sum(1 for r in results if r["action"] == "skipped_duplicate")
+    skipped_no_template = sum(1 for r in results if r["action"] == "skipped_no_template")
     failed = sum(1 for r in results if r["action"] == "failed")
     dry = sum(1 for r in results if r["action"] == "dry_run")
-    print(f"\nSummary: {sent} sent, {skipped} skipped (duplicate), {failed} failed, {dry} dry-run.")
+    print(
+        f"\nSummary: {sent} sent, {skipped} skipped (duplicate), "
+        f"{skipped_no_template} skipped (no template), {failed} failed, {dry} dry-run."
+    )
     return 0
 
 
