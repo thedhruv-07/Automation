@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import requests
 
 from db import upsert_clients, save_email_sent_log
-from email_alerts import send_one_email_alert, run_email_alerts, send_email_via_brevo
+from email_alerts import send_one_email_alert, run_email_alerts, send_email_via_brevo, post_email_via_brevo
 
 ROW_WITH_EMAIL = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
                     "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
@@ -219,6 +219,18 @@ def test_send_email_via_brevo_network_error():
 
     assert ok is False
     assert "boom" in info["error"]
+
+
+def test_post_email_via_brevo_success():
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-9"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        ok, info = post_email_via_brevo({"subject": "Test"}, "api-key")
+
+    assert ok is True
+    assert info == {"message_id": "brevo-msg-9"}
+    mock_post.assert_called_once()
 
 
 def test_send_email_via_brevo_success_status_with_malformed_body_still_reports_sent():

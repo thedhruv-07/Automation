@@ -38,6 +38,38 @@ def _is_valid_email(value) -> bool:
     return bool(value) and "@" in str(value)
 
 
+def post_email_via_brevo(payload: dict, brevo_api_key: str) -> tuple[bool, dict]:
+    """Low-level Brevo transactional email API call, shared by
+    send_email_via_brevo (renewal alerts) and notice_sender.py's notice
+    email sending -- the two build very different payload content, but the
+    HTTP call and response handling is identical. Returns (success,
+    info_dict) matching whatsapp_renewal_alerts.send_message()'s contract."""
+    headers = {
+        "api-key": brevo_api_key,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    try:
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15,
+        )
+    except requests.RequestException as exc:
+        return False, {"error": str(exc)}
+
+    if response.status_code in (200, 201):
+        try:
+            data = response.json()
+            return True, {"message_id": data.get("messageId")}
+        except ValueError:
+            return True, {"message_id": None}
+
+    try:
+        error_message = response.json().get("message", response.text)
+    except ValueError:
+        error_message = response.text
+    return False, {"error": error_message}
+
+
 def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_name: str, to_email: str):
     """Builds the HTML (same build_email_html() the preview endpoint uses) and
     sends via Brevo's transactional email API. Returns (success, info_dict)
@@ -72,30 +104,7 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
     if logo_exists:
         logo_b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
         payload["attachment"] = [{"name": LOGO_CID, "content": logo_b64}]
-    headers = {
-        "api-key": brevo_api_key,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-    try:
-        response = requests.post(
-            "https://api.brevo.com/v3/smtp/email", json=payload, headers=headers, timeout=15,
-        )
-    except requests.RequestException as exc:
-        return False, {"error": str(exc)}
-
-    if response.status_code in (200, 201):
-        try:
-            data = response.json()
-            return True, {"message_id": data.get("messageId")}
-        except ValueError:
-            return True, {"message_id": None}
-
-    try:
-        error_message = response.json().get("message", response.text)
-    except ValueError:
-        error_message = response.text
-    return False, {"error": error_message}
+    return post_email_via_brevo(payload, brevo_api_key)
 
 
 def send_one_email_alert(
