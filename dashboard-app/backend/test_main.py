@@ -1085,9 +1085,12 @@ def test_upload_clients_success(tmp_path, monkeypatch):
             "/api/upload-clients",
             files={"file": ("clients.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "row_count": 1, "format": "roster"}
+    assert response.json() == {
+        "status": "ok", "row_count": 1, "format": "roster", "stats": {"rows_written": 1},
+    }
     assert db_path.exists()
     assert read_clients(db_path)[0]["client_id"] == "CLT001"
 
@@ -1098,6 +1101,7 @@ def test_upload_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
     response = client.post(
         "/api/upload-clients",
         files={"file": ("clients.csv", b"not,a,real,xlsx", "text/csv")},
+        data={"import_format": "roster"},
     )
     assert response.status_code == 400
 
@@ -1118,6 +1122,7 @@ def test_upload_clients_rejects_wrong_headers(tmp_path, monkeypatch):
             "/api/upload-clients",
             files={"file": ("bad.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 400
     assert not db_path.exists()
@@ -1144,9 +1149,78 @@ def test_upload_clients_rejects_empty_active_sheet_with_clear_message(tmp_path, 
             "/api/upload-clients",
             files={"file": ("multi_sheet.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 400
     assert "EmptyActive" in response.json()["detail"]
+    assert not db_path.exists()
+
+
+def test_upload_clients_rejects_unknown_format(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    upload_path = tmp_path / "clients.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("clients.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "fmcs"},
+        )
+    assert response.status_code == 400
+    assert "fmcs" in response.json()["detail"].lower()
+
+
+def test_upload_clients_missing_format_returns_422(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    upload_path = tmp_path / "clients.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("clients.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+    assert response.status_code == 422
+
+
+def test_upload_clients_selected_crs_but_file_is_roster_gives_targeted_error(tmp_path, monkeypatch):
+    """Selecting the wrong format for a real file must name what the
+    selected format actually needed, not the old generic
+    "doesn't match any format" message -- proves the new per-format
+    dispatch replaced the old cascade rather than just adding to it."""
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    upload_path = tmp_path / "clients.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("clients.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "crs"},
+        )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "CRS" in detail
+    assert "License No." in detail
     assert not db_path.exists()
 
 
@@ -1173,6 +1247,7 @@ def test_upload_clients_converts_raw_bis_isi_workbook(tmp_path, monkeypatch):
             "/api/upload-clients",
             files={"file": ("BIS ISI Data.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "bis_isi"},
         )
     assert response.status_code == 200
     body = response.json()
@@ -1214,6 +1289,7 @@ def test_upload_clients_converts_single_sheet_bis_isi_workbook_with_standard_col
             "/api/upload-clients",
             files={"file": ("BIS_Final_Edited_Master_File.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "bis_isi"},
         )
     assert response.status_code == 200
     body = response.json()
@@ -1251,6 +1327,7 @@ def test_upload_clients_converts_raw_crs_workbook(tmp_path, monkeypatch):
             "/api/upload-clients",
             files={"file": ("CRS Data.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "crs"},
         )
     assert response.status_code == 200
     body = response.json()
@@ -1285,6 +1362,7 @@ def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
             "/api/upload-clients",
             files={"file": ("new.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 200
 
@@ -1315,6 +1393,7 @@ def test_upload_clients_rejects_blank_name_with_400_not_500(tmp_path, monkeypatc
             "/api/upload-clients",
             files={"file": ("blank_name.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 400
     assert "invalid" in response.json()["detail"].lower()
@@ -1344,12 +1423,13 @@ def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch):
             "/api/merge-clients",
             files={"file": ("new.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 200
     body = response.json()
     assert body == {
         "status": "ok", "row_count": 2, "added": 1, "skipped_duplicates": 0,
-        "format": "roster", "stats": None,
+        "format": "roster", "stats": {"rows_written": 1},
     }
 
     rows = read_clients(db_path)
@@ -1378,6 +1458,7 @@ def test_merge_clients_skips_duplicate_client_ids(tmp_path, monkeypatch):
             "/api/merge-clients",
             files={"file": ("new.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 200
     body = response.json()
@@ -1413,6 +1494,7 @@ def test_merge_clients_converts_and_merges_raw_bis_isi_workbook(tmp_path, monkey
             "/api/merge-clients",
             files={"file": ("BIS ISI Data.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "bis_isi"},
         )
     assert response.status_code == 200
     body = response.json()
@@ -1442,6 +1524,7 @@ def test_merge_clients_into_empty_roster(tmp_path, monkeypatch):
             "/api/merge-clients",
             files={"file": ("new.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 200
     body = response.json()
@@ -1474,6 +1557,7 @@ def test_merge_clients_rejects_blank_name_with_400_and_rolls_back_batch(tmp_path
             "/api/merge-clients",
             files={"file": ("new.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 400
     assert "invalid" in response.json()["detail"].lower()
@@ -1489,8 +1573,32 @@ def test_merge_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
     response = client.post(
         "/api/merge-clients",
         files={"file": ("data.csv", b"not,a,spreadsheet", "text/csv")},
+        data={"import_format": "roster"},
     )
     assert response.status_code == 400
+
+
+def test_merge_clients_selected_bis_isi_but_file_is_roster_gives_targeted_error(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    upload_path = tmp_path / "clients.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/merge-clients",
+            files={"file": ("clients.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "bis_isi"},
+        )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "BIS ISI" in detail
+    assert "Firm Name" in detail
 
 
 def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
@@ -1512,6 +1620,7 @@ def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
             "/api/merge-clients",
             files={"file": ("new.xlsx", f,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
         )
     assert response.status_code == 200
 

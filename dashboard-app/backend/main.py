@@ -14,7 +14,7 @@ import uuid
 
 import openpyxl
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, File, Query, UploadFile, status
+from fastapi import Depends, FastAPI, Form, HTTPException, File, Query, UploadFile, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -35,8 +35,8 @@ from email_alerts import (  # noqa: E402
     send_email_via_brevo, send_one_email_alert, run_email_alerts,
 )
 from email_template import build_email_html  # noqa: E402
-from import_helpers import RowCollector  # noqa: E402
-from import_formats import IMPORT_FORMATS  # noqa: E402
+from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
+from import_formats import IMPORT_FORMATS, FORMAT_DISPLAY_NAMES  # noqa: E402
 from scheme_templates import get_email_content  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
@@ -78,12 +78,6 @@ _email_send_lock = threading.Lock()
 _pending_email_sends: set[str] = set()
 
 _email_bulk_in_progress = False
-
-REQUIRED_HEADERS = [
-    "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
-    "Certification Name", "Scheme", "Certification ID", "Issue Date", "Expiry Date",
-    "Renewal Link", "Status",
-]
 
 # Mirrors the hardcoded day cutoffs in cert_automation.py (CRITICAL <= 7 days,
 # URGENT <= 30 days). That script is intentionally untouched by this project,
@@ -613,9 +607,14 @@ def _upsert_clients_or_400(rows, mode):
 
 
 @app.post("/api/upload-clients", dependencies=[Depends(require_auth)])
-async def upload_clients(file: UploadFile = File(...)):
+async def upload_clients(file: UploadFile = File(...), import_format: str = Form(...)):
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
+
+    format_entry = next((f for f in IMPORT_FORMATS if f[0] == import_format), None)
+    if format_entry is None:
+        raise HTTPException(status_code=400, detail=f"Unknown format {import_format!r}.")
+    _, detector, importer, expected_columns = format_entry
 
     contents = await file.read()
     tmp_path = DEFAULT_DB_PATH.parent / "_upload_tmp.xlsx"
@@ -632,40 +631,9 @@ async def upload_clients(file: UploadFile = File(...)):
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="Could not read the uploaded file as a valid .xlsx spreadsheet")
 
-    actual_headers = list(header_row[: len(REQUIRED_HEADERS)]) if header_row else None
-
-    if actual_headers == REQUIRED_HEADERS:
-        rows_iter = wb.active.iter_rows(values_only=True)
-        next(rows_iter)
-        rows = [tuple(row[:len(REQUIRED_HEADERS)]) for row in rows_iter if row and row[0] is not None]
-        wb.close()
-        tmp_path.unlink(missing_ok=True)
-        stats = _upsert_clients_or_400(rows, mode="replace")
-        return {"status": "ok", "row_count": stats["row_count"], "format": "roster"}
-
-    for format_name, detector, importer in IMPORT_FORMATS:
-        if not detector(wb):
-            continue
-        collector = RowCollector()
-        format_stats = importer(wb, collector)
-        wb.close()
-        tmp_path.unlink(missing_ok=True)
-
-        if format_stats["rows_written"] == 0:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Recognized this as a {format_name} file, but no rows had both a "
-                    "required identifier and a validity date to import."
-                ),
-            )
-
-        stats = _upsert_clients_or_400(collector.rows, mode="replace")
-        return {"status": "ok", "row_count": stats["row_count"], "format": format_name, "stats": format_stats}
-
-    wb.close()
-    tmp_path.unlink(missing_ok=True)
     if header_row is None:
+        wb.close()
+        tmp_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=400,
             detail=(
@@ -674,19 +642,46 @@ async def upload_clients(file: UploadFile = File(...)):
                 "selected/visible when the file was last saved."
             ),
         )
-    raise HTTPException(
-        status_code=400,
-        detail=f"Column headers don't match the expected format. Expected: {', '.join(REQUIRED_HEADERS)}",
-    )
+
+    if not detector(wb):
+        wb.close()
+        tmp_path.unlink(missing_ok=True)
+        display_name = FORMAT_DISPLAY_NAMES.get(import_format, import_format)
+        raise HTTPException(
+            status_code=400,
+            detail=f"This doesn't look like a valid {display_name} export — expected {expected_columns}.",
+        )
+
+    collector = RowCollector()
+    format_stats = importer(wb, collector)
+    wb.close()
+    tmp_path.unlink(missing_ok=True)
+
+    if format_stats["rows_written"] == 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Recognized this as a {import_format} file, but no rows had both a "
+                "required identifier and a validity date to import."
+            ),
+        )
+
+    stats = _upsert_clients_or_400(collector.rows, mode="replace")
+    return {"status": "ok", "row_count": stats["row_count"], "format": import_format, "stats": format_stats}
 
 
 @app.post("/api/merge-clients", dependencies=[Depends(require_auth)])
-async def merge_clients(file: UploadFile = File(...)):
+async def merge_clients(file: UploadFile = File(...), import_format: str = Form(...)):
     """Adds rows from the uploaded spreadsheet to the existing roster instead
     of replacing it. Client IDs already present in the roster are left
     untouched — only genuinely new Client IDs get appended."""
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
+
+    format_entry = next((f for f in IMPORT_FORMATS if f[0] == import_format), None)
+    if format_entry is None:
+        raise HTTPException(status_code=400, detail=f"Unknown format {import_format!r}.")
+    _, detector, importer, expected_columns = format_entry
 
     contents = await file.read()
     tmp_path = DEFAULT_DB_PATH.parent / "_merge_upload_tmp.xlsx"
@@ -703,59 +698,45 @@ async def merge_clients(file: UploadFile = File(...)):
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="Could not read the uploaded file as a valid .xlsx spreadsheet")
 
-    actual_headers = list(header_row[: len(REQUIRED_HEADERS)]) if header_row else None
-    format_stats = None
-
-    if actual_headers == REQUIRED_HEADERS:
-        rows_iter = wb.active.iter_rows(values_only=True)
-        next(rows_iter)  # header
-        new_rows = [tuple(row[:len(REQUIRED_HEADERS)]) for row in rows_iter if row and row[0] is not None]
+    if header_row is None:
         wb.close()
-        upload_format = "roster"
-    else:
-        new_rows = None
-        upload_format = None
-        for format_name, detector, importer in IMPORT_FORMATS:
-            if not detector(wb):
-                continue
-            collector = RowCollector()
-            format_stats = importer(wb, collector)
-            new_rows = collector.rows
-            wb.close()
-            upload_format = format_name
-            if format_stats["rows_written"] == 0:
-                tmp_path.unlink(missing_ok=True)
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Recognized this as a {format_name} file, but no rows had both a "
-                        "required identifier and a validity date to import."
-                    ),
-                )
-            break
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"The active sheet ('{active_title}') has no rows. If this file has "
+                "multiple sheets, make sure the one with your client data is the sheet "
+                "selected/visible when the file was last saved."
+            ),
+        )
 
-        if new_rows is None:
-            wb.close()
-            tmp_path.unlink(missing_ok=True)
-            if header_row is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"The active sheet ('{active_title}') has no rows. If this file has "
-                        "multiple sheets, make sure the one with your client data is the sheet "
-                        "selected/visible when the file was last saved."
-                    ),
-                )
-            raise HTTPException(
-                status_code=400,
-                detail=f"Column headers don't match the expected format. Expected: {', '.join(REQUIRED_HEADERS)}",
-            )
+    if not detector(wb):
+        wb.close()
+        tmp_path.unlink(missing_ok=True)
+        display_name = FORMAT_DISPLAY_NAMES.get(import_format, import_format)
+        raise HTTPException(
+            status_code=400,
+            detail=f"This doesn't look like a valid {display_name} export — expected {expected_columns}.",
+        )
 
+    collector = RowCollector()
+    format_stats = importer(wb, collector)
+    wb.close()
     tmp_path.unlink(missing_ok=True)
-    stats = _upsert_clients_or_400(new_rows, mode="merge")
+
+    if format_stats["rows_written"] == 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Recognized this as a {import_format} file, but no rows had both a "
+                "required identifier and a validity date to import."
+            ),
+        )
+
+    stats = _upsert_clients_or_400(collector.rows, mode="merge")
     return {
         "status": "ok", "row_count": stats["row_count"], "added": stats["added"],
-        "skipped_duplicates": stats["skipped_duplicates"], "format": upload_format, "stats": format_stats,
+        "skipped_duplicates": stats["skipped_duplicates"], "format": import_format, "stats": format_stats,
     }
 
 
