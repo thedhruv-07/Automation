@@ -31,6 +31,13 @@ describe("Sidebar", () => {
     expect(onNavigate).toHaveBeenCalledWith("whatsappSettings");
   });
 
+  it("calls onNavigate for Notices", () => {
+    const onNavigate = vi.fn();
+    render(<Sidebar activeView="dashboard" onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByText("Notices"));
+    expect(onNavigate).toHaveBeenCalledWith("notices");
+  });
+
   it("marks the active view's nav item with aria-current", () => {
     render(<Sidebar activeView="clientData" onNavigate={() => {}} />);
     expect(screen.getByText("Client Data").closest("button")).toHaveAttribute("aria-current", "page");

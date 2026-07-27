@@ -8,6 +8,7 @@ import ClientTable from "./components/ClientTable";
 import ExcelSyncView from "./components/ExcelSyncView";
 import MessageLogView from "./components/MessageLogView";
 import WhatsAppSettingsView from "./components/WhatsAppSettingsView";
+import NoticesView from "./components/NoticesView";
 import SendConfirmModal from "./components/SendConfirmModal";
 import SendAllConfirmModal from "./components/SendAllConfirmModal";
 import SendSelectedConfirmModal from "./components/SendSelectedConfirmModal";
@@ -17,6 +18,7 @@ import {
   getClients, getStats, sendAlert, sendAllAlerts, getSendAllStatus, uploadClientsFile,
   mergeClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
+  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus,
 } from "./api";
 
 const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
@@ -438,6 +440,16 @@ export default function App({ onLogout } = {}) {
           {activeView === "messageLog" && <MessageLogView fetchLog={getMessageLog} />}
 
           {activeView === "whatsappSettings" && <WhatsAppSettingsView fetchInfo={getSettingsInfo} />}
+
+          {activeView === "notices" && (
+            <NoticesView
+              listNotices={listNotices}
+              getNoticeEligibleCount={getNoticeEligibleCount}
+              sendNotice={sendNotice}
+              getNoticeSendStatus={getNoticeSendStatus}
+              schemeOptions={schemeOptions}
+            />
+          )}
         </main>
       </div>
 
