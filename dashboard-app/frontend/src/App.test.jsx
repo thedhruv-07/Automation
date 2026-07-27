@@ -297,9 +297,10 @@ describe("App", () => {
 
     const file = new File(["dummy"], "clients.xlsx");
     fireEvent.change(screen.getByLabelText("Upload client spreadsheet"), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("Import format"), { target: { value: "roster" } });
     fireEvent.click(screen.getByText("Upload and Replace Client Data"));
 
-    await waitFor(() => expect(api.uploadClientsFile).toHaveBeenCalledWith(file));
+    await waitFor(() => expect(api.uploadClientsFile).toHaveBeenCalledWith(file, "roster"));
     await waitFor(() => expect(screen.getByText("Imported 7 clients.")).toBeInTheDocument());
     expect(api.getClients).toHaveBeenCalledTimes(2);
   });
@@ -314,9 +315,10 @@ describe("App", () => {
 
     const file = new File(["dummy"], "clients.xlsx");
     fireEvent.change(screen.getByLabelText("Upload client spreadsheet"), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("Import format"), { target: { value: "roster" } });
     fireEvent.click(screen.getByText("Upload and Merge with Existing Data"));
 
-    await waitFor(() => expect(api.mergeClientsFile).toHaveBeenCalledWith(file));
+    await waitFor(() => expect(api.mergeClientsFile).toHaveBeenCalledWith(file, "roster"));
     await waitFor(() =>
       expect(screen.getByText("Merged — added 2 new clients, skipped 1 already on file (9 total).")).toBeInTheDocument()
     );

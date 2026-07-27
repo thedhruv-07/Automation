@@ -277,9 +277,9 @@ export default function App({ onLogout } = {}) {
     setBulkSelectedSending(false);
   }
 
-  async function handleUploadClients(file) {
+  async function handleUploadClients(file, importFormat) {
     try {
-      const result = await uploadClientsFile(file);
+      const result = await uploadClientsFile(file, importFormat);
       setToast({
         type: "success",
         message: `Imported ${result.row_count} client${result.row_count === 1 ? "" : "s"}.`,
@@ -293,9 +293,9 @@ export default function App({ onLogout } = {}) {
     }
   }
 
-  async function handleMergeClients(file) {
+  async function handleMergeClients(file, importFormat) {
     try {
-      const result = await mergeClientsFile(file);
+      const result = await mergeClientsFile(file, importFormat);
       setToast({
         type: "success",
         message: `Merged — added ${result.added} new client${result.added === 1 ? "" : "s"}, `
