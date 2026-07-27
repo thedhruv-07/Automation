@@ -13,6 +13,7 @@ import requests
 
 from db import get_eligible_clients, load_email_sent_log, save_email_sent_log
 from email_template import build_email_html
+from scheme_templates import get_email_content
 from whatsapp_renewal_alerts import dedup_key
 
 SCRIPT_DIR = Path(__file__).parent
@@ -51,11 +52,12 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
 
     logo_exists = LOGO_PATH.exists()
     logo_src = f"cid:{LOGO_CID}" if logo_exists else ""
+    subject_template, intro_text = get_email_content(rec["scheme"])
     html = build_email_html(
         template_rec, org_name=org_name, org_website="", org_contact="",
-        org_email="cs@absoluteveritas.com", logo_src=logo_src,
+        org_email="cs@absoluteveritas.com", logo_src=logo_src, intro_text=intro_text,
     )
-    subject = f"[Action Required] Renew {rec['cert_name']} — {rec['company']}"
+    subject = subject_template.format(cert_name=rec["cert_name"], company=rec["company"])
 
     payload = {
         "sender": {"name": org_name, "email": email_sender},

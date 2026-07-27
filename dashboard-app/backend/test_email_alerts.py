@@ -179,7 +179,24 @@ def test_send_email_via_brevo_success():
     assert mock_post.call_args.args[0] == "https://api.brevo.com/v3/smtp/email"
     payload = mock_post.call_args.kwargs["json"]
     assert payload["to"] == [{"email": "r@x.com", "name": "Rahul Sharma"}]
-    assert payload["subject"] == "[Action Required] Renew ISO 9001 — TechCorp"
+    assert payload["subject"] == "Renew ISO 9001 — TechCorp"
+
+
+def test_send_email_via_brevo_uses_scheme_specific_subject_and_intro(monkeypatch):
+    monkeypatch.setenv("EMAIL_SUBJECT_TEMPLATE_CRS", "Registration renewal: {cert_name}")
+    monkeypatch.setenv("EMAIL_INTRO_TEXT_CRS", "Your CRS registration for <strong>{company}</strong> needs renewal.")
+    crs_row = ("CLT004", "Deepa Rao", "FreshFoods", "d@x.com", "919000000001",
+               "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
+    record = _record_dict(crs_row)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-2"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="d@x.com")
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["subject"] == "Registration renewal: CRS-Cert"
+    assert "Your CRS registration for <strong>FreshFoods</strong> needs renewal." in payload["htmlContent"]
 
 
 def test_send_email_via_brevo_api_error():
