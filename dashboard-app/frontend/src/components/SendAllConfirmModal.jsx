@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 export default function SendAllConfirmModal({
   open, eligibleCount, filteredCount = 0, channel = "whatsapp", onConfirm, onCancel, job = null,
+  noticeLabel = null, singleScope = false,
 }) {
   const [confirming, setConfirming] = useState(false);
   const [scope, setScope] = useState("all");
@@ -78,12 +79,12 @@ export default function SendAllConfirmModal({
 
   if (!open) return null;
 
-  const selectedCount = scope === "filtered" ? filteredCount : eligibleCount;
+  const selectedCount = singleScope ? filteredCount : (scope === "filtered" ? filteredCount : eligibleCount);
 
   function handleConfirmClick() {
     if (confirming) return;
     setConfirming(true);
-    onConfirm(scope);
+    onConfirm(singleScope ? undefined : scope);
   }
 
   return (
@@ -96,7 +97,7 @@ export default function SendAllConfirmModal({
     >
       <div className="bg-surface rounded-2xl shadow-xl p-6 max-w-sm w-full border border-line">
         <h3 id="send-all-confirm-title" className="text-lg font-bold text-ink-primary mb-2">
-          Send bulk renewal alerts?
+          {noticeLabel ? `Send "${noticeLabel}"?` : "Send bulk renewal alerts?"}
         </h3>
         {job ? (
           <div className="mb-2">
@@ -137,30 +138,38 @@ export default function SendAllConfirmModal({
         ) : (
           <>
             <p className="text-sm text-ink-secondary mb-3">
-              {channel === "email" ? "Send a renewal email" : "Send a real WhatsApp renewal alert"} to:
+              {noticeLabel
+                ? `Send "${noticeLabel}" via ${channel === "email" ? "email" : "WhatsApp"}`
+                : (channel === "email" ? "Send a renewal email" : "Send a real WhatsApp renewal alert")} to:
             </p>
-            <div className="mb-6 space-y-2">
-              <label className="flex items-center gap-2 text-sm text-ink-primary">
-                <input
-                  ref={scopeAllRadioRef}
-                  type="radio"
-                  name="send-all-scope"
-                  checked={scope === "all"}
-                  onChange={() => setScope("all")}
-                />
-                All eligible clients (<strong>{eligibleCount}</strong>)
-              </label>
-              <label className="flex items-center gap-2 text-sm text-ink-primary">
-                <input
-                  ref={scopeFilteredRadioRef}
-                  type="radio"
-                  name="send-all-scope"
-                  checked={scope === "filtered"}
-                  onChange={() => setScope("filtered")}
-                />
-                Currently filtered view (<strong>{filteredCount}</strong>)
-              </label>
-            </div>
+            {singleScope ? (
+              <p className="text-sm text-ink-secondary mb-6">
+                {`${filteredCount} client${filteredCount === 1 ? "" : "s"} matching your current filters.`}
+              </p>
+            ) : (
+              <div className="mb-6 space-y-2">
+                <label className="flex items-center gap-2 text-sm text-ink-primary">
+                  <input
+                    ref={scopeAllRadioRef}
+                    type="radio"
+                    name="send-all-scope"
+                    checked={scope === "all"}
+                    onChange={() => setScope("all")}
+                  />
+                  All eligible clients (<strong>{eligibleCount}</strong>)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-ink-primary">
+                  <input
+                    ref={scopeFilteredRadioRef}
+                    type="radio"
+                    name="send-all-scope"
+                    checked={scope === "filtered"}
+                    onChange={() => setScope("filtered")}
+                  />
+                  Currently filtered view (<strong>{filteredCount}</strong>)
+                </label>
+              </div>
+            )}
             <div className="flex justify-end gap-3">
               <button
                 ref={cancelButtonRef}

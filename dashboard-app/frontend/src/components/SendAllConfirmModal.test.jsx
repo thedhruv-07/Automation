@@ -307,4 +307,45 @@ describe("SendAllConfirmModal", () => {
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
     expect(document.activeElement).toBe(filteredRadio);
   });
+
+  it("shows the notice label in the title and body when noticeLabel is given", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} filteredCount={4} onConfirm={() => {}} onCancel={() => {}}
+        noticeLabel="Transition Facilitation Order 2026" singleScope
+      />
+    );
+    expect(screen.getByText('Send "Transition Facilitation Order 2026"?')).toBeInTheDocument();
+    expect(screen.getByText(/Send "Transition Facilitation Order 2026" via WhatsApp/)).toBeInTheDocument();
+  });
+
+  it("hides the scope radio choice and shows a single count when singleScope is set", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} filteredCount={4} onConfirm={() => {}} onCancel={() => {}}
+        noticeLabel="Transition Facilitation Order 2026" singleScope
+      />
+    );
+    expect(screen.queryByText(/All eligible clients/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Currently filtered view/)).not.toBeInTheDocument();
+    expect(screen.getByText(/4 clients matching your current filters/)).toBeInTheDocument();
+  });
+
+  it("calls onConfirm with no scope argument when singleScope is set", () => {
+    const onConfirm = vi.fn();
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} filteredCount={4} onConfirm={onConfirm} onCancel={() => {}}
+        noticeLabel="Transition Facilitation Order 2026" singleScope
+      />
+    );
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    expect(onConfirm).toHaveBeenCalledWith(undefined);
+  });
+
+  it("defaults to today's exact renewal-alert wording when noticeLabel is not given", () => {
+    render(<SendAllConfirmModal open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}} />);
+    expect(screen.getByText("Send bulk renewal alerts?")).toBeInTheDocument();
+    expect(screen.getByText(/Send a real WhatsApp renewal alert to:/)).toBeInTheDocument();
+  });
 });
