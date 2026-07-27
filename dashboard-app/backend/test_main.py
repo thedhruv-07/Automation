@@ -262,6 +262,8 @@ def test_send_all_respects_scheme_filter(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
     monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_NAME_FMCS", "fmcs_renewal_alert")
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_LANG_FMCS", "en")
 
     mock_response = type("Resp", (), {
         "status_code": 200,
@@ -536,10 +538,28 @@ def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
     response = client.get("/api/email-preview/CLT001")
     assert response.status_code == 200
     data = response.json()
-    assert data["subject"] == "[Action Required] Renew ISO 9001 — TechCorp"
+    assert data["subject"] == "Renew ISO 9001 — TechCorp"
     assert "Rahul Sharma" in data["html"]
     assert "Absolute Veritas" in data["html"]
     assert "24 July 2026" in data["html"]
+
+
+def test_email_preview_uses_scheme_specific_content(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT004", "Deepa Rao", "FreshFoods", "d@x.com", "919000000001",
+         "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("EMAIL_SUBJECT_TEMPLATE_CRS", "Registration renewal: {cert_name}")
+    monkeypatch.setenv("EMAIL_INTRO_TEXT_CRS", "Your CRS registration for <strong>{company}</strong> needs renewal.")
+
+    response = client.get("/api/email-preview/CLT004")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["subject"] == "Registration renewal: CRS-Cert"
+    assert "Your CRS registration for <strong>FreshFoods</strong> needs renewal." in data["html"]
 
 
 def test_email_preview_unknown_client_returns_404(tmp_path, monkeypatch):
@@ -730,6 +750,25 @@ def test_send_alert_skipped_duplicate_from_send_one_alert_returns_409(tmp_path, 
     assert "already sent today" in response.json()["detail"]
 
 
+def test_send_alert_no_template_for_scheme_returns_400(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid123")
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_NAME_CRS", raising=False)
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_LANG_CRS", raising=False)
+
+    response = client.post("/api/send/CLT001")
+
+    assert response.status_code == 400
+    assert "CRS" in response.json()["detail"]
+
+
 def test_send_all_starts_job_and_reports_progress(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [
@@ -805,6 +844,43 @@ def test_send_all_reports_sent_for_all_alertable_statuses(tmp_path, monkeypatch)
     assert final["done"] is True
     assert final["total"] == 2  # only CRITICAL/URGENT are alertable; ACTIVE excluded
     assert final["sent"] == 2
+
+
+def test_send_all_reports_skipped_no_template_for_unconfigured_scheme(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_NAME_CRS", raising=False)
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_LANG_CRS", raising=False)
+
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
+    })()
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-all")
+        job_id = response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["total"] == 2
+    assert final["sent"] == 1
+    assert final["skipped_no_template"] == 1
 
 
 def test_send_all_uses_dashboard_test_number_override(tmp_path, monkeypatch):

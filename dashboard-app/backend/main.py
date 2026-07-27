@@ -37,6 +37,7 @@ from email_alerts import (  # noqa: E402
 from email_template import build_email_html  # noqa: E402
 from import_helpers import RowCollector  # noqa: E402
 from import_formats import IMPORT_FORMATS  # noqa: E402
+from scheme_templates import get_email_content  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -231,6 +232,7 @@ def email_preview(client_id: str):
         "days_left": days_left,
         "expiry_formatted": expiry_dt.strftime("%d %B %Y"),
     }
+    subject_template, intro_text = get_email_content(record["scheme"])
     html = build_email_html(
         rec,
         org_name="Absolute Veritas",
@@ -238,8 +240,9 @@ def email_preview(client_id: str):
         org_contact="",
         org_email="cs@absoluteveritas.com",
         logo_src=_logo_data_uri(),
+        intro_text=intro_text,
     )
-    subject = f"[Action Required] Renew {record['cert_name']} — {record['company']}"
+    subject = subject_template.format(cert_name=record["cert_name"], company=record["company"])
     return {"subject": subject, "html": html}
 
 
@@ -312,13 +315,10 @@ def send_alert(client_id: str):
     try:
         token = os.environ["WHATSAPP_TOKEN"]
         phone_number_id = os.environ["PHONE_NUMBER_ID"]
-        template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
-        template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
         test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
 
         result = send_one_alert(
-            record, sent_log, today, token, phone_number_id,
-            template_name, template_lang, to_phone_override=test_number,
+            record, sent_log, today, token, phone_number_id, to_phone_override=test_number,
         )
 
         if result["action"] == "sent":
@@ -330,6 +330,11 @@ def send_alert(client_id: str):
                 status_code=409,
                 detail="Alert already sent today for this client/status",
             )
+        if result["action"] == "skipped_no_template":
+            raise HTTPException(
+                status_code=400,
+                detail=f"No WhatsApp template configured for scheme {record['scheme']!r} yet.",
+            )
         raise HTTPException(status_code=502, detail=result.get("error", "Unknown error"))
     finally:
         with _send_lock:
@@ -340,7 +345,7 @@ _send_all_jobs: dict[str, dict] = {}
 
 
 def _run_send_all_job(
-    job_id, token, phone_number_id, template_name, template_lang, test_number,
+    job_id, token, phone_number_id, test_number,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
 ):
     def progress(result, total):
@@ -350,12 +355,14 @@ def _run_send_all_job(
             job["sent"] += 1
         elif result["action"] == "skipped_duplicate":
             job["skipped"] += 1
+        elif result["action"] == "skipped_no_template":
+            job["skipped_no_template"] += 1
         elif result["action"] == "failed":
             job["failed"] += 1
 
     try:
         run(
-            DEFAULT_DB_PATH, token, phone_number_id, template_name, template_lang,
+            DEFAULT_DB_PATH, token, phone_number_id,
             dry_run=False, test_number=test_number, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before, search=search, scheme=scheme,
         )
@@ -393,18 +400,17 @@ def send_all_alerts(
     try:
         token = os.environ["WHATSAPP_TOKEN"]
         phone_number_id = os.environ["PHONE_NUMBER_ID"]
-        template_name = os.environ.get("WHATSAPP_TEMPLATE_NAME", "cert_renewal_alert")
-        template_lang = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
         test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
 
         job_id = str(uuid.uuid4())
         _send_all_jobs[job_id] = {
-            "total": 0, "sent": 0, "skipped": 0, "failed": 0, "done": False, "error": None,
+            "total": 0, "sent": 0, "skipped": 0, "skipped_no_template": 0, "failed": 0,
+            "done": False, "error": None,
         }
         thread = threading.Thread(
             target=_run_send_all_job,
             args=(
-                job_id, token, phone_number_id, template_name, template_lang, test_number,
+                job_id, token, phone_number_id, test_number,
                 status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
             ),
             daemon=True,
