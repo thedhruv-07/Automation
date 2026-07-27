@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  getClients, sendAlert, sendAllAlerts, uploadClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
+  getClients, sendAlert, sendAllAlerts, uploadClientsFile, mergeClientsFile,
+  getMessageLog, getSettingsInfo, getEmailPreview,
   getStats, getSendAllStatus, verifyCredentials,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
 } from "./api";
@@ -139,12 +140,20 @@ describe("uploadClientsFile", () => {
       json: async () => ({ status: "ok", row_count: 3 }),
     });
     const file = new File(["dummy"], "clients.xlsx");
-    const result = await uploadClientsFile(file);
+    const result = await uploadClientsFile(file, "roster");
     expect(result).toEqual({ status: "ok", row_count: 3 });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/upload-clients",
       expect.objectContaining({ method: "POST", credentials: "include" })
     );
+  });
+
+  it("includes import_format in the request body", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "ok", row_count: 1 }) });
+    const file = new File(["dummy"], "clients.xlsx");
+    await uploadClientsFile(file, "crs");
+    const body = global.fetch.mock.calls[0][1].body;
+    expect(body.get("import_format")).toBe("crs");
   });
 
   it("throws the backend's detail message on failure", async () => {
@@ -154,9 +163,33 @@ describe("uploadClientsFile", () => {
       json: async () => ({ detail: "Column headers don't match the expected format" }),
     });
     const file = new File(["dummy"], "clients.xlsx");
-    await expect(uploadClientsFile(file)).rejects.toThrow(
+    await expect(uploadClientsFile(file, "roster")).rejects.toThrow(
       "Column headers don't match the expected format"
     );
+  });
+});
+
+describe("mergeClientsFile", () => {
+  it("returns parsed JSON on success and includes import_format in the request body", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "ok", row_count: 5, added: 2, skipped_duplicates: 0 }),
+    });
+    const file = new File(["dummy"], "clients.xlsx");
+    const result = await mergeClientsFile(file, "bis_isi");
+    expect(result).toEqual({ status: "ok", row_count: 5, added: 2, skipped_duplicates: 0 });
+    const body = global.fetch.mock.calls[0][1].body;
+    expect(body.get("import_format")).toBe("bis_isi");
+  });
+
+  it("throws the backend's detail message on failure", async () => {
+    global.fetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ detail: "Unknown format 'xyz'." }),
+    });
+    const file = new File(["dummy"], "clients.xlsx");
+    await expect(mergeClientsFile(file, "xyz")).rejects.toThrow("Unknown format 'xyz'.");
   });
 });
 

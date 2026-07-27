@@ -145,9 +145,10 @@ export function clientsExportUrl({ status, certType, expiryBefore, search, schem
   return `${API_BASE}${qs ? `/api/clients/export?${qs}` : "/api/clients/export"}`;
 }
 
-export async function uploadClientsFile(file) {
+export async function uploadClientsFile(file, importFormat) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("import_format", importFormat);
   const res = await fetch(`${API_BASE}/api/upload-clients`, {
     method: "POST", credentials: "include", headers: authHeaders(), body: formData,
   });
@@ -158,9 +159,10 @@ export async function uploadClientsFile(file) {
   return data;
 }
 
-export async function mergeClientsFile(file) {
+export async function mergeClientsFile(file, importFormat) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("import_format", importFormat);
   const res = await fetch(`${API_BASE}/api/merge-clients`, {
     method: "POST", credentials: "include", headers: authHeaders(), body: formData,
   });
