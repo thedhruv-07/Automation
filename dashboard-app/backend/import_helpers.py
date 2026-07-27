@@ -3,6 +3,12 @@ and future ones like import_fmcs.py/import_crs.py) -- none of this is specific
 to any one certification scheme's raw export format."""
 from datetime import datetime
 
+REQUIRED_HEADERS = [
+    "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
+    "Certification Name", "Scheme", "Certification ID", "Issue Date", "Expiry Date",
+    "Renewal Link", "Status",
+]
+
 
 class RowCollector:
     """Drop-in stand-in for an openpyxl worksheet's .append() -- lets an
