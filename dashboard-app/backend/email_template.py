@@ -16,6 +16,12 @@ STATUS_SERIOUS = "#ec835a"
 STATUS_WARNING = "#fab219"
 STATUS_GOOD = "#0ca30c"
 
+DEFAULT_INTRO_TEXT = (
+    "This is a notification regarding the certification held by "
+    "<strong>{company}</strong>. Please review the details below and "
+    "take action to ensure compliance continuity."
+)
+
 
 def _tier(days_left: int) -> tuple[str, str, str, str]:
     """Returns (label, color, message, hero_label) for the given days-left count."""
@@ -40,6 +46,7 @@ def build_email_html(
     org_contact: str = "",
     org_email: str = "cs@absoluteveritas.com",
     logo_src: str = "",
+    intro_text: str = DEFAULT_INTRO_TEXT,
 ) -> str:
     label, color, message, hero_label = _tier(rec["days_left"])
     hero_number = abs(rec["days_left"]) if rec["days_left"] != 0 else 0
@@ -103,9 +110,7 @@ def build_email_html(
               <tr><td style="padding:34px 40px 8px;">
                 <p style="color:{INK_PRIMARY};font-size:16px;margin:0 0 18px;">Dear <strong>{rec['name']}</strong>,</p>
                 <p style="color:{INK_SECONDARY};font-size:14px;line-height:1.7;margin:0 0 26px;">
-                  This is a notification regarding the certification held by
-                  <strong>{rec['company']}</strong>. Please review the details below and
-                  take action to ensure compliance continuity.
+                  {intro_text.format(company=rec['company'])}
                 </p>
 
                 <!-- Hero stat -->
