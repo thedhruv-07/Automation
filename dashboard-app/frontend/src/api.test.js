@@ -4,6 +4,7 @@ import {
   getMessageLog, getSettingsInfo, getEmailPreview,
   getStats, getSendAllStatus, verifyCredentials,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
+  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus,
 } from "./api";
 import { setStoredAuthHeader } from "./auth";
 
@@ -366,5 +367,65 @@ describe("API_BASE prefixing", () => {
       { credentials: "include", headers: {} }
     );
     vi.unstubAllEnvs();
+  });
+});
+
+describe("listNotices", () => {
+  it("returns the notices list", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ([{ id: "transition_facilitation_2026", label: "Transition Facilitation Order 2026" }]),
+    });
+    const result = await listNotices();
+    expect(result).toEqual([{ id: "transition_facilitation_2026", label: "Transition Facilitation Order 2026" }]);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/notices",
+      { credentials: "include", headers: {} }
+    );
+  });
+});
+
+describe("getNoticeEligibleCount", () => {
+  it("passes filters as query params", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ whatsapp: 2, email: 3 }) });
+    const result = await getNoticeEligibleCount("transition_facilitation_2026", { scheme: "CRS" });
+    expect(result).toEqual({ whatsapp: 2, email: 3 });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/notices/transition_facilitation_2026/eligible-count?scheme=CRS",
+      { credentials: "include", headers: {} }
+    );
+  });
+});
+
+describe("sendNotice", () => {
+  it("posts to the channel-specific send endpoint with filters", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "job-1" }) });
+    const result = await sendNotice("transition_facilitation_2026", "whatsapp", { scheme: "CRS" });
+    expect(result).toEqual({ job_id: "job-1" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/notices/transition_facilitation_2026/send-whatsapp?scheme=CRS",
+      { method: "POST", credentials: "include", headers: {} }
+    );
+  });
+
+  it("throws the backend's detail message on failure", async () => {
+    global.fetch.mockResolvedValue({
+      ok: false, status: 404, json: async () => ({ detail: "Unknown notice_id: xyz" }),
+    });
+    await expect(sendNotice("xyz", "email", {})).rejects.toThrow("Unknown notice_id: xyz");
+  });
+});
+
+describe("getNoticeSendStatus", () => {
+  it("fetches the channel-specific job status", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true, json: async () => ({ total: 2, sent: 1, skipped: 0, failed: 0, done: false }),
+    });
+    const result = await getNoticeSendStatus("transition_facilitation_2026", "whatsapp", "job-1");
+    expect(result).toEqual({ total: 2, sent: 1, skipped: 0, failed: 0, done: false });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/notices/transition_facilitation_2026/send-whatsapp/status/job-1",
+      { credentials: "include", headers: {} }
+    );
   });
 });

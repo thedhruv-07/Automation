@@ -193,3 +193,38 @@ export async function verifyCredentials(authHeaderValue) {
   });
   return res.ok;
 }
+
+export async function listNotices() {
+  const res = await fetch(`${API_BASE}/api/notices`, { credentials: "include", headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to load notices: ${res.status}`);
+  return res.json();
+}
+
+export async function getNoticeEligibleCount(noticeId, params = {}) {
+  const qs = scopeQueryString(params);
+  const url = `/api/notices/${noticeId}/eligible-count${qs ? `?${qs}` : ""}`;
+  const res = await fetch(`${API_BASE}${url}`, { credentials: "include", headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to load notice eligible count: ${res.status}`);
+  return res.json();
+}
+
+export async function sendNotice(noticeId, channel, params = {}) {
+  const qs = scopeQueryString(params);
+  const url = `/api/notices/${noticeId}/send-${channel}${qs ? `?${qs}` : ""}`;
+  const res = await fetch(`${API_BASE}${url}`, {
+    method: "POST", credentials: "include", headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Send failed: ${res.status}`);
+  }
+  return data;
+}
+
+export async function getNoticeSendStatus(noticeId, channel, jobId) {
+  const res = await fetch(`${API_BASE}/api/notices/${noticeId}/send-${channel}/status/${jobId}`, {
+    credentials: "include", headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to load notice send status: ${res.status}`);
+  return res.json();
+}
