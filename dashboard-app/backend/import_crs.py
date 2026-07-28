@@ -98,7 +98,7 @@ def import_crs_workbook(wb, out_ws, today=None):
                 continue
             license_no = get(row, index_map, "license no", "license no.")
             org_name = get(row, index_map, "organization name")
-            email = get(row, index_map, "e-mail", "email")
+            email = get(row, index_map, "e-mail id", "email id", "e-mail", "email")
             phone = get(row, index_map, "phone no.", "phone no", "phone")
             grant_date_raw = get(row, index_map, "grant date")
             cert_name = get(row, index_map, "indian standard")

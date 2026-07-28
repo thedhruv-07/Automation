@@ -82,6 +82,27 @@ def test_import_crs_workbook_converts_rows_and_computes_expiry():
     assert row[11] in {"CRITICAL", "URGENT", "DUE SOON", "ACTIVE", "EXPIRED"}
 
 
+def test_import_crs_workbook_reads_email_when_header_is_email_id():
+    """The real BIS CRS export's header reads "E-mail Id", not the plain
+    "E-mail" this file's own PER_STANDARD_HEADERS fixture uses -- that
+    mismatch is exactly why production data came through with every
+    email blank."""
+    real_headers = [
+        "Application No.", "License No.", "Organization Name", "Country", "Indian Standard",
+        "Product Name", "Product Category", "Grant Date", "Status", "E-mail Id", "Phone No.",
+    ]
+    wb = _workbook("IS 13252", real_headers, [
+        ["0846", "R-7019869", "Panache Digilife Limited", "India",
+         "Is 13252(Part 1):2010/ Iec 60950-1: 2005", "Notebook", "Laptop/Notebook/Tablet",
+         "2024-01-15", "Register", "jitendra.d@vardhamantechnology.com", "913322634755"],
+    ])
+    collector = RowCollector()
+
+    import_crs_workbook(wb, collector)
+
+    assert collector.rows[0][3] == "jitendra.d@vardhamantechnology.com"
+
+
 def test_import_crs_workbook_skips_the_master_sheet():
     same_row = ["0846", "R-7019869", "Panache Digilife Limited", "India",
                 "Is 13252(Part 1):2010/ Iec 60950-1: 2005", "Notebook", "Laptop/Notebook/Tablet",
