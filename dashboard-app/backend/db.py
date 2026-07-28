@@ -430,6 +430,54 @@ def get_broadcast_clients(
         conn.close()
 
 
+def get_broadcast_clients_page(
+    db_path, notice_id: str, page: int = 1, page_size: int = 50,
+    status: str | None = None, cert_type: str | None = None,
+    expiry_before: str | None = None, search: str | None = None,
+    scheme: str | None = None,
+) -> tuple[list[dict], int]:
+    """Paginated sibling to get_broadcast_clients, each row additionally
+    annotated with notice_sent_whatsapp/notice_sent_email booleans -- powers
+    the Notices page's client list, which shows the whole filtered audience
+    (not excluded by send status, since WhatsApp/Email are tracked and can
+    diverge independently) with per-channel status visible per row."""
+    conn = get_connection(db_path)
+    try:
+        where, params = _client_filters_where(status, cert_type, expiry_before, search, scheme)
+        where_clause = f"WHERE {' AND '.join(where)}" if where else ""
+
+        total = conn.execute(f"SELECT COUNT(*) FROM clients {where_clause}", params).fetchone()[0]
+
+        offset = (page - 1) * page_size
+        rows = conn.execute(
+            f"""
+            SELECT {', '.join(RECORD_FIELDS)},
+                EXISTS(
+                    SELECT 1 FROM notice_sent_log n
+                    WHERE n.client_id = clients.client_id AND n.notice_id = ? AND n.channel = 'whatsapp'
+                ) AS notice_sent_whatsapp,
+                EXISTS(
+                    SELECT 1 FROM notice_sent_log n
+                    WHERE n.client_id = clients.client_id AND n.notice_id = ? AND n.channel = 'email'
+                ) AS notice_sent_email
+            FROM clients {where_clause}
+            ORDER BY rowid
+            LIMIT ? OFFSET ?
+            """,
+            [notice_id, notice_id] + params + [page_size, offset],
+        ).fetchall()
+
+        result = []
+        for r in rows:
+            rec = _row_to_dict(r)
+            rec["notice_sent_whatsapp"] = bool(r["notice_sent_whatsapp"])
+            rec["notice_sent_email"] = bool(r["notice_sent_email"])
+            result.append(rec)
+        return result, total
+    finally:
+        conn.close()
+
+
 def get_eligible_count(
     db_path, today: str, channel: str, status: str | None = None,
     cert_type: str | None = None, expiry_before: str | None = None,

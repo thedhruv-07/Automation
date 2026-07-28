@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from db import (
-    init_db, read_clients, find_client_by_id, upsert_clients, RECORD_FIELDS,
+    init_db, read_clients, find_client_by_id, upsert_clients, RECORD_FIELDS, get_broadcast_clients_page,
 )
 
 ROW_A = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
@@ -684,3 +684,72 @@ def test_get_notice_eligible_count_is_independent_per_notice_and_channel(tmp_pat
     assert get_notice_eligible_count(db_path, "transition_facilitation_2026", "email") == 1
     # Not yet sent (via any channel) for a different notice -- still counted.
     assert get_notice_eligible_count(db_path, "some_other_notice", "whatsapp") == 1
+
+
+def test_get_broadcast_clients_page_paginates_and_totals(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+        ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
+        ("CLT003", "Amit Verma", "HealthFirst", "a@x.com", "919898765432",
+         "GMP", "CRS", "GMP-1", "01-01-2025", "10-09-2026", "https://x", "DUE SOON"),
+    ], mode="replace")
+
+    rows, total = get_broadcast_clients_page(db_path, "transition_facilitation_2026", page=1, page_size=2)
+
+    assert total == 3
+    assert len(rows) == 2
+    assert [r["client_id"] for r in rows] == ["CLT001", "CLT002"]
+
+    rows_page2, total2 = get_broadcast_clients_page(db_path, "transition_facilitation_2026", page=2, page_size=2)
+    assert total2 == 3
+    assert [r["client_id"] for r in rows_page2] == ["CLT003"]
+
+
+def test_get_broadcast_clients_page_honors_filters(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+        ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
+    ], mode="replace")
+
+    rows, total = get_broadcast_clients_page(db_path, "transition_facilitation_2026", scheme="CRS")
+
+    assert total == 1
+    assert rows[0]["client_id"] == "CLT002"
+
+
+def test_get_broadcast_clients_page_reports_per_channel_notice_status(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+        ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
+    ], mode="replace")
+    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+
+    rows, _ = get_broadcast_clients_page(db_path, "transition_facilitation_2026")
+    by_id = {r["client_id"]: r for r in rows}
+
+    assert by_id["CLT001"]["notice_sent_whatsapp"] is True
+    assert by_id["CLT001"]["notice_sent_email"] is False
+    assert by_id["CLT002"]["notice_sent_whatsapp"] is False
+    assert by_id["CLT002"]["notice_sent_email"] is False
+
+
+def test_get_broadcast_clients_page_notice_status_is_independent_per_notice(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+    ], mode="replace")
+    record_notice_sent(db_path, "CLT001", "some_other_notice", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+
+    rows, _ = get_broadcast_clients_page(db_path, "transition_facilitation_2026")
+
+    assert rows[0]["notice_sent_whatsapp"] is False
