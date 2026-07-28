@@ -136,7 +136,7 @@ def test_send_notice_email_uses_the_notice_module_content(tmp_path):
 
     payload = mock_post.call_args.kwargs["json"]
     assert payload["subject"] == "IS/IEC 62368-1:2023 Transition — Steps to Ensure BIS Approval on Time"
-    assert "meity-series-guidelines-isiec-62368-part1-2023" in payload["htmlContent"]
+    assert "is-62368-safety-rules-in-india" in payload["htmlContent"]
 
 
 def test_send_notice_whatsapp_raises_for_unknown_notice_id(tmp_path):

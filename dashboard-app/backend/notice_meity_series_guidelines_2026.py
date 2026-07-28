@@ -10,7 +10,7 @@ scheme_templates.py, this isn't about any individual client's own
 certificate -- it's a general compliance-awareness announcement."""
 from email_template import CALENDLY_URL
 
-NOTICE_URL = "https://absoluteveritas.com/meity-series-guidelines-isiec-62368-part1-2023/"
+NOTICE_URL = "https://absoluteveritas.com/is-62368-safety-rules-in-india/"
 
 EMAIL_SUBJECT = "IS/IEC 62368-1:2023 Transition — Steps to Ensure BIS Approval on Time"
 
