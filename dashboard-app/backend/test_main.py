@@ -1852,3 +1852,58 @@ def test_send_notice_email_starts_job_and_reports_progress(tmp_path, monkeypatch
 def test_send_notice_email_status_returns_404_for_unknown_job():
     response = client.get("/api/notices/transition_facilitation_2026/send-email/status/does-not-exist")
     assert response.status_code == 404
+
+
+def test_notice_clients_unknown_notice_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+    response = client.get("/api/notices/does_not_exist/clients")
+    assert response.status_code == 404
+
+
+def test_notice_clients_returns_paginated_rows_with_notice_status(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    from db import record_notice_sent
+    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+
+    response = client.get(
+        "/api/notices/transition_facilitation_2026/clients",
+        params={"scheme": "CRS", "page": 1, "page_size": 8},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert body["page"] == 1
+    assert body["page_size"] == 8
+    by_id = {r["client_id"]: r for r in body["rows"]}
+    assert by_id["CLT001"]["notice_sent_whatsapp"] is True
+    assert by_id["CLT001"]["notice_sent_email"] is False
+    assert by_id["CLT002"]["notice_sent_whatsapp"] is False
+
+
+def test_notice_clients_respects_page_size(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+
+    response = client.get(
+        "/api/notices/transition_facilitation_2026/clients",
+        params={"page": 1, "page_size": 1},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert len(body["rows"]) == 1

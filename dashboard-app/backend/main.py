@@ -25,7 +25,7 @@ from db import (  # noqa: E402
     DEFAULT_DB_PATH, get_clients_page, get_stats, export_clients_rows,
     upsert_clients, find_client_by_id, load_sent_log, save_sent_log,
     is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
-    get_eligible_count, get_notice_eligible_count,
+    get_eligible_count, get_notice_eligible_count, get_broadcast_clients_page,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, dedup_key, filter_alertable, normalize_phone,
@@ -598,6 +598,23 @@ def notice_eligible_count(
             search=search or None, scheme=scheme or None,
         ),
     }
+
+
+@app.get("/api/notices/{notice_id}/clients", dependencies=[Depends(require_auth)])
+def notice_clients(
+    notice_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=8, ge=1, le=500),
+    status: str = "", cert_type: str = "", expiry_before: str = "", search: str = "", scheme: str = "",
+):
+    if get_notice_module(notice_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
+    rows, total = get_broadcast_clients_page(
+        DEFAULT_DB_PATH, notice_id, page=page, page_size=page_size,
+        status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+        search=search or None, scheme=scheme or None,
+    )
+    return {"rows": rows, "total": total, "page": page, "page_size": page_size}
 
 
 _send_notice_jobs: dict[str, dict] = {}
