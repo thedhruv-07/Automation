@@ -9,9 +9,14 @@ source format; a CRS registration is valid for a fixed 2 years from its
 Grant Date, so Expiry Date is computed here rather than read. License No.
 is used for both Client ID and Certification ID, since it's the natural
 unique key in this dataset (mirrors import_bis_isi_data.py's use of its own
-licence number). Status is recomputed from the computed expiry using this
-project's own urgency thresholds -- the source "Status" column
-(Register/Registered/etc.) means something different and is not used.
+licence number). A given license number is listed once per Product Category
+it covers, so the same license + Indian Standard pair routinely repeats
+across several rows -- these collapse to a single roster row (the same
+certification, not several); a license number reused under a genuinely
+different Indian Standard still gets its own row, suffixed to stay unique.
+Status is recomputed from the computed expiry using this project's own
+urgency thresholds -- the source "Status" column (Register/Registered/etc.)
+means something different and is not used.
 
 Usage: python import_crs.py "<path to source xlsx>"
 """
@@ -66,8 +71,12 @@ def import_crs_workbook(wb, out_ws, today=None):
     every client twice."""
     today = today or datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    seen_client_ids = set()
-    stats = {"sheets_used": 0, "sheets_empty": 0, "rows_written": 0, "rows_skipped_missing_key": 0}
+    seen_license_cert_pairs = set()
+    seen_license_nos = set()
+    stats = {
+        "sheets_used": 0, "sheets_empty": 0, "rows_written": 0,
+        "rows_skipped_missing_key": 0, "rows_skipped_duplicate_product": 0,
+    }
 
     for sheet_name in wb.sheetnames:
         if sheet_name.strip().lower() == MASTER_SHEET_NAME:
@@ -104,10 +113,25 @@ def import_crs_workbook(wb, out_ws, today=None):
                 continue
             expiry_dt = add_years(grant_dt, 2)
 
-            client_id = str(license_no).strip()
-            if client_id in seen_client_ids:
-                client_id = f"{client_id}-{cert_name}"
-            seen_client_ids.add(client_id)
+            license_no_clean = str(license_no).strip()
+            license_cert_pair = (license_no_clean, cert_name)
+            if license_cert_pair in seen_license_cert_pairs:
+                # Same license *and* same Indian Standard as a row already
+                # written -- this describes the same certification, just
+                # listed again for another Product Category (real CRS
+                # exports do this routinely). Not a new certification, so
+                # not a new row.
+                stats["rows_skipped_duplicate_product"] += 1
+                continue
+
+            client_id = license_no_clean
+            if license_no_clean in seen_license_nos:
+                # Same license number but a genuinely different standard --
+                # a real second certification sharing an identifier, so it
+                # gets its own row.
+                client_id = f"{license_no_clean}-{cert_name}"
+            seen_license_cert_pairs.add(license_cert_pair)
+            seen_license_nos.add(license_no_clean)
 
             out_ws.append([
                 client_id,
@@ -117,7 +141,7 @@ def import_crs_workbook(wb, out_ws, today=None):
                 phone,
                 cert_name,
                 "CRS",
-                str(license_no).strip(),
+                license_no_clean,
                 grant_dt.strftime("%d-%m-%Y"),
                 expiry_dt.strftime("%d-%m-%Y"),
                 None,
@@ -160,4 +184,6 @@ if __name__ == "__main__":
     print("Sheets empty/skipped:", result["sheets_empty"])
     print("Rows written:", result["rows_written"])
     print("Rows skipped (missing license no / grant date):", result["rows_skipped_missing_key"])
+    print("Rows skipped (duplicate license + standard, different product category):",
+          result["rows_skipped_duplicate_product"])
     print("Saved to:", output)

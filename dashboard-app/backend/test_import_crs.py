@@ -148,6 +148,35 @@ def test_import_crs_workbook_dedups_same_license_no_across_different_standard_sh
     assert client_ids == {"SAME123", "SAME123-IS 616"}
 
 
+def test_import_crs_workbook_collapses_same_license_and_standard_repeated_for_different_products():
+    """Real CRS exports list one license/standard combo once per Product
+    Category it covers -- e.g. the same license number + Indian Standard
+    appearing three times, once per product category. These rows describe
+    the same certification, not three different ones, so only the first
+    should produce a roster row; the collision-suffix behavior (below) is
+    only for a license number reused under a genuinely different standard."""
+    wb = _workbook("IS 13252", PER_STANDARD_HEADERS, [
+        ["0538", "R-4121916", "Corotronic Corporation", "Taiwan",
+         "Is 13252(Part 1):2010/ Iec 60950-1: 2005", "X", "Automatic Data Processing Machine (Adpm)",
+         "2024-01-15", "Register", "a@x.com", "919000000000"],
+        ["0539", "R-4121916", "Corotronic Corporation", "Taiwan",
+         "Is 13252(Part 1):2010/ Iec 60950-1: 2005", "Y", "Set Top Box",
+         "2024-01-15", "Register", "a@x.com", "919000000000"],
+        ["0540", "R-4121916", "Corotronic Corporation", "Taiwan",
+         "Is 13252(Part 1):2010/ Iec 60950-1: 2005", "Z", "Tablet",
+         "2024-01-15", "Register", "a@x.com", "919000000000"],
+    ])
+    collector = RowCollector()
+
+    stats = import_crs_workbook(wb, collector)
+
+    assert stats["rows_written"] == 1
+    assert stats["rows_skipped_duplicate_product"] == 2
+    client_ids = [row[0] for row in collector.rows]
+    assert client_ids == ["R-4121916"]
+    assert len(client_ids) == len(set(client_ids))
+
+
 def test_import_crs_workbook_handles_feb_29_grant_date_in_non_leap_target_year():
     wb = _workbook("IS 13252", PER_STANDARD_HEADERS, [
         ["1", "R-2222222", "Firm C", "India", "IS 13252", "Notebook", "Laptop",
