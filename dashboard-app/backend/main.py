@@ -579,6 +579,20 @@ def notices_list():
     return list_notices()
 
 
+@app.get("/api/notices/{notice_id}/preview", dependencies=[Depends(require_auth)])
+def notice_preview(notice_id: str):
+    """Renders the notice's email using placeholder client data -- unlike
+    /api/email-preview/{client_id} (a specific client's renewal email), a
+    notice isn't about any individual client's own record, so there's
+    nothing client-specific to preview against."""
+    module = get_notice_module(notice_id)
+    if module is None:
+        raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
+    placeholder = {"client_id": "SAMPLE", "name": "Sample Client", "company": "Sample Company"}
+    html = module.build_email_html(placeholder, "Absolute Veritas")
+    return {"subject": module.EMAIL_SUBJECT, "html": html}
+
+
 @app.get("/api/notices/{notice_id}/eligible-count", dependencies=[Depends(require_auth)])
 def notice_eligible_count(
     notice_id: str, status: str = "", cert_type: str = "", expiry_before: str = "",

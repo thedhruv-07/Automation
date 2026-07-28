@@ -1751,6 +1751,20 @@ def test_notices_list_includes_transition_facilitation_2026():
     assert "transition_facilitation_2026" in ids
 
 
+def test_notice_preview_returns_subject_and_html():
+    response = client.get("/api/notices/transition_facilitation_2026/preview")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["subject"] == "Important: BIS Transition Facilitation Order, 2026 — What It Means for You"
+    assert "Sample Client" in data["html"]
+    assert "Sample Company" in data["html"]
+
+
+def test_notice_preview_unknown_notice_returns_404():
+    response = client.get("/api/notices/does_not_exist/preview")
+    assert response.status_code == 404
+
+
 def test_notice_eligible_count_unknown_notice_returns_404(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
     response = client.get("/api/notices/does_not_exist/eligible-count")
