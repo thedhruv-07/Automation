@@ -135,7 +135,7 @@ def test_send_notice_email_uses_the_notice_module_content(tmp_path):
         )
 
     payload = mock_post.call_args.kwargs["json"]
-    assert payload["subject"] == "Important: MeitY Series Guidelines for IS/IEC 62368-1:2023 — What It Means for You"
+    assert payload["subject"] == "IS/IEC 62368-1:2023 Transition — Steps to Ensure BIS Approval on Time"
     assert "meity-series-guidelines-isiec-62368-part1-2023" in payload["htmlContent"]
 
 

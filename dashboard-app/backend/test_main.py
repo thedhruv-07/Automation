@@ -1755,7 +1755,7 @@ def test_notice_preview_returns_subject_and_html():
     response = client.get("/api/notices/meity_series_guidelines_2026/preview")
     assert response.status_code == 200
     data = response.json()
-    assert data["subject"] == "Important: MeitY Series Guidelines for IS/IEC 62368-1:2023 — What It Means for You"
+    assert data["subject"] == "IS/IEC 62368-1:2023 Transition — Steps to Ensure BIS Approval on Time"
     assert "Sample Client" in data["html"]
     assert "Sample Company" in data["html"]
 

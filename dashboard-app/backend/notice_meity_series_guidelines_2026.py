@@ -12,7 +12,7 @@ from email_template import CALENDLY_URL
 
 NOTICE_URL = "https://absoluteveritas.com/meity-series-guidelines-isiec-62368-part1-2023/"
 
-EMAIL_SUBJECT = "Important: MeitY Series Guidelines for IS/IEC 62368-1:2023 — What It Means for You"
+EMAIL_SUBJECT = "IS/IEC 62368-1:2023 Transition — Steps to Ensure BIS Approval on Time"
 
 
 def build_email_html(rec: dict, org_name: str) -> str:
@@ -32,19 +32,27 @@ def build_email_html(rec: dict, org_name: str) -> str:
         <tr><td style="padding:32px 40px;">
           <p style="color:#0b0b0b;font-size:16px;margin:0 0 18px;">Dear <strong>{rec['name']}</strong> ({rec['company']}),</p>
           <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 18px;">
-            MeitY has issued <strong>Circular No. W-47/34/2025-IPHW (20 May 2026)</strong>
-            prescribing revised series-formation guidelines for products under
-            <strong>IS/IEC 62368 &ndash; Part 1: 2023</strong> &mdash; the standard that
-            IS 13252 Part 1:2020 and IS 616:2017 have migrated to (Gazette
-            Notification S.O. 4997(E), 29 Oct 2025). This is binding on all
-            BIS licence holders, applicants, manufacturers, importers, and
-            sellers of audio/video, IT, and communication equipment.
+            <strong>IS/IEC 62368-1 (Edition 4: 2023)</strong> marks a major shift in
+            India&rsquo;s regulatory landscape for electronic and ICT products.
+            Following recent MeitY and BIS directives, <strong>42 categories</strong>
+            of audio/video and IT equipment are transitioning from the older
+            IS 13252 (Part 1: 2020) and IS 616 (2017) standards to this
+            unified, hazard-based safety standard.
+          </p>
+          <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 18px;">
+            Strict timelines are already in force: a <strong>three-year</strong>
+            transition window for existing certifications, and a
+            <strong>six-month</strong> deadline for new AR/VR product approvals
+            (extendable up to one year with justification). Key technical
+            changes include the removal of legacy IEC 60065/60950-1
+            component acceptance, stricter rules for liquid-filled
+            components, and new touch-temperature limits for wearables.
           </p>
           <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 26px;">
-            Key changes: a maximum of <strong>10 models per series</strong>, matching
-            IP ratings and enclosure design across the series, a single class
-            of construction, and matching energy source/safeguard system per
-            model &mdash; effective immediately from the date of issuance.
+            If your products fall under any of the 42 CRO-listed categories,
+            now is the time to map your existing standards to IS/IEC
+            62368-1, identify representative models for series testing, and
+            engage an accredited lab.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr><td align="center" style="padding:4px 0 14px;">
