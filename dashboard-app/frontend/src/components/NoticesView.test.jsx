@@ -12,6 +12,7 @@ function setup(overrides = {}) {
     getNoticeSendStatus: vi.fn().mockResolvedValue({
       total: 3, sent: 3, skipped: 0, failed: 0, done: true,
     }),
+    getNoticePreview: vi.fn().mockResolvedValue({ subject: "Test Subject", html: "<p>Test</p>" }),
     ...overrides,
   };
   return { ...render(<NoticesView {...props} />), props };
@@ -58,6 +59,24 @@ describe("NoticesView", () => {
     setup();
     await waitFor(() => screen.getByLabelText("Which notice?"));
     expect(screen.queryByText(/clients? .*WhatsApp/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the Preview Email button disabled until a notice is selected", async () => {
+    setup();
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    expect(screen.getByText("Preview Email")).toBeDisabled();
+  });
+
+  it("opens the email preview modal with the notice's content", async () => {
+    const { props } = setup();
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    fireEvent.change(screen.getByLabelText("Which notice?"), { target: { value: "transition_facilitation_2026" } });
+    await waitFor(() => expect(screen.getByText("Preview Email")).not.toBeDisabled());
+
+    fireEvent.click(screen.getByText("Preview Email"));
+
+    await waitFor(() => expect(props.getNoticePreview).toHaveBeenCalledWith("transition_facilitation_2026"));
+    await waitFor(() => expect(screen.getByText("Test Subject")).toBeInTheDocument());
   });
 
   it("sends the notice via WhatsApp and shows progress through to done", async () => {

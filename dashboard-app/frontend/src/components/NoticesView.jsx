@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import ClientDataFilters from "./ClientDataFilters";
 import SendAllConfirmModal from "./SendAllConfirmModal";
+import EmailPreviewModal from "./EmailPreviewModal";
 
 const JOB_POLL_MS = 500;
 
 export default function NoticesView({
-  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, schemeOptions = [],
+  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
+  schemeOptions = [],
 }) {
   const [notices, setNotices] = useState([]);
   const [selectedNoticeId, setSelectedNoticeId] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [certType, setCertType] = useState("ALL");
   const [scheme, setScheme] = useState("ALL");
   const [status, setStatus] = useState("ALL");
@@ -149,7 +152,21 @@ export default function NoticesView({
         >
           Send via Email
         </button>
+        <button
+          type="button"
+          onClick={() => setPreviewOpen(true)}
+          disabled={!selectedNoticeId}
+          className="text-sm font-semibold text-accent hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+        >
+          Preview Email
+        </button>
       </div>
+
+      <EmailPreviewModal
+        clientId={previewOpen ? selectedNoticeId : null}
+        fetchPreview={getNoticePreview}
+        onClose={() => setPreviewOpen(false)}
+      />
 
       <SendAllConfirmModal
         open={whatsappModalOpen}

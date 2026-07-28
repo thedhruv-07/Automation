@@ -200,6 +200,14 @@ export async function listNotices() {
   return res.json();
 }
 
+export async function getNoticePreview(noticeId) {
+  const res = await fetch(`${API_BASE}/api/notices/${noticeId}/preview`, {
+    credentials: "include", headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to load notice preview: ${res.status}`);
+  return res.json();
+}
+
 export async function getNoticeEligibleCount(noticeId, params = {}) {
   const qs = scopeQueryString(params);
   const url = `/api/notices/${noticeId}/eligible-count${qs ? `?${qs}` : ""}`;

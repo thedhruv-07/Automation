@@ -4,7 +4,7 @@ import {
   getMessageLog, getSettingsInfo, getEmailPreview,
   getStats, getSendAllStatus, verifyCredentials,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
-  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus,
+  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
 } from "./api";
 import { setStoredAuthHeader } from "./auth";
 
@@ -380,6 +380,21 @@ describe("listNotices", () => {
     expect(result).toEqual([{ id: "transition_facilitation_2026", label: "Transition Facilitation Order 2026" }]);
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/notices",
+      { credentials: "include", headers: {} }
+    );
+  });
+});
+
+describe("getNoticePreview", () => {
+  it("fetches the preview for a given notice", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ subject: "Test Subject", html: "<p>Test</p>" }),
+    });
+    const result = await getNoticePreview("transition_facilitation_2026");
+    expect(result).toEqual({ subject: "Test Subject", html: "<p>Test</p>" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/notices/transition_facilitation_2026/preview",
       { credentials: "include", headers: {} }
     );
   });
