@@ -1,5 +1,5 @@
-"""Tests for notice_transition_facilitation_2026.py's content."""
-import notice_transition_facilitation_2026 as notice
+"""Tests for notice_meity_series_guidelines_2026.py's content."""
+import notice_meity_series_guidelines_2026 as notice
 
 
 def _rec(**overrides):
@@ -41,32 +41,32 @@ def test_build_email_html_includes_book_an_appointment_button_alongside_read_mor
     assert html.count('rel="noopener noreferrer"') == 2
 
 
-def test_email_subject_mentions_the_order():
-    assert "Transition Facilitation" in notice.EMAIL_SUBJECT
-    assert "2026" in notice.EMAIL_SUBJECT
+def test_email_subject_mentions_the_circular():
+    assert "IS/IEC 62368" in notice.EMAIL_SUBJECT
+    assert "2023" in notice.EMAIL_SUBJECT
 
 
 def test_get_whatsapp_template_returns_none_when_unconfigured(monkeypatch):
-    monkeypatch.delenv("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_NAME", raising=False)
-    monkeypatch.delenv("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_LANG", raising=False)
+    monkeypatch.delenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", raising=False)
+    monkeypatch.delenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", raising=False)
 
     assert notice.get_whatsapp_template() is None
 
 
 def test_get_whatsapp_template_returns_configured_pair(monkeypatch):
-    monkeypatch.setenv("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_NAME", "transition_notice_2026")
-    monkeypatch.setenv("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_LANG", "en")
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026")
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
 
-    assert notice.get_whatsapp_template() == ("transition_notice_2026", "en")
+    assert notice.get_whatsapp_template() == ("meity_series_guidelines_2026", "en")
 
 
 def test_build_whatsapp_payload_structure():
-    payload = notice.build_whatsapp_payload(_rec(), "919876543210", "transition_notice_2026", "en")
+    payload = notice.build_whatsapp_payload(_rec(), "919876543210", "meity_series_guidelines_2026", "en")
 
     assert payload["messaging_product"] == "whatsapp"
     assert payload["to"] == "919876543210"
     assert payload["type"] == "template"
-    assert payload["template"]["name"] == "transition_notice_2026"
+    assert payload["template"]["name"] == "meity_series_guidelines_2026"
     assert payload["template"]["language"] == {"code": "en"}
     params = payload["template"]["components"][0]["parameters"]
     assert params[0] == {"type": "text", "text": "Rahul Sharma"}

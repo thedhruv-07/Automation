@@ -1744,18 +1744,18 @@ def test_send_all_emails_does_not_block_on_whatsapp_bulk_in_progress(tmp_path, m
     assert response.status_code == 200
 
 
-def test_notices_list_includes_transition_facilitation_2026():
+def test_notices_list_includes_meity_series_guidelines_2026():
     response = client.get("/api/notices")
     assert response.status_code == 200
     ids = {n["id"] for n in response.json()}
-    assert "transition_facilitation_2026" in ids
+    assert "meity_series_guidelines_2026" in ids
 
 
 def test_notice_preview_returns_subject_and_html():
-    response = client.get("/api/notices/transition_facilitation_2026/preview")
+    response = client.get("/api/notices/meity_series_guidelines_2026/preview")
     assert response.status_code == 200
     data = response.json()
-    assert data["subject"] == "Important: BIS Transition Facilitation Order, 2026 — What It Means for You"
+    assert data["subject"] == "Important: MeitY Series Guidelines for IS/IEC 62368-1:2023 — What It Means for You"
     assert "Sample Client" in data["html"]
     assert "Sample Company" in data["html"]
 
@@ -1781,7 +1781,7 @@ def test_notice_eligible_count_reflects_scheme_filter(tmp_path, monkeypatch):
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
-    response = client.get("/api/notices/transition_facilitation_2026/eligible-count", params={"scheme": "CRS"})
+    response = client.get("/api/notices/meity_series_guidelines_2026/eligible-count", params={"scheme": "CRS"})
     assert response.status_code == 200
     assert response.json() == {"whatsapp": 1, "email": 1}
 
@@ -1801,22 +1801,22 @@ def test_send_notice_whatsapp_starts_job_and_reports_progress(tmp_path, monkeypa
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
     monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
-    monkeypatch.setenv("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_NAME", "transition_notice_2026")
-    monkeypatch.setenv("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_LANG", "en")
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026_tpl")
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
 
     mock_response = type("Resp", (), {
         "status_code": 200,
         "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
     })()
     with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
-        response = client.post("/api/notices/transition_facilitation_2026/send-whatsapp", params={"scheme": "CRS"})
+        response = client.post("/api/notices/meity_series_guidelines_2026/send-whatsapp", params={"scheme": "CRS"})
         assert response.status_code == 200
         job_id = response.json()["job_id"]
 
         import time
         status_response = None
         for _ in range(50):
-            status_response = client.get(f"/api/notices/transition_facilitation_2026/send-whatsapp/status/{job_id}")
+            status_response = client.get(f"/api/notices/meity_series_guidelines_2026/send-whatsapp/status/{job_id}")
             if status_response.json()["done"]:
                 break
             time.sleep(0.05)
@@ -1827,7 +1827,7 @@ def test_send_notice_whatsapp_starts_job_and_reports_progress(tmp_path, monkeypa
 
 
 def test_send_notice_whatsapp_status_returns_404_for_unknown_job():
-    response = client.get("/api/notices/transition_facilitation_2026/send-whatsapp/status/does-not-exist")
+    response = client.get("/api/notices/meity_series_guidelines_2026/send-whatsapp/status/does-not-exist")
     assert response.status_code == 404
 
 
@@ -1846,14 +1846,14 @@ def test_send_notice_email_starts_job_and_reports_progress(tmp_path, monkeypatch
         "json": lambda self: {"messageId": "brevo-1"},
     })()
     with patch("email_alerts.requests.post", return_value=mock_response):
-        response = client.post("/api/notices/transition_facilitation_2026/send-email", params={"scheme": "CRS"})
+        response = client.post("/api/notices/meity_series_guidelines_2026/send-email", params={"scheme": "CRS"})
         assert response.status_code == 200
         job_id = response.json()["job_id"]
 
         import time
         status_response = None
         for _ in range(50):
-            status_response = client.get(f"/api/notices/transition_facilitation_2026/send-email/status/{job_id}")
+            status_response = client.get(f"/api/notices/meity_series_guidelines_2026/send-email/status/{job_id}")
             if status_response.json()["done"]:
                 break
             time.sleep(0.05)
@@ -1864,7 +1864,7 @@ def test_send_notice_email_starts_job_and_reports_progress(tmp_path, monkeypatch
 
 
 def test_send_notice_email_status_returns_404_for_unknown_job():
-    response = client.get("/api/notices/transition_facilitation_2026/send-email/status/does-not-exist")
+    response = client.get("/api/notices/meity_series_guidelines_2026/send-email/status/does-not-exist")
     assert response.status_code == 404
 
 
@@ -1884,10 +1884,10 @@ def test_notice_clients_returns_paginated_rows_with_notice_status(tmp_path, monk
     ])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     from db import record_notice_sent
-    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+    record_notice_sent(db_path, "CLT001", "meity_series_guidelines_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
 
     response = client.get(
-        "/api/notices/transition_facilitation_2026/clients",
+        "/api/notices/meity_series_guidelines_2026/clients",
         params={"scheme": "CRS", "page": 1, "page_size": 8},
     )
 
@@ -1913,7 +1913,7 @@ def test_notice_clients_respects_page_size(tmp_path, monkeypatch):
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     response = client.get(
-        "/api/notices/transition_facilitation_2026/clients",
+        "/api/notices/meity_series_guidelines_2026/clients",
         params={"page": 1, "page_size": 1},
     )
 

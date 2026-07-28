@@ -11,12 +11,12 @@ To add a new notice: write notice_<id>.py implementing the above, then add
 one line below plus a display label. No endpoint/frontend changes needed --
 the Notices page and its endpoints already iterate this registry.
 """
-import notice_transition_facilitation_2026
+import notice_meity_series_guidelines_2026
 
 NOTICES = {
-    "transition_facilitation_2026": {
-        "label": "Transition Facilitation Order 2026",
-        "module": notice_transition_facilitation_2026,
+    "meity_series_guidelines_2026": {
+        "label": "MeitY Series Guidelines — IS/IEC 62368-1:2023",
+        "module": notice_meity_series_guidelines_2026,
     },
 }
 

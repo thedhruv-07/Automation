@@ -1,15 +1,18 @@
-"""Content for the "Transition Facilitation Order 2026" one-time broadcast
-notice. Summarizes DPIIT's Transition Facilitation (Quality Control) Order,
-2026 (S.O. 3417(E), effective 25 June 2026) -- see
-https://absoluteveritas.com/transition-facilitation-quality-control-order-2026/
-for the full article this summarizes. Unlike the per-scheme renewal alert
-content in scheme_templates.py, this isn't about any individual client's own
+"""Content for the "MeitY Series Guidelines — IS/IEC 62368-1:2023" one-time
+broadcast notice. Summarizes MeitY Circular No. W-47/34/2025-IPHW (20 May
+2026), prescribing revised series-formation guidelines for products under
+the standard IS/IEC 62368 -- Part 1: 2023 (migrated from IS 13252 Part 1:
+2020 and IS 616:2017 vide Gazette Notification S.O. No. 4997(E), 29 Oct
+2025) -- see
+https://absoluteveritas.com/meity-series-guidelines-isiec-62368-part1-2023/
+for the full circular. Unlike the per-scheme renewal alert content in
+scheme_templates.py, this isn't about any individual client's own
 certificate -- it's a general compliance-awareness announcement."""
 from email_template import CALENDLY_URL
 
-NOTICE_URL = "https://absoluteveritas.com/transition-facilitation-quality-control-order-2026/"
+NOTICE_URL = "https://absoluteveritas.com/meity-series-guidelines-isiec-62368-part1-2023/"
 
-EMAIL_SUBJECT = "Important: BIS Transition Facilitation Order, 2026 — What It Means for You"
+EMAIL_SUBJECT = "Important: MeitY Series Guidelines for IS/IEC 62368-1:2023 — What It Means for You"
 
 
 def build_email_html(rec: dict, org_name: str) -> str:
@@ -29,18 +32,19 @@ def build_email_html(rec: dict, org_name: str) -> str:
         <tr><td style="padding:32px 40px;">
           <p style="color:#0b0b0b;font-size:16px;margin:0 0 18px;">Dear <strong>{rec['name']}</strong> ({rec['company']}),</p>
           <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 18px;">
-            DPIIT's new <strong>Transition Facilitation (Quality Control) Order, 2026</strong>
-            (effective 25 June 2026) lets eligible companies source BIS Scheme-II
-            certified product while their own ISI Mark certification is still in
-            process — covering ten notified Quality Control Orders including toys,
-            footwear, air conditioners, water heaters, washing machines, hinges,
-            furniture, and household electrical appliances.
+            MeitY has issued <strong>Circular No. W-47/34/2025-IPHW (20 May 2026)</strong>
+            prescribing revised series-formation guidelines for products under
+            <strong>IS/IEC 62368 &ndash; Part 1: 2023</strong> &mdash; the standard that
+            IS 13252 Part 1:2020 and IS 616:2017 have migrated to (Gazette
+            Notification S.O. 4997(E), 29 Oct 2025). This is binding on all
+            BIS licence holders, applicants, manufacturers, importers, and
+            sellers of audio/video, IT, and communication equipment.
           </p>
           <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 26px;">
-            The application window is <strong>24 months from 25 June 2026</strong>.
-            If your business handles products under any of these categories, or is
-            currently working through ISI Mark certification, this is worth
-            building into your compliance planning now.
+            Key changes: a maximum of <strong>10 models per series</strong>, matching
+            IP ratings and enclosure design across the series, a single class
+            of construction, and matching energy source/safeguard system per
+            model &mdash; effective immediately from the date of issuance.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr><td align="center" style="padding:4px 0 14px;">
@@ -57,9 +61,10 @@ def build_email_html(rec: dict, org_name: str) -> str:
             </td></tr>
           </table>
           <p style="color:#52514e;font-size:13px;line-height:1.7;margin:0;">
-            Want help assessing your eligibility or compiling documentation?
-            Reach out to {org_name} — we support BIS Certification, QCO
-            compliance, and regulatory coordination across India.
+            Want help assessing how this affects your existing or upcoming
+            series certification? Reach out to {org_name} — we support BIS
+            Certification, QCO compliance, and regulatory coordination
+            across India.
           </p>
         </td></tr>
         <tr><td style="background:#0b0b0b;padding:18px;text-align:center;">
@@ -76,8 +81,8 @@ def build_email_html(rec: dict, org_name: str) -> str:
 
 def get_whatsapp_template() -> tuple[str, str] | None:
     import os
-    name = os.environ.get("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_NAME")
-    lang = os.environ.get("WHATSAPP_NOTICE_TRANSITION_FACILITATION_2026_LANG")
+    name = os.environ.get("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME")
+    lang = os.environ.get("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG")
     if name and lang:
         return name, lang
     return None
