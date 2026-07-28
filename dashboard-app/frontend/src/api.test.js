@@ -5,6 +5,7 @@ import {
   getStats, getSendAllStatus, verifyCredentials,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
+  getNoticeClients,
 } from "./api";
 import { setStoredAuthHeader } from "./auth";
 
@@ -407,6 +408,21 @@ describe("getNoticeEligibleCount", () => {
     expect(result).toEqual({ whatsapp: 2, email: 3 });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/notices/transition_facilitation_2026/eligible-count?scheme=CRS",
+      { credentials: "include", headers: {} }
+    );
+  });
+});
+
+describe("getNoticeClients", () => {
+  it("passes pagination and filters as query params", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ rows: [{ client_id: "CLT001" }], total: 1, page: 1, page_size: 8 }),
+    });
+    const result = await getNoticeClients("transition_facilitation_2026", { page: 1, pageSize: 8, scheme: "CRS" });
+    expect(result).toEqual({ rows: [{ client_id: "CLT001" }], total: 1, page: 1, page_size: 8 });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/notices/transition_facilitation_2026/clients?page=1&page_size=8&scheme=CRS",
       { credentials: "include", headers: {} }
     );
   });

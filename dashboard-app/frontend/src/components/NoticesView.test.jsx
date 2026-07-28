@@ -13,6 +13,7 @@ function setup(overrides = {}) {
       total: 3, sent: 3, skipped: 0, failed: 0, done: true,
     }),
     getNoticePreview: vi.fn().mockResolvedValue({ subject: "Test Subject", html: "<p>Test</p>" }),
+    getNoticeClients: vi.fn().mockResolvedValue({ rows: [], total: 0, page: 1, page_size: 8 }),
     ...overrides,
   };
   return { ...render(<NoticesView {...props} />), props };
@@ -77,6 +78,36 @@ describe("NoticesView", () => {
 
     await waitFor(() => expect(props.getNoticePreview).toHaveBeenCalledWith("transition_facilitation_2026"));
     await waitFor(() => expect(screen.getByText("Test Subject")).toBeInTheDocument());
+  });
+
+  it("fetches the client list once a notice is selected", async () => {
+    const { props } = setup();
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    fireEvent.change(screen.getByLabelText("Which notice?"), { target: { value: "transition_facilitation_2026" } });
+    await waitFor(() => expect(props.getNoticeClients).toHaveBeenCalledWith(
+      "transition_facilitation_2026", expect.objectContaining({ page: 1, pageSize: 8, scheme: "ALL" })
+    ));
+  });
+
+  it("renders the client list once loaded", async () => {
+    setup({
+      getNoticeClients: vi.fn().mockResolvedValue({
+        rows: [{
+          client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", email: "r@x.com",
+          phone: "919876543210", notice_sent_whatsapp: false, notice_sent_email: false,
+        }],
+        total: 1, page: 1, page_size: 8,
+      }),
+    });
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    fireEvent.change(screen.getByLabelText("Which notice?"), { target: { value: "transition_facilitation_2026" } });
+    await waitFor(() => expect(screen.getByText("Rahul Sharma")).toBeInTheDocument());
+  });
+
+  it("does not show the client list before a notice is selected", async () => {
+    setup();
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    expect(screen.queryByTestId("notice-clients-table")).not.toBeInTheDocument();
   });
 
   it("sends the notice via WhatsApp and shows progress through to done", async () => {
