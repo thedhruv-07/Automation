@@ -94,10 +94,10 @@ def test_custom_intro_text_overrides_default():
     assert "This is a notification regarding" not in html
 
 
-def test_includes_book_an_appointment_button_alongside_renew_now():
+def test_book_an_appointment_is_the_sole_cta_button():
     from email_template import CALENDLY_URL
     html = build_email_html(make_rec(5))
-    assert "Renew Now" in html
+    assert "Renew Now" not in html
     assert "Book an Appointment" in html
     assert f'href="{CALENDLY_URL}"' in html
     assert 'target="_blank"' in html

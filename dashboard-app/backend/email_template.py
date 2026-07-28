@@ -143,15 +143,9 @@ def build_email_html(
 
                 <!-- CTA Button -->
                 <table width="100%" cellpadding="0" cellspacing="0">
-                  <tr><td align="center" style="padding:4px 0 14px;">
-                    <a href="{rec['renewal_link']}"
-                       style="background:{ACCENT};color:#fff;padding:15px 42px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;box-shadow:0 4px 10px rgba(42,120,214,0.35);">
-                      Renew Now
-                    </a>
-                  </td></tr>
-                  <tr><td align="center" style="padding:0 0 28px;">
+                  <tr><td align="center" style="padding:4px 0 28px;">
                     <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer"
-                       style="background:#ffffff;color:{ACCENT};padding:13px 40px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;display:inline-block;border:2px solid {ACCENT};">
+                       style="background:{ACCENT};color:#fff;padding:15px 42px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;box-shadow:0 4px 10px rgba(42,120,214,0.35);">
                       Book an Appointment
                     </a>
                   </td></tr>
