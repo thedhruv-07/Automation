@@ -16,6 +16,7 @@ const COLUMNS = [
   { key: "client_id", label: "Client ID" },
   { key: "name", label: "Full Name" },
   { key: "company", label: "Company" },
+  { key: "phone", label: "Phone", sortable: false },
   { key: "cert_name", label: "Certification" },
   { key: "cert_id", label: "Cert ID" },
   { key: "expiry_date", label: "Expiry Date" },
@@ -101,15 +102,21 @@ export default function ClientTable({
               />
             </th>
             {COLUMNS.map((col) => (
-              <th
-                key={col.key}
-                onClick={() => onSort(col.key)}
-                aria-sort={sortKey === col.key ? (sortAsc ? "ascending" : "descending") : "none"}
-                className="px-3 py-2 text-left font-semibold cursor-pointer select-none hover:text-ink-primary transition-colors"
-              >
-                {col.label}
-                {sortKey === col.key ? (sortAsc ? " ▲" : " ▼") : ""}
-              </th>
+              col.sortable === false ? (
+                <th key={col.key} className="px-3 py-2 text-left font-semibold">
+                  {col.label}
+                </th>
+              ) : (
+                <th
+                  key={col.key}
+                  onClick={() => onSort(col.key)}
+                  aria-sort={sortKey === col.key ? (sortAsc ? "ascending" : "descending") : "none"}
+                  className="px-3 py-2 text-left font-semibold cursor-pointer select-none hover:text-ink-primary transition-colors"
+                >
+                  {col.label}
+                  {sortKey === col.key ? (sortAsc ? " ▲" : " ▼") : ""}
+                </th>
+              )
             ))}
             <th className="px-3 py-2 text-left font-semibold">Action</th>
           </tr>
@@ -147,6 +154,7 @@ export default function ClientTable({
                   </div>
                 </td>
                 <td className="px-3 py-2">{c.company}</td>
+                <td className="px-3 py-2 tabular-nums">{c.phone || "—"}</td>
                 <td className="px-3 py-2">{c.cert_name}</td>
                 <td className="px-3 py-2">{c.cert_id}</td>
                 <td className="px-3 py-2 tabular-nums">{c.expiry_date}</td>

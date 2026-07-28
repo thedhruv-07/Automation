@@ -6,6 +6,7 @@ const pageOf = (rows, total = rows.length, page = 1) => ({ rows, total, page, pa
 
 const oneClient = {
   client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", email: "rahul@techcorp.com",
+  phone: "919876543210",
   cert_name: "ISO 9001", cert_id: "ISO-1", expiry_date: "24-07-2026", status: "CRITICAL",
   alert_sent_today: false,
 };
@@ -31,6 +32,28 @@ describe("ClientTable", () => {
       />
     );
     expect(screen.getByText("Loading clients…")).toBeInTheDocument();
+  });
+
+  it("shows the client's phone number in its own column", () => {
+    render(
+      <ClientTable
+        page={pageOf([oneClient])} loading={false} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}}
+      />
+    );
+    expect(screen.getByText("919876543210")).toBeInTheDocument();
+  });
+
+  it("shows an em dash when the client has no phone on file", () => {
+    render(
+      <ClientTable
+        page={pageOf([{ ...oneClient, phone: null }])} loading={false} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}}
+      />
+    );
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 
   it("shows the total row count from the server, not just the rendered page", () => {
