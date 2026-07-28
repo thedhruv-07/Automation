@@ -19,6 +19,18 @@ def test_build_email_html_includes_name_company_and_notice_url():
     assert "Absolute Veritas" in html
 
 
+def test_build_email_html_cta_link_opens_in_a_new_tab():
+    """Without target="_blank", clicking (or a browser/extension attempting
+    to preview) the link tries to navigate the current viewing context in
+    place -- inside the dashboard's own preview iframe, that fails outright
+    since the target site correctly sets X-Frame-Options against being
+    framed by another origin."""
+    html = notice.build_email_html(_rec(), "Absolute Veritas")
+    assert f'href="{notice.NOTICE_URL}"' in html
+    assert 'target="_blank"' in html
+    assert 'rel="noopener noreferrer"' in html
+
+
 def test_email_subject_mentions_the_order():
     assert "Transition Facilitation" in notice.EMAIL_SUBJECT
     assert "2026" in notice.EMAIL_SUBJECT

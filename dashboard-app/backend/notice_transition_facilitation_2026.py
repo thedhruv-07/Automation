@@ -43,7 +43,7 @@ def build_email_html(rec: dict, org_name: str) -> str:
           </p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr><td align="center" style="padding:4px 0 26px;">
-              <a href="{NOTICE_URL}"
+              <a href="{NOTICE_URL}" target="_blank" rel="noopener noreferrer"
                  style="background:#2a78d6;color:#fff;padding:15px 42px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">
                 Read the Full Breakdown
               </a>
