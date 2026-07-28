@@ -125,6 +125,13 @@ export default function NoticesView({
         onClearAll={handleClearAllFilters}
       />
 
+      {selectedNoticeId && (
+        <p className="text-sm text-ink-secondary">
+          {eligibleCount.whatsapp} client{eligibleCount.whatsapp === 1 ? "" : "s"} matching your filters haven't received this via WhatsApp,{" "}
+          {eligibleCount.email} client{eligibleCount.email === 1 ? "" : "s"} via Email.
+        </p>
+      )}
+
       <div className="flex items-center gap-3">
         <button
           type="button"

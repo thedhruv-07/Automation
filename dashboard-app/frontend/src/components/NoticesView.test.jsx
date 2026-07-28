@@ -46,6 +46,20 @@ describe("NoticesView", () => {
     await waitFor(() => expect(screen.getByText("Send via WhatsApp")).not.toBeDisabled());
   });
 
+  it("shows the eligible count on the page once a notice is selected", async () => {
+    setup({ getNoticeEligibleCount: vi.fn().mockResolvedValue({ whatsapp: 12, email: 9 }) });
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    fireEvent.change(screen.getByLabelText("Which notice?"), { target: { value: "transition_facilitation_2026" } });
+    await waitFor(() => expect(screen.getByText(/12 clients? .*WhatsApp/)).toBeInTheDocument());
+    expect(screen.getByText(/9 clients? .*[Ee]mail/)).toBeInTheDocument();
+  });
+
+  it("does not show an eligible count before a notice is selected", async () => {
+    setup();
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    expect(screen.queryByText(/clients? .*WhatsApp/)).not.toBeInTheDocument();
+  });
+
   it("sends the notice via WhatsApp and shows progress through to done", async () => {
     const { props } = setup();
     await waitFor(() => screen.getByLabelText("Which notice?"));
