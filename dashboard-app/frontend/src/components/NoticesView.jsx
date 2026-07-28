@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import ClientDataFilters from "./ClientDataFilters";
 import SendAllConfirmModal from "./SendAllConfirmModal";
+import NoticeClientsTable from "./NoticeClientsTable";
 
 const JOB_POLL_MS = 500;
 
 export default function NoticesView({
-  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, schemeOptions = [],
+  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticeClients,
+  schemeOptions = [],
 }) {
   const [notices, setNotices] = useState([]);
   const [selectedNoticeId, setSelectedNoticeId] = useState("");
@@ -14,6 +16,9 @@ export default function NoticesView({
   const [status, setStatus] = useState("ALL");
   const [expiryBefore, setExpiryBefore] = useState("");
   const [eligibleCount, setEligibleCount] = useState({ whatsapp: 0, email: 0 });
+  const [clientsPageNum, setClientsPageNum] = useState(1);
+  const [clientsPage, setClientsPage] = useState({ rows: [], total: 0, page: 1, page_size: 8 });
+  const [clientsLoading, setClientsLoading] = useState(false);
   const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
   const [whatsappJob, setWhatsappJob] = useState(null);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -31,6 +36,24 @@ export default function NoticesView({
       .then(setEligibleCount)
       .catch(() => {});
   }, [selectedNoticeId, status, certType, scheme, expiryBefore, getNoticeEligibleCount]);
+
+  useEffect(() => {
+    setClientsPageNum(1);
+  }, [selectedNoticeId, status, certType, scheme, expiryBefore]);
+
+  useEffect(() => {
+    if (!selectedNoticeId) {
+      setClientsPage({ rows: [], total: 0, page: 1, page_size: 8 });
+      return;
+    }
+    setClientsLoading(true);
+    getNoticeClients(selectedNoticeId, {
+      page: clientsPageNum, pageSize: 8, status, certType, scheme, expiryBefore,
+    })
+      .then(setClientsPage)
+      .catch(() => {})
+      .finally(() => setClientsLoading(false));
+  }, [selectedNoticeId, clientsPageNum, status, certType, scheme, expiryBefore, getNoticeClients]);
 
   useEffect(() => {
     return () => {
@@ -124,6 +147,10 @@ export default function NoticesView({
         onExpiryBeforeChange={setExpiryBefore}
         onClearAll={handleClearAllFilters}
       />
+
+      {selectedNoticeId && (
+        <NoticeClientsTable page={clientsPage} loading={clientsLoading} onPageChange={setClientsPageNum} />
+      )}
 
       <div className="flex items-center gap-3">
         <button

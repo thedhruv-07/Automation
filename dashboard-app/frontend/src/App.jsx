@@ -18,7 +18,7 @@ import {
   getClients, getStats, sendAlert, sendAllAlerts, getSendAllStatus, uploadClientsFile,
   mergeClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
-  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus,
+  listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticeClients,
 } from "./api";
 
 const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
@@ -447,6 +447,7 @@ export default function App({ onLogout } = {}) {
               getNoticeEligibleCount={getNoticeEligibleCount}
               sendNotice={sendNotice}
               getNoticeSendStatus={getNoticeSendStatus}
+              getNoticeClients={getNoticeClients}
               schemeOptions={schemeOptions}
             />
           )}
