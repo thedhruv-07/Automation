@@ -208,6 +208,22 @@ export async function getNoticeEligibleCount(noticeId, params = {}) {
   return res.json();
 }
 
+export async function getNoticeClients(noticeId, params = {}) {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", params.page);
+  if (params.pageSize) query.set("page_size", params.pageSize);
+  if (params.status && params.status !== "ALL") query.set("status", params.status);
+  if (params.certType && params.certType !== "ALL") query.set("cert_type", params.certType);
+  if (params.scheme && params.scheme !== "ALL") query.set("scheme", params.scheme);
+  if (params.expiryBefore) query.set("expiry_before", params.expiryBefore);
+  if (params.search) query.set("search", params.search);
+  const qs = query.toString();
+  const url = `/api/notices/${noticeId}/clients${qs ? `?${qs}` : ""}`;
+  const res = await fetch(`${API_BASE}${url}`, { credentials: "include", headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to load notice clients: ${res.status}`);
+  return res.json();
+}
+
 export async function sendNotice(noticeId, channel, params = {}) {
   const qs = scopeQueryString(params);
   const url = `/api/notices/${noticeId}/send-${channel}${qs ? `?${qs}` : ""}`;
