@@ -31,6 +31,16 @@ def test_build_email_html_cta_link_opens_in_a_new_tab():
     assert 'rel="noopener noreferrer"' in html
 
 
+def test_build_email_html_includes_book_an_appointment_button_alongside_read_more():
+    from email_template import CALENDLY_URL
+    html = notice.build_email_html(_rec(), "Absolute Veritas")
+    assert "Read the Full Breakdown" in html
+    assert "Book an Appointment" in html
+    assert f'href="{CALENDLY_URL}"' in html
+    assert html.count('target="_blank"') == 2  # both buttons open in a new tab
+    assert html.count('rel="noopener noreferrer"') == 2
+
+
 def test_email_subject_mentions_the_order():
     assert "Transition Facilitation" in notice.EMAIL_SUBJECT
     assert "2026" in notice.EMAIL_SUBJECT

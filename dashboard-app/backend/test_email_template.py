@@ -92,3 +92,13 @@ def test_custom_intro_text_overrides_default():
     )
     assert "Custom notice for <strong>TechCorp</strong>." in html
     assert "This is a notification regarding" not in html
+
+
+def test_includes_book_an_appointment_button_alongside_renew_now():
+    from email_template import CALENDLY_URL
+    html = build_email_html(make_rec(5))
+    assert "Renew Now" in html
+    assert "Book an Appointment" in html
+    assert f'href="{CALENDLY_URL}"' in html
+    assert 'target="_blank"' in html
+    assert 'rel="noopener noreferrer"' in html

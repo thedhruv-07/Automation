@@ -5,6 +5,7 @@ https://absoluteveritas.com/transition-facilitation-quality-control-order-2026/
 for the full article this summarizes. Unlike the per-scheme renewal alert
 content in scheme_templates.py, this isn't about any individual client's own
 certificate -- it's a general compliance-awareness announcement."""
+from email_template import CALENDLY_URL
 
 NOTICE_URL = "https://absoluteveritas.com/transition-facilitation-quality-control-order-2026/"
 
@@ -42,10 +43,16 @@ def build_email_html(rec: dict, org_name: str) -> str:
             building into your compliance planning now.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0">
-            <tr><td align="center" style="padding:4px 0 26px;">
+            <tr><td align="center" style="padding:4px 0 14px;">
               <a href="{NOTICE_URL}" target="_blank" rel="noopener noreferrer"
                  style="background:#2a78d6;color:#fff;padding:15px 42px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">
                 Read the Full Breakdown
+              </a>
+            </td></tr>
+            <tr><td align="center" style="padding:0 0 26px;">
+              <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer"
+                 style="background:#ffffff;color:#2a78d6;padding:13px 40px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;display:inline-block;border:2px solid #2a78d6;">
+                Book an Appointment
               </a>
             </td></tr>
           </table>
