@@ -48,42 +48,6 @@ def test_resolve_allowed_origins_appends_configured_origin(monkeypatch):
     ]
 
 
-def test_protected_route_allows_request_when_auth_env_vars_unset(monkeypatch):
-    monkeypatch.delenv("DASHBOARD_USERNAME", raising=False)
-    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
-    response = client.get("/api/stats")
-    assert response.status_code == 200
-
-
-def test_protected_route_rejects_missing_credentials_when_auth_configured(monkeypatch):
-    monkeypatch.setenv("DASHBOARD_USERNAME", "admin")
-    monkeypatch.setenv("DASHBOARD_PASSWORD", "s3cret")
-    response = client.get("/api/stats")
-    assert response.status_code == 401
-    assert response.headers["www-authenticate"] == "Basic"
-
-
-def test_protected_route_rejects_wrong_credentials_when_auth_configured(monkeypatch):
-    monkeypatch.setenv("DASHBOARD_USERNAME", "admin")
-    monkeypatch.setenv("DASHBOARD_PASSWORD", "s3cret")
-    response = client.get("/api/stats", auth=("admin", "wrong"))
-    assert response.status_code == 401
-
-
-def test_protected_route_accepts_correct_credentials_when_auth_configured(monkeypatch):
-    monkeypatch.setenv("DASHBOARD_USERNAME", "admin")
-    monkeypatch.setenv("DASHBOARD_PASSWORD", "s3cret")
-    response = client.get("/api/stats", auth=("admin", "s3cret"))
-    assert response.status_code == 200
-
-
-def test_health_endpoint_never_requires_auth(monkeypatch):
-    monkeypatch.setenv("DASHBOARD_USERNAME", "admin")
-    monkeypatch.setenv("DASHBOARD_PASSWORD", "s3cret")
-    response = client.get("/api/health")
-    assert response.status_code == 200
-
-
 def test_get_clients_paginates_and_reports_total(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [

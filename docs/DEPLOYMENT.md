@@ -1,8 +1,10 @@
 # Deploying the Dashboard: Render (backend) + Vercel (frontend)
 
-This app is a solo-admin tool. Deploying it makes it reachable from anywhere
-you're logged in — it does **not** make it safe to leave undefended. Follow
-every step, especially the credentials one.
+This app is a solo-admin tool with **no login/authentication** — deploying it
+makes the dashboard, all client PII (names/emails/phone numbers), and the
+bulk-send buttons reachable by anyone with the URL. Only deploy it somewhere
+not indexed/shared, or put access control in front of it (e.g. Vercel's own
+password protection, an IP allowlist, or a VPN) if that matters to you.
 
 > **You're on Render's free tier: `clients.db` will NOT persist.** Free-tier
 > services have an ephemeral filesystem and spin down after inactivity,
@@ -30,9 +32,6 @@ every step, especially the credentials one.
    - `WHATSAPP_TOKEN`, `PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_NAME`,
      `WHATSAPP_TEMPLATE_LANG`, `EMAIL_SENDER`, `BREVO_API_KEY` — same values
      as your local `.env`.
-   - `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` — **pick real, unique
-     credentials now, not placeholders.** Anyone with these can read every
-     client's name/email/phone number and trigger WhatsApp sends.
    - Leave `DASHBOARD_ALLOWED_ORIGIN` unset for now — you'll set it after
      step 2, once you know the Vercel URL.
    - Do **not** set `DASHBOARD_DB_PATH` — with no persistent disk attached,
@@ -91,13 +90,10 @@ redeploys automatically.
 
 ## 5. Verify end to end
 
-1. Open the Vercel URL. You should land on the login screen (not the
-   dashboard directly — if you see the dashboard immediately, `VITE_API_BASE_URL`
-   likely wasn't set at build time; check step 3.2 and redeploy).
-2. Sign in with the `DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD` you set in
-   step 1.3. You should land on the dashboard with real client data loaded.
-3. Confirm pagination, search, filters, and CSV export all work.
-4. **Do not** test "Send Alert" / "Send All Eligible" (WhatsApp) or "Send
+1. Open the Vercel URL. You should land directly on the dashboard with real
+   client data loaded — there's no login screen.
+2. Confirm pagination, search, filters, and CSV export all work.
+3. **Do not** test "Send Alert" / "Send All Eligible" (WhatsApp) or "Send
    Email" / "Send All Emails" against this deployment unless
    `DASHBOARD_TEST_NUMBER` / `DASHBOARD_TEST_EMAIL` are also set on Render to
    a verified test number/address — otherwise a test click sends a real

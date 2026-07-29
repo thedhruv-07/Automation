@@ -2,12 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getClients, sendAlert, sendAllAlerts, uploadClientsFile, mergeClientsFile,
   getMessageLog, getSettingsInfo, getEmailPreview,
-  getStats, getSendAllStatus, verifyCredentials,
+  getStats, getSendAllStatus,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients,
 } from "./api";
-import { setStoredAuthHeader } from "./auth";
 
 beforeEach(() => {
   global.fetch = vi.fn();
@@ -235,36 +234,6 @@ describe("getSendAllStatus", () => {
     const status = await getSendAllStatus("abc-123");
     expect(status).toEqual({ total: 5, sent: 2, skipped: 1, failed: 0, done: false });
     expect(global.fetch).toHaveBeenCalledWith("/api/send-all/status/abc-123", { credentials: "include", headers: {} });
-  });
-});
-
-describe("verifyCredentials", () => {
-  it("returns true when the backend accepts the credentials", async () => {
-    global.fetch.mockResolvedValue({ ok: true, json: async () => ({}) });
-    const ok = await verifyCredentials("Basic dGVzdDp0ZXN0");
-    expect(ok).toBe(true);
-    expect(global.fetch).toHaveBeenCalledWith(
-      "/api/settings-info",
-      { credentials: "include", headers: { Authorization: "Basic dGVzdDp0ZXN0" } }
-    );
-  });
-
-  it("returns false when the backend rejects the credentials", async () => {
-    global.fetch.mockResolvedValue({ ok: false, status: 401 });
-    const ok = await verifyCredentials("Basic d3Jvbmc6d3Jvbmc=");
-    expect(ok).toBe(false);
-  });
-});
-
-describe("authenticated requests", () => {
-  it("adds the stored Authorization header to requests once set", async () => {
-    setStoredAuthHeader("Basic dGVzdDp0ZXN0");
-    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ status_counts: { total: 1 } }) });
-    await getStats();
-    expect(global.fetch).toHaveBeenCalledWith(
-      "/api/stats",
-      { credentials: "include", headers: { Authorization: "Basic dGVzdDp0ZXN0" } }
-    );
   });
 });
 

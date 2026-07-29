@@ -1,11 +1,4 @@
-import { getStoredAuthHeader } from "./auth";
-
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
-function authHeaders(extra = {}) {
-  const stored = getStoredAuthHeader();
-  return stored ? { ...extra, Authorization: stored } : extra;
-}
 
 export async function getClients(params = {}) {
   const query = new URLSearchParams();
@@ -21,41 +14,41 @@ export async function getClients(params = {}) {
   const qs = query.toString();
   const res = await fetch(`${API_BASE}${qs ? `/api/clients?${qs}` : "/api/clients"}`, {
     credentials: "include",
-    headers: authHeaders(),
+    headers: {},
   });
   if (!res.ok) throw new Error(`Failed to load clients: ${res.status}`);
   return res.json();
 }
 
 export async function getStats() {
-  const res = await fetch(`${API_BASE}/api/stats`, { credentials: "include", headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/api/stats`, { credentials: "include", headers: {} });
   if (!res.ok) throw new Error(`Failed to load stats: ${res.status}`);
   return res.json();
 }
 
 export async function getEmailPreview(clientId) {
   const res = await fetch(`${API_BASE}/api/email-preview/${clientId}`, {
-    credentials: "include", headers: authHeaders(),
+    credentials: "include", headers: {},
   });
   if (!res.ok) throw new Error(`Failed to load email preview: ${res.status}`);
   return res.json();
 }
 
 export async function getSettingsInfo() {
-  const res = await fetch(`${API_BASE}/api/settings-info`, { credentials: "include", headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/api/settings-info`, { credentials: "include", headers: {} });
   if (!res.ok) throw new Error(`Failed to load settings info: ${res.status}`);
   return res.json();
 }
 
 export async function getMessageLog() {
-  const res = await fetch(`${API_BASE}/api/message-log`, { credentials: "include", headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/api/message-log`, { credentials: "include", headers: {} });
   if (!res.ok) throw new Error(`Failed to load message log: ${res.status}`);
   return res.json();
 }
 
 export async function sendAlert(clientId) {
   const res = await fetch(`${API_BASE}/api/send/${clientId}`, {
-    method: "POST", credentials: "include", headers: authHeaders(),
+    method: "POST", credentials: "include", headers: {},
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -77,7 +70,7 @@ function scopeQueryString(params = {}) {
 export async function sendAllAlerts(params = {}) {
   const qs = scopeQueryString(params);
   const res = await fetch(`${API_BASE}${qs ? `/api/send-all?${qs}` : "/api/send-all"}`, {
-    method: "POST", credentials: "include", headers: authHeaders(),
+    method: "POST", credentials: "include", headers: {},
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -88,7 +81,7 @@ export async function sendAllAlerts(params = {}) {
 
 export async function getSendAllStatus(jobId) {
   const res = await fetch(`${API_BASE}/api/send-all/status/${jobId}`, {
-    credentials: "include", headers: authHeaders(),
+    credentials: "include", headers: {},
   });
   if (!res.ok) throw new Error(`Failed to load send-all status: ${res.status}`);
   return res.json();
@@ -96,7 +89,7 @@ export async function getSendAllStatus(jobId) {
 
 export async function sendEmailAlert(clientId) {
   const res = await fetch(`${API_BASE}/api/send-email/${clientId}`, {
-    method: "POST", credentials: "include", headers: authHeaders(),
+    method: "POST", credentials: "include", headers: {},
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -108,7 +101,7 @@ export async function sendEmailAlert(clientId) {
 export async function sendAllEmailAlerts(params = {}) {
   const qs = scopeQueryString(params);
   const res = await fetch(`${API_BASE}${qs ? `/api/send-all-emails?${qs}` : "/api/send-all-emails"}`, {
-    method: "POST", credentials: "include", headers: authHeaders(),
+    method: "POST", credentials: "include", headers: {},
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -119,7 +112,7 @@ export async function sendAllEmailAlerts(params = {}) {
 
 export async function getSendAllEmailsStatus(jobId) {
   const res = await fetch(`${API_BASE}/api/send-all-emails/status/${jobId}`, {
-    credentials: "include", headers: authHeaders(),
+    credentials: "include", headers: {},
   });
   if (!res.ok) throw new Error(`Failed to load send-all status: ${res.status}`);
   return res.json();
@@ -128,7 +121,7 @@ export async function getSendAllEmailsStatus(jobId) {
 export async function getEligibleCount(params = {}) {
   const qs = scopeQueryString(params);
   const res = await fetch(`${API_BASE}${qs ? `/api/eligible-count?${qs}` : "/api/eligible-count"}`, {
-    credentials: "include", headers: authHeaders(),
+    credentials: "include", headers: {},
   });
   if (!res.ok) throw new Error(`Failed to load eligible count: ${res.status}`);
   return res.json();
@@ -150,7 +143,7 @@ export async function uploadClientsFile(file, importFormat) {
   formData.append("file", file);
   formData.append("import_format", importFormat);
   const res = await fetch(`${API_BASE}/api/upload-clients`, {
-    method: "POST", credentials: "include", headers: authHeaders(), body: formData,
+    method: "POST", credentials: "include", headers: {}, body: formData,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -164,7 +157,7 @@ export async function mergeClientsFile(file, importFormat) {
   formData.append("file", file);
   formData.append("import_format", importFormat);
   const res = await fetch(`${API_BASE}/api/merge-clients`, {
-    method: "POST", credentials: "include", headers: authHeaders(), body: formData,
+    method: "POST", credentials: "include", headers: {}, body: formData,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -182,27 +175,15 @@ export function downloadClientTemplate() {
   document.body.removeChild(link);
 }
 
-export async function verifyCredentials(authHeaderValue) {
-  // /api/settings-info is deliberately used here instead of /api/stats (or any
-  // other data-backed endpoint): it requires auth but never touches the
-  // database, so login isn't blocked by an empty/missing clients.db (e.g.
-  // right after a Render free-tier restart, before the roster is reloaded).
-  const res = await fetch(`${API_BASE}/api/settings-info`, {
-    credentials: "include",
-    headers: { Authorization: authHeaderValue },
-  });
-  return res.ok;
-}
-
 export async function listNotices() {
-  const res = await fetch(`${API_BASE}/api/notices`, { credentials: "include", headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/api/notices`, { credentials: "include", headers: {} });
   if (!res.ok) throw new Error(`Failed to load notices: ${res.status}`);
   return res.json();
 }
 
 export async function getNoticePreview(noticeId) {
   const res = await fetch(`${API_BASE}/api/notices/${noticeId}/preview`, {
-    credentials: "include", headers: authHeaders(),
+    credentials: "include", headers: {},
   });
   if (!res.ok) throw new Error(`Failed to load notice preview: ${res.status}`);
   return res.json();
@@ -211,7 +192,7 @@ export async function getNoticePreview(noticeId) {
 export async function getNoticeEligibleCount(noticeId, params = {}) {
   const qs = scopeQueryString(params);
   const url = `/api/notices/${noticeId}/eligible-count${qs ? `?${qs}` : ""}`;
-  const res = await fetch(`${API_BASE}${url}`, { credentials: "include", headers: authHeaders() });
+  const res = await fetch(`${API_BASE}${url}`, { credentials: "include", headers: {} });
   if (!res.ok) throw new Error(`Failed to load notice eligible count: ${res.status}`);
   return res.json();
 }
@@ -227,7 +208,7 @@ export async function getNoticeClients(noticeId, params = {}) {
   if (params.search) query.set("search", params.search);
   const qs = query.toString();
   const url = `/api/notices/${noticeId}/clients${qs ? `?${qs}` : ""}`;
-  const res = await fetch(`${API_BASE}${url}`, { credentials: "include", headers: authHeaders() });
+  const res = await fetch(`${API_BASE}${url}`, { credentials: "include", headers: {} });
   if (!res.ok) throw new Error(`Failed to load notice clients: ${res.status}`);
   return res.json();
 }
@@ -236,7 +217,7 @@ export async function sendNotice(noticeId, channel, params = {}) {
   const qs = scopeQueryString(params);
   const url = `/api/notices/${noticeId}/send-${channel}${qs ? `?${qs}` : ""}`;
   const res = await fetch(`${API_BASE}${url}`, {
-    method: "POST", credentials: "include", headers: authHeaders(),
+    method: "POST", credentials: "include", headers: {},
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -247,7 +228,7 @@ export async function sendNotice(noticeId, channel, params = {}) {
 
 export async function getNoticeSendStatus(noticeId, channel, jobId) {
   const res = await fetch(`${API_BASE}/api/notices/${noticeId}/send-${channel}/status/${jobId}`, {
-    credentials: "include", headers: authHeaders(),
+    credentials: "include", headers: {},
   });
   if (!res.ok) throw new Error(`Failed to load notice send status: ${res.status}`);
   return res.json();

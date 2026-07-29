@@ -27,7 +27,7 @@ const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
 const BULK_JOB_POLL_MS = 500;
 
-export default function App({ onLogout } = {}) {
+export default function App() {
   const [activeView, setActiveView] = useState("clientData");
   const [page, setPage] = useState({ rows: [], total: 0, page: 1, page_size: PAGE_SIZE });
   const [clientsLoading, setClientsLoading] = useState(true);
@@ -315,7 +315,7 @@ export default function App({ onLogout } = {}) {
 
   return (
     <div className="min-h-screen bg-surface-page flex">
-      <Sidebar activeView={activeView} onNavigate={setActiveView} onLogout={onLogout} />
+      <Sidebar activeView={activeView} onNavigate={setActiveView} />
 
       <div className="flex-1 min-w-0">
         <header className="h-16 sticky top-0 z-10 bg-surface border-b border-line flex items-center justify-between px-6">
@@ -443,7 +443,8 @@ export default function App({ onLogout } = {}) {
           {activeView === "whatsappSettings" && <WhatsAppSettingsView fetchInfo={getSettingsInfo} />}
 
           {activeView === "notices" && (
-            <NoticesView
+
+<NoticesView
               listNotices={listNotices}
               getNoticeEligibleCount={getNoticeEligibleCount}
               sendNotice={sendNotice}
