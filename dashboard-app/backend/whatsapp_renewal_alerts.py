@@ -42,7 +42,7 @@ from db import (  # noqa: E402
     DEFAULT_DB_PATH, read_clients, find_client_by_id, load_sent_log, save_sent_log,
     RECORD_FIELDS, get_eligible_clients,
 )
-from scheme_templates import get_whatsapp_template  # noqa: E402
+from scheme_templates import get_whatsapp_template, get_whatsapp_image_id  # noqa: E402
 
 ALERT_STATUSES = {"CRITICAL", "URGENT", "DUE SOON", "EXPIRED"}
 
@@ -51,7 +51,27 @@ def filter_alertable(records: list[dict]) -> list[dict]:
     return [r for r in records if r["status"] in ALERT_STATUSES]
 
 
-def build_payload(record: dict, to_phone: str, template_name: str, template_lang: str) -> dict:
+def build_payload(
+    record: dict, to_phone: str, template_name: str, template_lang: str,
+    image_id: str | None = None,
+) -> dict:
+    components = []
+    if image_id:
+        components.append({
+            "type": "header",
+            "parameters": [{"type": "image", "image": {"id": image_id}}],
+        })
+    components.append({
+        "type": "body",
+        "parameters": [
+            {"type": "text", "text": record["name"]},
+            {"type": "text", "text": record["company"]},
+            {"type": "text", "text": record["cert_id"]},
+            {"type": "text", "text": record["cert_name"]},
+            {"type": "text", "text": format_expiry(record["expiry_date"])},
+        ],
+    })
+
     return {
         "messaging_product": "whatsapp",
         "to": to_phone,
@@ -59,18 +79,7 @@ def build_payload(record: dict, to_phone: str, template_name: str, template_lang
         "template": {
             "name": template_name,
             "language": {"code": template_lang},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": record["name"]},
-                        {"type": "text", "text": record["company"]},
-                        {"type": "text", "text": record["cert_id"]},
-                        {"type": "text", "text": record["cert_name"]},
-                        {"type": "text", "text": format_expiry(record["expiry_date"])},
-                    ],
-                },
-            ],
+            "components": components,
         },
     }
 
@@ -131,9 +140,10 @@ def send_one_alert(
             "to": to_phone,
         }
     template_name, template_lang = template
+    image_id = get_whatsapp_image_id(record["scheme"])
 
     try:
-        payload = build_payload(record, to_phone, template_name, template_lang)
+        payload = build_payload(record, to_phone, template_name, template_lang, image_id)
         ok, info = send_fn(payload, token, phone_number_id)
         if ok:
             sent_log[key] = {
@@ -204,7 +214,8 @@ def run(
                 }
             elif dry_run:
                 template_name, template_lang = template
-                payload = build_payload(rec, to_phone, template_name, template_lang)
+                image_id = get_whatsapp_image_id(rec["scheme"])
+                payload = build_payload(rec, to_phone, template_name, template_lang, image_id)
                 result = {
                     "client_id": rec["client_id"], "name": rec["name"],
                     "status": rec["status"], "action": "dry_run",

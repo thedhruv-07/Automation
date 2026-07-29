@@ -143,6 +143,24 @@ def test_build_payload_structure_and_placeholder_order():
     assert body_params[4] == {"type": "text", "text": "24 July 2026"}
 
 
+def test_build_payload_includes_header_image_when_image_id_given():
+    record = {
+        "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp India Pvt Ltd",
+        "cert_name": "ISO 9001:2015 Quality Management", "cert_id": "ISO-2021-4521",
+        "expiry_date": "24-07-2026", "status": "CRITICAL",
+    }
+
+    payload = build_payload(record, "919876543210", "cert_renewal_alert", "en_US", "1791756442005243")
+
+    components = payload["template"]["components"]
+    assert len(components) == 2
+    assert components[0] == {
+        "type": "header",
+        "parameters": [{"type": "image", "image": {"id": "1791756442005243"}}],
+    }
+    assert components[1]["type"] == "body"
+
+
 from unittest.mock import patch, Mock
 import requests
 from whatsapp_renewal_alerts import send_message

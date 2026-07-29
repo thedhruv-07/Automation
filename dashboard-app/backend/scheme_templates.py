@@ -37,6 +37,15 @@ def get_whatsapp_template(scheme: str) -> tuple[str, str] | None:
     return None
 
 
+def get_whatsapp_image_id(scheme: str) -> str | None:
+    """Returns the WhatsApp media ID for the given scheme's renewal-alert
+    header image, or None if that scheme's template has no image header
+    configured. Independent per scheme -- a scheme's template may or may not
+    have an image header at all, unlike get_whatsapp_template's ISI default,
+    so there's no bare-env-var fallback here."""
+    return os.environ.get(f"WHATSAPP_TEMPLATE_IMAGE_ID_{scheme.upper()}")
+
+
 def get_email_content(scheme: str) -> tuple[str, str]:
     """Returns (subject_template, intro_text) for the given scheme, each
     format strings with {cert_name}/{company} placeholders (intro_text only

@@ -2,6 +2,7 @@
 from email_template import DEFAULT_INTRO_TEXT
 from scheme_templates import (
     DEFAULT_EMAIL_SUBJECT_TEMPLATE, get_email_content, get_whatsapp_template,
+    get_whatsapp_image_id,
 )
 
 
@@ -50,6 +51,18 @@ def test_get_whatsapp_template_requires_both_name_and_lang_for_scheme_override(m
     monkeypatch.delenv("WHATSAPP_TEMPLATE_LANG_CRS", raising=False)
 
     assert get_whatsapp_template("CRS") is None
+
+
+def test_get_whatsapp_image_id_returns_configured_value(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_TEMPLATE_IMAGE_ID_ISI", "1791756442005243")
+
+    assert get_whatsapp_image_id("ISI") == "1791756442005243"
+
+
+def test_get_whatsapp_image_id_returns_none_when_unconfigured(monkeypatch):
+    monkeypatch.delenv("WHATSAPP_TEMPLATE_IMAGE_ID_CRS", raising=False)
+
+    assert get_whatsapp_image_id("CRS") is None
 
 
 def test_get_email_content_returns_scheme_specific_override_when_configured(monkeypatch):
