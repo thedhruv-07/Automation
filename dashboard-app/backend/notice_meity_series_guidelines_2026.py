@@ -97,6 +97,24 @@ def get_whatsapp_template() -> tuple[str, str] | None:
 
 
 def build_whatsapp_payload(rec: dict, to_phone: str, template_name: str, template_lang: str) -> dict:
+    import os
+    image_id = os.environ.get("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_IMAGE_ID")
+
+    components = []
+    if image_id:
+        components.append({
+            "type": "header",
+            "parameters": [{"type": "image", "image": {"id": image_id}}],
+        })
+    components.append({
+        "type": "body",
+        "parameters": [
+            {"type": "text", "text": rec["name"]},
+            {"type": "text", "text": rec["company"]},
+            {"type": "text", "text": NOTICE_URL},
+        ],
+    })
+
     return {
         "messaging_product": "whatsapp",
         "to": to_phone,
@@ -104,15 +122,6 @@ def build_whatsapp_payload(rec: dict, to_phone: str, template_name: str, templat
         "template": {
             "name": template_name,
             "language": {"code": template_lang},
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": rec["name"]},
-                        {"type": "text", "text": rec["company"]},
-                        {"type": "text", "text": NOTICE_URL},
-                    ],
-                },
-            ],
+            "components": components,
         },
     }

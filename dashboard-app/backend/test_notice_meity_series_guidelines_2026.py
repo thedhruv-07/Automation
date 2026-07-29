@@ -60,7 +60,8 @@ def test_get_whatsapp_template_returns_configured_pair(monkeypatch):
     assert notice.get_whatsapp_template() == ("meity_series_guidelines_2026", "en")
 
 
-def test_build_whatsapp_payload_structure():
+def test_build_whatsapp_payload_structure(monkeypatch):
+    monkeypatch.delenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_IMAGE_ID", raising=False)
     payload = notice.build_whatsapp_payload(_rec(), "919876543210", "meity_series_guidelines_2026", "en")
 
     assert payload["messaging_product"] == "whatsapp"
@@ -68,7 +69,21 @@ def test_build_whatsapp_payload_structure():
     assert payload["type"] == "template"
     assert payload["template"]["name"] == "meity_series_guidelines_2026"
     assert payload["template"]["language"] == {"code": "en"}
+    assert len(payload["template"]["components"]) == 1
     params = payload["template"]["components"][0]["parameters"]
     assert params[0] == {"type": "text", "text": "Rahul Sharma"}
     assert params[1] == {"type": "text", "text": "TechCorp"}
     assert params[2] == {"type": "text", "text": notice.NOTICE_URL}
+
+
+def test_build_whatsapp_payload_includes_header_image_when_configured(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_IMAGE_ID", "4343868019158502")
+    payload = notice.build_whatsapp_payload(_rec(), "919876543210", "meity_series_guidelines_2026", "en")
+
+    components = payload["template"]["components"]
+    assert len(components) == 2
+    assert components[0] == {
+        "type": "header",
+        "parameters": [{"type": "image", "image": {"id": "4343868019158502"}}],
+    }
+    assert components[1]["type"] == "body"
