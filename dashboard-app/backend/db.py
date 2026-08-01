@@ -231,6 +231,7 @@ _SORTABLE_COLUMNS = {
 }
 
 ALERT_STATUSES = ("CRITICAL", "URGENT", "DUE SOON", "EXPIRED")
+REMINDER_INTERVAL_DAYS = 20
 
 
 def _client_filters_where(
@@ -316,7 +317,8 @@ def get_stats(db_path, today: str) -> dict:
             WHERE c.status IN ({placeholders})
             AND NOT EXISTS (
                 SELECT 1 FROM sent_log s
-                WHERE s.client_id = c.client_id AND s.status = c.status AND s.sent_date = ?
+                WHERE s.client_id = c.client_id AND s.status = c.status
+                AND s.sent_date > date(?, '-{REMINDER_INTERVAL_DAYS} days')
             )
             """,
             (*ALERT_STATUSES, today),
@@ -328,7 +330,8 @@ def get_stats(db_path, today: str) -> dict:
             WHERE c.status IN ({placeholders})
             AND NOT EXISTS (
                 SELECT 1 FROM email_sent_log s
-                WHERE s.client_id = c.client_id AND s.status = c.status AND s.sent_date = ?
+                WHERE s.client_id = c.client_id AND s.status = c.status
+                AND s.sent_date > date(?, '-{REMINDER_INTERVAL_DAYS} days')
             )
             """,
             (*ALERT_STATUSES, today),
@@ -504,7 +507,8 @@ def get_eligible_count(
             WHERE {' AND '.join(where)}
             AND NOT EXISTS (
                 SELECT 1 FROM {log_table} s
-                WHERE s.client_id = c.client_id AND s.status = c.status AND s.sent_date = ?
+                WHERE s.client_id = c.client_id AND s.status = c.status
+                AND s.sent_date > date(?, '-{REMINDER_INTERVAL_DAYS} days')
             )
             """,
             params + [today],

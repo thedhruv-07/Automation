@@ -299,6 +299,16 @@ def test_get_stats_eligible_not_sent_today_excludes_already_sent(tmp_path):
     assert stats["eligible_not_sent_today"] == 3
 
 
+def test_get_stats_eligible_not_sent_today_excludes_within_reminder_interval(tmp_path):
+    """A client sent 5 days ago is still inside the 20-day reminder window,
+    same as get_eligible_count -- the stat tile must agree with the send
+    endpoint's actual dedup logic, not just exact-same-day sends."""
+    db_path = _seeded_db(tmp_path)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-16", "wamid.ABC", "1", "2026-07-16T10:00:00")
+    stats = get_stats(db_path, today="2026-07-21")
+    assert stats["eligible_not_sent_today"] == 3
+
+
 def test_export_clients_rows_yields_all_matching_rows_no_pagination(tmp_path):
     db_path = _seeded_db(tmp_path)
     rows = list(export_clients_rows(db_path, cert_type="ISO 9001"))
@@ -461,6 +471,20 @@ def test_get_eligible_count_excludes_already_sent_today(tmp_path):
     db_path = _seeded_db(tmp_path)
     record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
     assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 3
+
+
+def test_get_eligible_count_excludes_sent_within_reminder_interval(tmp_path):
+    """A client sent 5 days ago is still inside the 20-day reminder window --
+    it must not count as eligible again, even though it wasn't sent today."""
+    db_path = _seeded_db(tmp_path)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-16", "wamid.ABC", "1", "2026-07-16T10:00:00")
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 3
+
+
+def test_get_eligible_count_includes_sent_after_reminder_interval_elapses(tmp_path):
+    db_path = _seeded_db(tmp_path)
+    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-01", "wamid.ABC", "1", "2026-07-01T10:00:00")
+    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 4
 
 
 def test_get_eligible_count_email_channel_is_independent_of_whatsapp(tmp_path):
