@@ -1756,6 +1756,39 @@ def test_send_notice_whatsapp_unknown_notice_returns_404(tmp_path, monkeypatch):
     assert response.status_code == 404
 
 
+def test_send_notice_whatsapp_rejects_concurrent_send_for_same_notice(tmp_path, monkeypatch):
+    """A second send request for the same notice+channel while one is
+    already running must 409, not silently double-send the whole audience --
+    there was previously no lock at all on the notice-send endpoints."""
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
+    monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
+
+    main_module._notice_sends_in_progress.add("meity_series_guidelines_2026:whatsapp")
+    try:
+        response = client.post("/api/notices/meity_series_guidelines_2026/send-whatsapp")
+        assert response.status_code == 409
+        assert "already in progress" in response.json()["detail"]
+    finally:
+        main_module._notice_sends_in_progress.discard("meity_series_guidelines_2026:whatsapp")
+
+
+def test_send_notice_email_rejects_concurrent_send_for_same_notice(tmp_path, monkeypatch):
+    db_path = tmp_path / "clients.db"
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setenv("BREVO_API_KEY", "key")
+    monkeypatch.setenv("EMAIL_SENDER", "sender@x.com")
+
+    main_module._notice_sends_in_progress.add("meity_series_guidelines_2026:email")
+    try:
+        response = client.post("/api/notices/meity_series_guidelines_2026/send-email")
+        assert response.status_code == 409
+        assert "already in progress" in response.json()["detail"]
+    finally:
+        main_module._notice_sends_in_progress.discard("meity_series_guidelines_2026:email")
+
+
 def test_send_notice_whatsapp_starts_job_and_reports_progress(tmp_path, monkeypatch):
     db_path = tmp_path / "clients.db"
     _write_db(db_path, [

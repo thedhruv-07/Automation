@@ -79,6 +79,9 @@ _pending_email_sends: set[str] = set()
 
 _email_bulk_in_progress = False
 
+_notice_send_lock = threading.Lock()
+_notice_sends_in_progress: set[str] = set()
+
 # Mirrors the hardcoded day cutoffs in cert_automation.py (CRITICAL <= 7 days,
 # URGENT <= 30 days). That script is intentionally untouched by this project,
 # so these are documented here for display only, not read live from it.
@@ -596,7 +599,7 @@ _send_notice_jobs: dict[str, dict] = {}
 
 
 def _run_send_notice_whatsapp_job(
-    job_id, notice_id, token, phone_number_id, test_number,
+    job_id, notice_id, lock_key, token, phone_number_id, test_number,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
 ):
     def progress(result, total):
@@ -621,6 +624,8 @@ def _run_send_notice_whatsapp_job(
         _send_notice_jobs[job_id]["error"] = str(exc)
     finally:
         _send_notice_jobs[job_id]["done"] = True
+        with _notice_send_lock:
+            _notice_sends_in_progress.discard(lock_key)
 
 
 @app.post("/api/notices/{notice_id}/send-whatsapp")
@@ -630,6 +635,13 @@ def send_notice_whatsapp_endpoint(
 ):
     if get_notice_module(notice_id) is None:
         raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
+
+    lock_key = f"{notice_id}:whatsapp"
+    with _notice_send_lock:
+        if lock_key in _notice_sends_in_progress:
+            raise HTTPException(status_code=409, detail="A send for this notice is already in progress")
+        _notice_sends_in_progress.add(lock_key)
+
     try:
         token = os.environ["WHATSAPP_TOKEN"]
         phone_number_id = os.environ["PHONE_NUMBER_ID"]
@@ -643,7 +655,7 @@ def send_notice_whatsapp_endpoint(
         thread = threading.Thread(
             target=_run_send_notice_whatsapp_job,
             args=(
-                job_id, notice_id, token, phone_number_id, test_number,
+                job_id, notice_id, lock_key, token, phone_number_id, test_number,
                 status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
             ),
             daemon=True,
@@ -651,6 +663,8 @@ def send_notice_whatsapp_endpoint(
         thread.start()
         return {"job_id": job_id}
     except Exception:
+        with _notice_send_lock:
+            _notice_sends_in_progress.discard(lock_key)
         raise HTTPException(status_code=500, detail="Server is not configured to send WhatsApp messages")
 
 
@@ -666,7 +680,7 @@ _send_notice_email_jobs: dict[str, dict] = {}
 
 
 def _run_send_notice_email_job(
-    job_id, notice_id, brevo_api_key, email_sender, test_email,
+    job_id, notice_id, lock_key, brevo_api_key, email_sender, test_email,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
 ):
     def progress(result, total):
@@ -691,6 +705,8 @@ def _run_send_notice_email_job(
         _send_notice_email_jobs[job_id]["error"] = str(exc)
     finally:
         _send_notice_email_jobs[job_id]["done"] = True
+        with _notice_send_lock:
+            _notice_sends_in_progress.discard(lock_key)
 
 
 @app.post("/api/notices/{notice_id}/send-email")
@@ -700,6 +716,13 @@ def send_notice_email_endpoint(
 ):
     if get_notice_module(notice_id) is None:
         raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
+
+    lock_key = f"{notice_id}:email"
+    with _notice_send_lock:
+        if lock_key in _notice_sends_in_progress:
+            raise HTTPException(status_code=409, detail="A send for this notice is already in progress")
+        _notice_sends_in_progress.add(lock_key)
+
     try:
         brevo_api_key = os.environ["BREVO_API_KEY"]
         email_sender = os.environ["EMAIL_SENDER"]
@@ -713,7 +736,7 @@ def send_notice_email_endpoint(
         thread = threading.Thread(
             target=_run_send_notice_email_job,
             args=(
-                job_id, notice_id, brevo_api_key, email_sender, test_email,
+                job_id, notice_id, lock_key, brevo_api_key, email_sender, test_email,
                 status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
             ),
             daemon=True,
@@ -721,6 +744,8 @@ def send_notice_email_endpoint(
         thread.start()
         return {"job_id": job_id}
     except Exception:
+        with _notice_send_lock:
+            _notice_sends_in_progress.discard(lock_key)
         raise HTTPException(status_code=500, detail="Server is not configured to send emails")
 
 
