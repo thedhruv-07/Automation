@@ -25,6 +25,7 @@ LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
 LOGO_CID = "company-logo.png"
 
 BREVO_DAILY_LIMIT = 300
+REMINDER_INTERVAL_DAYS = 20
 
 EMAIL_DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y")
 
@@ -135,13 +136,27 @@ def send_one_email_alert(
             "to": None,
         }
 
+    # sent_log stores one entry per day actually sent (dedup_key includes the
+    # date), so "already reminded for this status" means the most recent
+    # entry for this client+status is within REMINDER_INTERVAL_DAYS -- not a
+    # single day/status lookup. A status change (e.g. DUE SOON -> URGENT as
+    # the expiry gets closer) has no prior entries, so it still sends
+    # immediately -- a 60-day-out client naturally gets ~3 emails total
+    # (DUE SOON, a 20-day-later DUE SOON reminder, then URGENT) with no
+    # separate reminder counter needed.
+    prefix = f"{record['client_id']}|{record['status']}|"
+    prior_dates = [k[len(prefix):] for k in sent_log if k.startswith(prefix)]
+    if prior_dates:
+        last_sent_date = datetime.strptime(max(prior_dates), "%Y-%m-%d").date()
+        today_date = datetime.strptime(today, "%Y-%m-%d").date()
+        if (today_date - last_sent_date).days < REMINDER_INTERVAL_DAYS:
+            return {
+                "client_id": record["client_id"], "name": record["name"],
+                "status": record["status"], "action": "skipped_duplicate",
+                "to": to_email,
+            }
+
     key = dedup_key(record["client_id"], record["status"], today)
-    if key in sent_log:
-        return {
-            "client_id": record["client_id"], "name": record["name"],
-            "status": record["status"], "action": "skipped_duplicate",
-            "to": to_email,
-        }
 
     try:
         ok, info = send_fn(record, brevo_api_key, email_sender, org_name, to_email=to_email)

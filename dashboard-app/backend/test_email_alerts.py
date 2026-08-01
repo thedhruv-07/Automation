@@ -49,6 +49,32 @@ def test_send_one_email_alert_skips_duplicate():
     send_fn.assert_not_called()
 
 
+def test_send_one_email_alert_skips_reminder_before_interval_elapses():
+    record = _record_dict(ROW_WITH_EMAIL)
+    sent_log = {"CLT001|CRITICAL|2026-07-01": {"sent_at": "x", "message_id": "y", "email": "r@x.com"}}
+    send_fn = Mock()
+
+    result = send_one_email_alert(
+        record, sent_log, "2026-07-20", "api-key", "sender@x.com", "Absolute Veritas", send_fn=send_fn,
+    )  # 19 days after the last send for this same status
+
+    assert result["action"] == "skipped_duplicate"
+    send_fn.assert_not_called()
+
+
+def test_send_one_email_alert_sends_reminder_once_interval_elapses():
+    record = _record_dict(ROW_WITH_EMAIL)
+    sent_log = {"CLT001|CRITICAL|2026-07-01": {"sent_at": "x", "message_id": "y", "email": "r@x.com"}}
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-2"}))
+
+    result = send_one_email_alert(
+        record, sent_log, "2026-07-21", "api-key", "sender@x.com", "Absolute Veritas", send_fn=send_fn,
+    )  # 20 days after the last send for this same status
+
+    assert result["action"] == "sent"
+    send_fn.assert_called_once()
+
+
 def test_send_one_email_alert_skips_when_no_email():
     record = _record_dict(ROW_NO_EMAIL)
     sent_log = {}
