@@ -26,7 +26,7 @@ from db import (  # noqa: E402
     get_eligible_count, get_notice_eligible_count, get_broadcast_clients_page,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
-    ALERT_STATUSES, dedup_key, filter_alertable, normalize_phone,
+    ALERT_STATUSES, filter_alertable, normalize_phone,
     send_one_alert, run,
 )
 from email_alerts import (  # noqa: E402
@@ -261,12 +261,6 @@ def send_alert(client_id: str):
         )
 
     sent_log = load_sent_log(DEFAULT_DB_PATH)
-    key = dedup_key(record["client_id"], record["status"], today)
-    if key in sent_log:
-        raise HTTPException(
-            status_code=409,
-            detail="Alert already sent today for this client/status",
-        )
 
     with _send_lock:
         if client_id in _pending_sends:
@@ -418,12 +412,6 @@ def send_email(client_id: str):
         )
 
     sent_log = load_email_sent_log(DEFAULT_DB_PATH)
-    key = dedup_key(record["client_id"], record["status"], today)
-    if key in sent_log:
-        raise HTTPException(
-            status_code=409,
-            detail="Email already sent today for this client/status",
-        )
 
     with _email_send_lock:
         if client_id in _pending_email_sends:

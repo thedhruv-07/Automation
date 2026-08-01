@@ -75,6 +75,22 @@ def test_send_one_email_alert_sends_reminder_once_interval_elapses():
     send_fn.assert_called_once()
 
 
+def test_send_one_email_alert_sends_immediately_on_status_change():
+    """ROW_WITH_EMAIL is status CRITICAL; a very recent send under a
+    different status (DUE SOON) must not block it -- the reminder interval
+    is scoped per client+status, not per client."""
+    record = _record_dict(ROW_WITH_EMAIL)
+    sent_log = {"CLT001|DUE SOON|2026-07-16": {"sent_at": "x", "message_id": "y", "email": "r@x.com"}}
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-3"}))
+
+    result = send_one_email_alert(
+        record, sent_log, "2026-07-17", "api-key", "sender@x.com", "Absolute Veritas", send_fn=send_fn,
+    )  # 1 day after a DUE SOON send, but this record's status is CRITICAL
+
+    assert result["action"] == "sent"
+    send_fn.assert_called_once()
+
+
 def test_send_one_email_alert_skips_when_no_email():
     record = _record_dict(ROW_NO_EMAIL)
     sent_log = {}

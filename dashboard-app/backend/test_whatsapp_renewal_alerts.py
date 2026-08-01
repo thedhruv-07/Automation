@@ -518,6 +518,26 @@ def test_send_one_alert_sends_reminder_once_interval_elapses():
     send_fn.assert_called_once()
 
 
+def test_send_one_alert_sends_immediately_on_status_change():
+    """A very recent send under a different status (DUE SOON) must not
+    block a send for this record's status (CRITICAL) -- the reminder
+    interval is scoped per client+status, not per client."""
+    record = {
+        "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1", "scheme": "ISI",
+        "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
+    }
+    sent_log = {"CLT001|DUE SOON|2026-07-16": {"message_id": "wamid.OLD"}}
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.NEW"}))
+
+    result = send_one_alert(
+        record, sent_log, "2026-07-17", "tok", "pid123", send_fn=send_fn,
+    )  # 1 day after a DUE SOON send, but this record's status is CRITICAL
+
+    assert result["action"] == "sent"
+    send_fn.assert_called_once()
+
+
 def test_send_one_alert_uses_override_phone_and_reports_failure():
     record = {
         "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
