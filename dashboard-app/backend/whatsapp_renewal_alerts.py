@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 sys.stdout.reconfigure(encoding="utf-8")  # Windows console defaults to cp1252, which crashes on emoji output
 
 API_VERSION = "v23.0"
+REMINDER_INTERVAL_DAYS = 20
 
 
 def normalize_phone(raw: str | int) -> str:
@@ -125,12 +126,21 @@ def send_one_alert(
         else normalize_phone(record["phone"])
     )
 
-    if key in sent_log:
-        return {
-            "client_id": record["client_id"], "name": record["name"],
-            "status": record["status"], "action": "skipped_duplicate",
-            "to": to_phone,
-        }
+    # sent_log stores one dated entry per send -- "already reminded for this
+    # status" means the most recent entry for this client+status is within
+    # REMINDER_INTERVAL_DAYS, not a single exact-date lookup (see
+    # email_alerts.py's send_one_email_alert for the identical fix/reasoning).
+    prefix = f"{record['client_id']}|{record['status']}|"
+    prior_dates = [k[len(prefix):] for k in sent_log if k.startswith(prefix)]
+    if prior_dates:
+        last_sent_date = datetime.strptime(max(prior_dates), "%Y-%m-%d").date()
+        today_date = datetime.strptime(today, "%Y-%m-%d").date()
+        if (today_date - last_sent_date).days < REMINDER_INTERVAL_DAYS:
+            return {
+                "client_id": record["client_id"], "name": record["name"],
+                "status": record["status"], "action": "skipped_duplicate",
+                "to": to_phone,
+            }
 
     template = get_whatsapp_template(record["scheme"])
     if template is None:

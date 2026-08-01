@@ -483,6 +483,41 @@ def test_send_one_alert_skips_when_already_in_log():
     }
 
 
+def test_send_one_alert_skips_reminder_before_interval_elapses():
+    record = {
+        "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1", "scheme": "ISI",
+        "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
+    }
+    sent_log = {"CLT001|CRITICAL|2026-07-01": {"message_id": "wamid.OLD"}}
+
+    def fake_send(payload, token, phone_number_id):
+        raise AssertionError("should not be called before the interval elapses")
+
+    result = send_one_alert(
+        record, sent_log, "2026-07-20", "tok", "pid123", send_fn=fake_send,
+    )  # 19 days after the last send for this same status
+
+    assert result["action"] == "skipped_duplicate"
+
+
+def test_send_one_alert_sends_reminder_once_interval_elapses():
+    record = {
+        "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
+        "cert_name": "ISO 9001", "cert_id": "ISO-1", "scheme": "ISI",
+        "expiry_date": "24-07-2026", "status": "CRITICAL", "phone": "919876543210",
+    }
+    sent_log = {"CLT001|CRITICAL|2026-07-01": {"message_id": "wamid.OLD"}}
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.NEW"}))
+
+    result = send_one_alert(
+        record, sent_log, "2026-07-21", "tok", "pid123", send_fn=send_fn,
+    )  # 20 days after the last send for this same status
+
+    assert result["action"] == "sent"
+    send_fn.assert_called_once()
+
+
 def test_send_one_alert_uses_override_phone_and_reports_failure():
     record = {
         "client_id": "CLT001", "name": "Rahul Sharma", "company": "TechCorp",
