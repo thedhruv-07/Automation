@@ -6,19 +6,25 @@ consistently, but tracks its own dedup log (email_sent_log, independent of
 WhatsApp's sent_log) so a client can receive both channels the same day
 without one blocking the other."""
 import base64
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 
-from db import get_eligible_clients, load_email_sent_log, save_email_sent_log
+from db import DEFAULT_DB_PATH, get_eligible_clients, load_email_sent_log, save_email_sent_log
 from email_template import build_email_html
 from scheme_templates import get_email_content
 from whatsapp_renewal_alerts import dedup_key
 
 SCRIPT_DIR = Path(__file__).parent
+REPO_ROOT = SCRIPT_DIR.parent.parent
 LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
 LOGO_CID = "company-logo.png"
+
+BREVO_DAILY_LIMIT = 300
 
 EMAIL_DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y")
 
@@ -178,7 +184,13 @@ def run_email_alerts(
     expiry_before: str | None = None,
     search: str | None = None,
     scheme: str | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
+    """limit caps how many actual sends (action == "sent") this call makes --
+    e.g. Brevo's 300/day cap. Once hit, remaining eligible records are left
+    untouched (not marked sent), so a daily re-run naturally picks them up
+    the next day via the same per-day dedup that already skips today's
+    sent ones."""
     today = today or datetime.now().strftime("%Y-%m-%d")
     records = get_eligible_clients(
         db_path, status=status, cert_type=cert_type, expiry_before=expiry_before,
@@ -188,8 +200,12 @@ def run_email_alerts(
     persist_log = not dry_run and not test_email
     log_dirty = False
     results = []
+    sent_count = 0
 
     for rec in records:
+        if limit is not None and sent_count >= limit:
+            break
+
         if dry_run:
             to_email = test_email or rec.get("email")
             result = {
@@ -203,6 +219,7 @@ def run_email_alerts(
             )
             if result["action"] == "sent":
                 log_dirty = True
+                sent_count += 1
 
         results.append(result)
         if on_progress:
@@ -215,3 +232,30 @@ def run_email_alerts(
         save_email_sent_log(db_path, sent_log)
 
     return results
+
+
+def main(argv=None) -> int:
+    """CLI entrypoint for a daily scheduled run (e.g. a Render Cron Job at
+    9am), capped at BREVO_DAILY_LIMIT sends per run so a big eligible batch
+    spills over to the next day's run instead of erroring past Brevo's daily
+    cap."""
+    load_dotenv(REPO_ROOT / ".env")
+    api_key = os.environ.get("BREVO_API_KEY")
+    sender = os.environ.get("EMAIL_SENDER")
+    if not api_key or not sender:
+        print("❌ BREVO_API_KEY and EMAIL_SENDER must be set in .env.")
+        return 1
+
+    results = run_email_alerts(
+        DEFAULT_DB_PATH, api_key, sender, "Absolute Veritas", limit=BREVO_DAILY_LIMIT,
+    )
+    sent = sum(1 for r in results if r["action"] == "sent")
+    skipped = sum(1 for r in results if r["action"] == "skipped_duplicate")
+    skipped_no_email = sum(1 for r in results if r["action"] == "skipped_no_email")
+    failed = sum(1 for r in results if r["action"] == "failed")
+    print(f"{sent} sent, {skipped} skipped (already sent today), {skipped_no_email} skipped (no email), {failed} failed.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

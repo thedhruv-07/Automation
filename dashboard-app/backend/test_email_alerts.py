@@ -119,6 +119,23 @@ def test_run_email_alerts_processes_all_alert_eligible_clients(tmp_path):
     assert send_fn.call_count == 1
 
 
+def test_run_email_alerts_stops_after_limit_sends(tmp_path):
+    row2 = ("CLT004", "Sana Iqbal", "GreenBuild", "s@x.com", "919800000001",
+            "ISO 9001", "ISI", "ISO-2", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [ROW_WITH_EMAIL, row2], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
+
+    results = run_email_alerts(
+        db_path, "api-key", "sender@x.com", "Absolute Veritas",
+        today="2026-07-17", send_fn=send_fn, limit=1,
+    )
+
+    assert len(results) == 1
+    assert results[0]["action"] == "sent"
+    assert send_fn.call_count == 1
+
+
 def test_run_email_alerts_filters_by_cert_type(tmp_path):
     db_path = tmp_path / "clients.db"
     upsert_clients(db_path, [ROW_WITH_EMAIL, ROW_NO_EMAIL], mode="replace")
