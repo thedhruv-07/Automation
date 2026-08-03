@@ -32,19 +32,23 @@ def test_build_email_html_cta_link_opens_in_a_new_tab():
 
 
 def test_build_email_html_includes_learn_more_cta_and_reply_instruction():
+    """Lowercase, non-shouty wording -- Gmail's Promotions-tab classifier
+    weighs marketing-style phrasing (all-caps "FREE", multiple styled CTA
+    buttons) heavily, and this is a compliance notice, not an ad."""
     html = notice.build_email_html(_rec(), "Absolute Veritas")
     assert "Learn More" in html
-    assert "FREE consultation" in html
+    assert "free consultation" in html
+    assert "FREE" not in html
     assert "reply to this message or contact us" in html
 
 
-def test_build_email_html_includes_book_an_appointment_button_alongside_learn_more():
+def test_build_email_html_includes_calendly_link_alongside_learn_more():
     from email_template import CALENDLY_URL
     html = notice.build_email_html(_rec(), "Absolute Veritas")
     assert "Learn More" in html
-    assert "Book an Appointment" in html
+    assert "book an appointment directly" in html
     assert f'href="{CALENDLY_URL}"' in html
-    assert html.count('target="_blank"') == 2  # both buttons open in a new tab
+    assert html.count('target="_blank"') == 2  # both links open in a new tab
     assert html.count('rel="noopener noreferrer"') == 2
 
 

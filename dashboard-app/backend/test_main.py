@@ -1719,7 +1719,7 @@ def test_notice_preview_returns_subject_and_html():
     response = client.get("/api/notices/meity_series_guidelines_2026/preview")
     assert response.status_code == 200
     data = response.json()
-    assert data["subject"] == "Free Consultation: Transition Your BIS Licence to IS/IEC 62368-1:2023"
+    assert data["subject"] == "Transitioning your BIS licence to IS/IEC 62368-1:2023"
     assert "Sample Client" in data["html"]
     assert "Sample Company" in data["html"]
 
