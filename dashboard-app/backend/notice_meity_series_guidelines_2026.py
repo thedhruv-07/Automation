@@ -1,18 +1,14 @@
 """Content for the "MeitY Series Guidelines — IS/IEC 62368-1:2023" one-time
-broadcast notice. Summarizes MeitY Circular No. W-47/34/2025-IPHW (20 May
-2026), prescribing revised series-formation guidelines for products under
-the standard IS/IEC 62368 -- Part 1: 2023 (migrated from IS 13252 Part 1:
-2020 and IS 616:2017 vide Gazette Notification S.O. No. 4997(E), 29 Oct
-2025) -- see
-https://absoluteveritas.com/meity-series-guidelines-isiec-62368-part1-2023/
-for the full circular. Unlike the per-scheme renewal alert content in
-scheme_templates.py, this isn't about any individual client's own
-certificate -- it's a general compliance-awareness announcement."""
-from email_template import CALENDLY_URL
+broadcast notice. A lead-gen message to existing BIS licence holders under
+IS 13252 (Part 1):2010 and/or IS 616:2017, pointing them at the BIS/CRS
+transition guide and offering a free consultation -- see
+https://absoluteveritas.com/is-iec-62368-12023-bis-crs-transition-guide/.
+Unlike the per-scheme renewal alert content in scheme_templates.py, this
+isn't about any individual client's own certificate -- it's a general
+compliance-awareness announcement."""
+NOTICE_URL = "https://absoluteveritas.com/is-iec-62368-12023-bis-crs-transition-guide/"
 
-NOTICE_URL = "https://absoluteveritas.com/is-62368-safety-rules-in-india/"
-
-EMAIL_SUBJECT = "IS/IEC 62368-1:2023 Transition — Steps to Ensure BIS Approval on Time"
+EMAIL_SUBJECT = "Free Consultation: Transition Your BIS Licence to IS/IEC 62368-1:2023"
 
 
 def build_email_html(rec: dict, org_name: str) -> str:
@@ -32,47 +28,25 @@ def build_email_html(rec: dict, org_name: str) -> str:
         <tr><td style="padding:32px 40px;">
           <p style="color:#0b0b0b;font-size:16px;margin:0 0 18px;">Dear <strong>{rec['name']}</strong> ({rec['company']}),</p>
           <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 18px;">
-            <strong>IS/IEC 62368-1 (Edition 4: 2023)</strong> marks a major shift in
-            India&rsquo;s regulatory landscape for electronic and ICT products.
-            Following recent MeitY and BIS directives, <strong>42 categories</strong>
-            of audio/video and IT equipment are transitioning from the older
-            IS 13252 (Part 1: 2020) and IS 616 (2017) standards to this
-            unified, hazard-based safety standard.
-          </p>
-          <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 18px;">
-            Strict timelines are already in force: a <strong>three-year</strong>
-            transition window for existing certifications, and a
-            <strong>six-month</strong> deadline for new AR/VR product approvals
-            (extendable up to one year with justification). Key technical
-            changes include the removal of legacy IEC 60065/60950-1
-            component acceptance, stricter rules for liquid-filled
-            components, and new touch-temperature limits for wearables.
+            As an existing BIS licence holder under <strong>IS 13252 (Part 1):2010</strong>
+            and/or <strong>IS 616:2017</strong>, your products will need to transition to
+            <strong>IS/IEC 62368-1:2023</strong> as per the BIS implementation timeline.
           </p>
           <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 26px;">
-            If your products fall under any of the 42 CRO-listed categories,
-            now is the time to map your existing standards to IS/IEC
-            62368-1, identify representative models for series testing, and
-            engage an accredited lab.
+            We are offering a <strong>FREE consultation</strong> to review your existing
+            licences, identify the affected models, and prepare a smooth
+            transition plan.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0">
-            <tr><td align="center" style="padding:4px 0 14px;">
+            <tr><td align="center" style="padding:4px 0 26px;">
               <a href="{NOTICE_URL}" target="_blank" rel="noopener noreferrer"
                  style="background:#2a78d6;color:#fff;padding:15px 42px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">
-                Read the Full Breakdown
-              </a>
-            </td></tr>
-            <tr><td align="center" style="padding:0 0 26px;">
-              <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer"
-                 style="background:#ffffff;color:#2a78d6;padding:13px 40px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;display:inline-block;border:2px solid #2a78d6;">
-                Book an Appointment
+                Learn More
               </a>
             </td></tr>
           </table>
           <p style="color:#52514e;font-size:13px;line-height:1.7;margin:0;">
-            Want help assessing how this affects your existing or upcoming
-            series certification? Reach out to {org_name} — we support BIS
-            Certification, QCO compliance, and regulatory coordination
-            across India.
+            Please reply to this message or contact us to schedule your free consultation.
           </p>
         </td></tr>
         <tr><td style="background:#0b0b0b;padding:18px;text-align:center;">

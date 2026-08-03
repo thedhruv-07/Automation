@@ -31,14 +31,11 @@ def test_build_email_html_cta_link_opens_in_a_new_tab():
     assert 'rel="noopener noreferrer"' in html
 
 
-def test_build_email_html_includes_book_an_appointment_button_alongside_read_more():
-    from email_template import CALENDLY_URL
+def test_build_email_html_includes_learn_more_cta_and_reply_instruction():
     html = notice.build_email_html(_rec(), "Absolute Veritas")
-    assert "Read the Full Breakdown" in html
-    assert "Book an Appointment" in html
-    assert f'href="{CALENDLY_URL}"' in html
-    assert html.count('target="_blank"') == 2  # both buttons open in a new tab
-    assert html.count('rel="noopener noreferrer"') == 2
+    assert "Learn More" in html
+    assert "FREE consultation" in html
+    assert "reply to this message or contact us" in html
 
 
 def test_email_subject_mentions_the_circular():
