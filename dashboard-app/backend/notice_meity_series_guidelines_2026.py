@@ -1,12 +1,14 @@
 """Content for the "MeitY Series Guidelines — IS/IEC 62368-1:2023" one-time
 broadcast notice. A lead-gen message to existing BIS licence holders under
-IS 13252 (Part 1):2010 and/or IS 616:2017, pointing them at the BIS/CRS
-transition guide and offering a free consultation -- see
-https://absoluteveritas.com/is-iec-62368-12023-bis-crs-transition-guide/.
-Unlike the per-scheme renewal alert content in scheme_templates.py, this
-isn't about any individual client's own certificate -- it's a general
+IS 13252 (Part 1):2010 and/or IS 616:2017, pointing them at
+https://absoluteveritas.com/is-62368-safety-rules-in-india/ and offering a
+free consultation, with a Calendly booking link as a secondary CTA. Unlike
+the per-scheme renewal alert content in scheme_templates.py, this isn't
+about any individual client's own certificate -- it's a general
 compliance-awareness announcement."""
-NOTICE_URL = "https://absoluteveritas.com/is-iec-62368-12023-bis-crs-transition-guide/"
+from email_template import CALENDLY_URL
+
+NOTICE_URL = "https://absoluteveritas.com/is-62368-safety-rules-in-india/"
 
 EMAIL_SUBJECT = "Free Consultation: Transition Your BIS Licence to IS/IEC 62368-1:2023"
 
@@ -38,10 +40,16 @@ def build_email_html(rec: dict, org_name: str) -> str:
             transition plan.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0">
-            <tr><td align="center" style="padding:4px 0 26px;">
+            <tr><td align="center" style="padding:4px 0 14px;">
               <a href="{NOTICE_URL}" target="_blank" rel="noopener noreferrer"
                  style="background:#2a78d6;color:#fff;padding:15px 42px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">
                 Learn More
+              </a>
+            </td></tr>
+            <tr><td align="center" style="padding:0 0 26px;">
+              <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer"
+                 style="background:#ffffff;color:#2a78d6;padding:13px 40px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;display:inline-block;border:2px solid #2a78d6;">
+                Book an Appointment
               </a>
             </td></tr>
           </table>
