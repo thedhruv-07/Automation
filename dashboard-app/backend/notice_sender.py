@@ -4,10 +4,11 @@ email_alerts.run_email_alerts()'s shape, but targets get_broadcast_clients()
 (every matching client regardless of alert status, not just ALERT_STATUSES)
 and dedups against notice_sent_log (permanent, not per-day) instead of
 sent_log/email_sent_log."""
+import base64
 from datetime import datetime
 
 from db import get_broadcast_clients, is_notice_already_sent, record_notice_sent
-from email_alerts import post_email_via_brevo
+from email_alerts import post_email_via_brevo, LOGO_PATH, LOGO_CID
 from notices import get_notice_module
 from whatsapp_renewal_alerts import normalize_phone, send_message
 
@@ -119,13 +120,18 @@ def send_notice_email(
                 "action": "dry_run", "to": to_email,
             }
         else:
-            html = module.build_email_html(rec, org_name)
+            logo_exists = LOGO_PATH.exists()
+            logo_src = f"cid:{LOGO_CID}" if logo_exists else ""
+            html = module.build_email_html(rec, org_name, logo_src=logo_src)
             payload = {
                 "sender": {"name": org_name, "email": email_sender},
                 "to": [{"email": to_email, "name": rec["name"]}],
                 "subject": module.EMAIL_SUBJECT,
                 "htmlContent": html,
             }
+            if logo_exists:
+                logo_b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+                payload["attachment"] = [{"name": LOGO_CID, "content": logo_b64}]
             try:
                 ok, info = send_fn(payload, brevo_api_key)
                 if ok:

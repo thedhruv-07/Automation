@@ -13,7 +13,24 @@ NOTICE_URL = "https://absoluteveritas.com/is-62368-safety-rules-in-india/"
 EMAIL_SUBJECT = "Free Consultation: Transition Your BIS Licence to IS/IEC 62368-1:2023"
 
 
-def build_email_html(rec: dict, org_name: str) -> str:
+def build_email_html(rec: dict, org_name: str, logo_src: str = "") -> str:
+    if logo_src:
+        header_html = f"""
+        <tr><td style="background:#ffffff;padding:28px 30px 18px;text-align:center;border-bottom:1px solid #e1e0d9;">
+          <img src="{logo_src}" alt="{org_name}" width="200" style="display:block;margin:0 auto 10px;border:0;">
+          <p style="color:#898781;margin:0;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;">
+            BIS Compliance Notice
+          </p>
+        </td></tr>"""
+    else:
+        header_html = f"""
+        <tr><td style="background:#2a78d6;padding:28px 30px;text-align:center;">
+          <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">{org_name}</h1>
+          <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;">
+            BIS Compliance Notice
+          </p>
+        </td></tr>"""
+
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -21,12 +38,7 @@ def build_email_html(rec: dict, org_name: str) -> str:
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f9f7;padding:30px 0;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e1e0d9;border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(11,11,11,0.10);">
-        <tr><td style="background:#2a78d6;padding:28px 30px;text-align:center;">
-          <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">{org_name}</h1>
-          <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:1.2px;">
-            BIS Compliance Notice
-          </p>
-        </td></tr>
+        {header_html}
         <tr><td style="padding:32px 40px;">
           <p style="color:#0b0b0b;font-size:16px;margin:0 0 18px;">Dear <strong>{rec['name']}</strong> ({rec['company']}),</p>
           <p style="color:#52514e;font-size:14px;line-height:1.7;margin:0 0 18px;">

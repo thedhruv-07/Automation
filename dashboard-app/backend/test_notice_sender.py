@@ -139,6 +139,48 @@ def test_send_notice_email_uses_the_notice_module_content(tmp_path):
     assert "is-62368-safety-rules-in-india" in payload["htmlContent"]
 
 
+def test_send_notice_email_includes_logo_attachment_when_present(tmp_path):
+    import base64
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [CRS_ROW], mode="replace")
+    logo_path = tmp_path / "company-logo.png"
+    logo_bytes = b"fake-png-bytes"
+    logo_path.write_bytes(logo_bytes)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-1"}
+
+    with patch("notice_sender.LOGO_PATH", logo_path), \
+         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_notice_email(
+            db_path, "meity_series_guidelines_2026", "api-key", "sender@x.com", "Absolute Veritas",
+            scheme="CRS",
+        )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["attachment"] == [
+        {"name": "company-logo.png", "content": base64.b64encode(logo_bytes).decode("ascii")}
+    ]
+    assert 'src="cid:company-logo.png"' in payload["htmlContent"]
+
+
+def test_send_notice_email_omits_logo_attachment_when_missing(tmp_path):
+    db_path = tmp_path / "clients.db"
+    upsert_clients(db_path, [CRS_ROW], mode="replace")
+    missing_logo = tmp_path / "no-such-logo.png"
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-1"}
+
+    with patch("notice_sender.LOGO_PATH", missing_logo), \
+         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_notice_email(
+            db_path, "meity_series_guidelines_2026", "api-key", "sender@x.com", "Absolute Veritas",
+            scheme="CRS",
+        )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert "attachment" not in payload
+
+
 def test_send_notice_whatsapp_raises_for_unknown_notice_id(tmp_path):
     db_path = tmp_path / "clients.db"
     upsert_clients(db_path, [CRS_ROW], mode="replace")

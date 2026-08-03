@@ -48,6 +48,16 @@ def test_build_email_html_includes_book_an_appointment_button_alongside_learn_mo
     assert html.count('rel="noopener noreferrer"') == 2
 
 
+def test_build_email_html_shows_logo_image_when_logo_src_given():
+    html = notice.build_email_html(_rec(), "Absolute Veritas", logo_src="cid:company-logo.png")
+    assert '<img src="cid:company-logo.png"' in html
+
+
+def test_build_email_html_falls_back_to_text_header_when_no_logo_src():
+    html = notice.build_email_html(_rec(), "Absolute Veritas")
+    assert "<img" not in html
+
+
 def test_email_subject_mentions_the_circular():
     assert "IS/IEC 62368" in notice.EMAIL_SUBJECT
     assert "2023" in notice.EMAIL_SUBJECT
