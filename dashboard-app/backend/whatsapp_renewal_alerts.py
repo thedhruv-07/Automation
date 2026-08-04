@@ -261,7 +261,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Send WhatsApp renewal alerts via Meta Cloud API.")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be sent without calling the API.")
     parser.add_argument("--test-number", default=None, help="Redirect all sends to this number instead of real client numbers.")
-    parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="Path to clients.db")
     return parser
 
 
@@ -304,7 +303,7 @@ def main(argv=None) -> int:
         return 1
 
     results = run(
-        db_path=args.db,
+        db_path=DEFAULT_DB_PATH,
         token=token,
         phone_number_id=phone_number_id,
         dry_run=args.dry_run,

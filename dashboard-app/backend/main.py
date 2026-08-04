@@ -7,7 +7,6 @@ REPO_ROOT = BACKEND_DIR.parent.parent
 import base64
 import io
 import os
-import sqlite3
 import threading
 import uuid
 
@@ -774,14 +773,13 @@ def client_template():
 
 def _upsert_clients_or_400(rows, mode):
     """Wraps upsert_clients() so a dirty row (e.g. a blank required field
-    like name, which violates the `name TEXT NOT NULL` constraint) surfaces
-    to the admin as a clear 400 instead of an opaque 500. db.py's
-    upsert_clients() rolls back the whole batch on any such failure, so by
-    the time this exception reaches here nothing from the batch was
-    written -- the 400 accurately reflects "nothing was saved"."""
+    like name) surfaces to the admin as a clear 400 instead of an opaque
+    500. db.py's upsert_clients() validates the whole batch before writing
+    anything, so by the time this exception reaches here nothing from the
+    batch was written -- the 400 accurately reflects "nothing was saved"."""
     try:
         return upsert_clients(DEFAULT_DB_PATH, rows, mode=mode)
-    except sqlite3.IntegrityError as exc:
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -802,7 +800,7 @@ async def upload_clients(file: UploadFile = File(...), import_format: str = Form
     _, detector, importer, expected_columns = format_entry
 
     contents = await file.read()
-    tmp_path = DEFAULT_DB_PATH.parent / "_upload_tmp.xlsx"
+    tmp_path = BACKEND_DIR / "_upload_tmp.xlsx"
     tmp_path.write_bytes(contents)
 
     try:
@@ -869,7 +867,7 @@ async def merge_clients(file: UploadFile = File(...), import_format: str = Form(
     _, detector, importer, expected_columns = format_entry
 
     contents = await file.read()
-    tmp_path = DEFAULT_DB_PATH.parent / "_merge_upload_tmp.xlsx"
+    tmp_path = BACKEND_DIR / "_merge_upload_tmp.xlsx"
     tmp_path.write_bytes(contents)
 
     try:

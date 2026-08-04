@@ -64,7 +64,7 @@ def test_save_and_load_sent_log_round_trip(tmp_path):
 
 
 from whatsapp_renewal_alerts import read_clients, filter_alertable
-from db import upsert_clients, DEFAULT_DB_PATH
+from db import upsert_clients
 
 
 def _write_db(path, rows):
@@ -633,7 +633,6 @@ def test_parse_args_defaults():
     args = parse_args([])
     assert args.dry_run is False
     assert args.test_number is None
-    assert args.db == str(DEFAULT_DB_PATH)
 
 
 def test_parse_args_dry_run_and_test_number():
