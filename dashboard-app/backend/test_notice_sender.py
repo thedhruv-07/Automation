@@ -10,10 +10,10 @@ CRS_ROW_NO_EMAIL = ("CLT002", "Priya Mehta", "BuildRight", None, "919812345678",
                      "ISO 9001", "CRS", "ISO-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE")
 
 
-def test_send_notice_whatsapp_skips_when_no_template_configured(tmp_path, monkeypatch):
+def test_send_notice_whatsapp_skips_when_no_template_configured(tmp_path, monkeypatch, mongo_db):
     monkeypatch.delenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", raising=False)
     monkeypatch.delenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", raising=False)
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     send_fn = Mock()
 
@@ -25,10 +25,10 @@ def test_send_notice_whatsapp_skips_when_no_template_configured(tmp_path, monkey
     send_fn.assert_not_called()
 
 
-def test_send_notice_whatsapp_sends_and_records_permanently(tmp_path, monkeypatch):
+def test_send_notice_whatsapp_sends_and_records_permanently(tmp_path, monkeypatch, mongo_db):
     monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026_tpl")
     monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
@@ -41,10 +41,10 @@ def test_send_notice_whatsapp_sends_and_records_permanently(tmp_path, monkeypatc
     assert is_notice_already_sent(db_path, "CLT001", "meity_series_guidelines_2026", "whatsapp") is True
 
 
-def test_send_notice_whatsapp_skips_client_already_sent_to(tmp_path, monkeypatch):
+def test_send_notice_whatsapp_skips_client_already_sent_to(tmp_path, monkeypatch, mongo_db):
     monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026_tpl")
     monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     record_notice_sent(db_path, "CLT001", "meity_series_guidelines_2026", "whatsapp", "wamid.OLD", "2026-07-20T10:00:00")
     send_fn = Mock()
@@ -57,10 +57,10 @@ def test_send_notice_whatsapp_skips_client_already_sent_to(tmp_path, monkeypatch
     send_fn.assert_not_called()
 
 
-def test_send_notice_whatsapp_test_number_does_not_persist_dedup(tmp_path, monkeypatch):
+def test_send_notice_whatsapp_test_number_does_not_persist_dedup(tmp_path, monkeypatch, mongo_db):
     monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026_tpl")
     monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     send_fn = Mock(return_value=(True, {"message_id": "wamid.TEST"}))
 
@@ -75,8 +75,8 @@ def test_send_notice_whatsapp_test_number_does_not_persist_dedup(tmp_path, monke
     assert is_notice_already_sent(db_path, "CLT001", "meity_series_guidelines_2026", "whatsapp") is False
 
 
-def test_send_notice_email_skips_when_no_email_on_file(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_send_notice_email_skips_when_no_email_on_file(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW_NO_EMAIL], mode="replace")
     send_fn = Mock()
 
@@ -89,8 +89,8 @@ def test_send_notice_email_skips_when_no_email_on_file(tmp_path):
     send_fn.assert_not_called()
 
 
-def test_send_notice_email_sends_and_records_permanently(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_send_notice_email_sends_and_records_permanently(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
 
@@ -104,8 +104,8 @@ def test_send_notice_email_sends_and_records_permanently(tmp_path):
     assert is_notice_already_sent(db_path, "CLT001", "meity_series_guidelines_2026", "email") is True
 
 
-def test_send_notice_email_skips_client_already_sent_to(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_send_notice_email_skips_client_already_sent_to(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     record_notice_sent(db_path, "CLT001", "meity_series_guidelines_2026", "email", "brevo-old", "2026-07-20T10:00:00")
     send_fn = Mock()
@@ -119,11 +119,11 @@ def test_send_notice_email_skips_client_already_sent_to(tmp_path):
     send_fn.assert_not_called()
 
 
-def test_send_notice_email_uses_the_notice_module_content(tmp_path):
+def test_send_notice_email_uses_the_notice_module_content(tmp_path, mongo_db):
     """Proves the email actually sent is the notice's own content (subject,
     URL), not the renewal-alert template -- the whole point of this feature
     is that a notice isn't about anyone's own certificate."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     mock_response = Mock(status_code=201)
     mock_response.json.return_value = {"messageId": "brevo-1"}
@@ -139,9 +139,9 @@ def test_send_notice_email_uses_the_notice_module_content(tmp_path):
     assert "is-62368-safety-rules-in-india" in payload["htmlContent"]
 
 
-def test_send_notice_email_includes_logo_attachment_when_present(tmp_path):
+def test_send_notice_email_includes_logo_attachment_when_present(tmp_path, mongo_db):
     import base64
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     logo_path = tmp_path / "company-logo.png"
     logo_bytes = b"fake-png-bytes"
@@ -163,8 +163,8 @@ def test_send_notice_email_includes_logo_attachment_when_present(tmp_path):
     assert 'src="cid:company-logo.png"' in payload["htmlContent"]
 
 
-def test_send_notice_email_omits_logo_attachment_when_missing(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_send_notice_email_omits_logo_attachment_when_missing(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     missing_logo = tmp_path / "no-such-logo.png"
     mock_response = Mock(status_code=201)
@@ -181,8 +181,8 @@ def test_send_notice_email_omits_logo_attachment_when_missing(tmp_path):
     assert "attachment" not in payload
 
 
-def test_send_notice_whatsapp_raises_for_unknown_notice_id(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_send_notice_whatsapp_raises_for_unknown_notice_id(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
 
     import pytest

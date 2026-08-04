@@ -51,15 +51,14 @@ def test_dedup_key_format():
     assert dedup_key("CLT001", "CRITICAL", "2026-07-17") == "CLT001|CRITICAL|2026-07-17"
 
 
-def test_load_sent_log_missing_file_returns_empty_dict(tmp_path):
-    assert load_sent_log(tmp_path / "missing.json") == {}
+def test_load_sent_log_missing_file_returns_empty_dict(mongo_db):
+    assert load_sent_log(mongo_db) == {}
 
 
-def test_save_and_load_sent_log_round_trip(tmp_path):
-    path = tmp_path / "sent_log.json"
+def test_save_and_load_sent_log_round_trip(mongo_db):
     entry = {"message_id": "wamid.ABC", "phone": "919876543210", "sent_at": "2026-07-17T10:00:00"}
-    save_sent_log(path, {"CLT001|CRITICAL|2026-07-17": entry})
-    result = load_sent_log(path)
+    save_sent_log(mongo_db, {"CLT001|CRITICAL|2026-07-17": entry})
+    result = load_sent_log(mongo_db)
     assert result == {"CLT001|CRITICAL|2026-07-17": entry}
 
 
@@ -71,8 +70,8 @@ def _write_db(path, rows):
     upsert_clients(path, rows, mode="replace")
 
 
-def test_read_clients_and_filter_alertable(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_read_clients_and_filter_alertable(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
@@ -101,8 +100,8 @@ def test_read_clients_and_filter_alertable(tmp_path):
     assert [r["client_id"] for r in alertable] == ["CLT001", "CLT002", "CLT003", "CLT005"]
 
 
-def test_read_clients_skips_blank_rows(tmp_path):
-    db_path = tmp_path / "test.db"
+def test_read_clients_skips_blank_rows(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Name", "Co", "e@x.com", "919876543210", "Cert", "ISI", "C-1",
          "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -216,8 +215,8 @@ ONE_CRITICAL_ROW = [
 ]
 
 
-def test_run_dry_run_makes_no_calls_and_no_log_writes(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_dry_run_makes_no_calls_and_no_log_writes(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, ONE_CRITICAL_ROW)
     send_fn = Mock()
 
@@ -232,8 +231,8 @@ def test_run_dry_run_makes_no_calls_and_no_log_writes(tmp_path):
     assert load_sent_log(db_path) == {}
 
 
-def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Already Sent", "Co1", "a@x.com", "919111111111",
          "Cert1", "ISI", "C-1", "01-01-2025", "24-07-2026",
@@ -257,8 +256,8 @@ def test_run_dry_run_honors_dedup_log_for_already_sent_client(tmp_path):
     send_fn.assert_not_called()
 
 
-def test_run_live_sends_and_dedups_on_second_call(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_live_sends_and_dedups_on_second_call(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, ONE_CRITICAL_ROW)
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
@@ -274,8 +273,8 @@ def test_run_live_sends_and_dedups_on_second_call(tmp_path):
     assert send_fn.call_count == 1
 
 
-def test_run_test_number_overrides_phone_and_skips_log_write(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_test_number_overrides_phone_and_skips_log_write(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, ONE_CRITICAL_ROW)
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
@@ -287,8 +286,8 @@ def test_run_test_number_overrides_phone_and_skips_log_write(tmp_path):
     assert load_sent_log(db_path) == {}
 
 
-def test_run_failed_send_does_not_write_log(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_failed_send_does_not_write_log(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, ONE_CRITICAL_ROW)
     send_fn = Mock(return_value=(False, {"error": "Invalid parameter"}))
 
@@ -300,8 +299,8 @@ def test_run_failed_send_does_not_write_log(tmp_path):
     assert load_sent_log(db_path) == {}
 
 
-def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Already Sent", "Co1", "a@x.com", "919111111111",
          "Cert1", "ISI", "C-1", "01-01-2025", "24-07-2026",
@@ -331,8 +330,8 @@ def test_run_mixed_outcomes_in_single_call_preserves_earlier_successes(tmp_path)
     assert "CLT002|URGENT|2026-07-17" in saved
 
 
-def test_run_filters_by_cert_type(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_filters_by_cert_type(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
@@ -350,8 +349,8 @@ def test_run_filters_by_cert_type(tmp_path):
     assert results[0]["client_id"] == "CLT002"
 
 
-def test_run_filters_by_search(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_filters_by_search(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
@@ -369,8 +368,8 @@ def test_run_filters_by_search(tmp_path):
     assert results[0]["client_id"] == "CLT002"
 
 
-def test_run_filters_by_scheme(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_filters_by_scheme(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
@@ -388,8 +387,8 @@ def test_run_filters_by_scheme(tmp_path):
     assert results[0]["client_id"] == "CLT002"
 
 
-def test_run_calls_on_progress_for_each_record(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_calls_on_progress_for_each_record(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -408,8 +407,8 @@ def test_run_calls_on_progress_for_each_record(tmp_path):
     assert progress_calls == [("sent", 2), ("sent", 2)]
 
 
-def test_run_survives_raising_on_progress_and_still_persists_sent_log(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_survives_raising_on_progress_and_still_persists_sent_log(tmp_path, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -561,10 +560,10 @@ def test_send_one_alert_uses_override_phone_and_reports_failure():
     assert sent_log == {}
 
 
-def test_run_resolves_template_per_record_in_mixed_scheme_batch(tmp_path, monkeypatch):
+def test_run_resolves_template_per_record_in_mixed_scheme_batch(tmp_path, monkeypatch, mongo_db):
     monkeypatch.setenv("WHATSAPP_TEMPLATE_NAME_CRS", "crs_renewal_alert")
     monkeypatch.setenv("WHATSAPP_TEMPLATE_LANG_CRS", "en")
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026",
@@ -584,10 +583,10 @@ def test_run_resolves_template_per_record_in_mixed_scheme_batch(tmp_path, monkey
     assert crs_payload["template"]["name"] == "crs_renewal_alert"
 
 
-def test_run_skips_records_when_scheme_has_no_configured_template(tmp_path, monkeypatch):
+def test_run_skips_records_when_scheme_has_no_configured_template(tmp_path, monkeypatch, mongo_db):
     monkeypatch.delenv("WHATSAPP_TEMPLATE_NAME_CRS", raising=False)
     monkeypatch.delenv("WHATSAPP_TEMPLATE_LANG_CRS", raising=False)
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "11-08-2026",

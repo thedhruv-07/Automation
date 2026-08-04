@@ -48,8 +48,8 @@ def test_resolve_allowed_origins_appends_configured_origin(monkeypatch):
     ]
 
 
-def test_get_clients_paginates_and_reports_total(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_get_clients_paginates_and_reports_total(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -67,8 +67,8 @@ def test_get_clients_paginates_and_reports_total(tmp_path, monkeypatch):
     assert len(data["rows"]) == 1
 
 
-def test_get_clients_merges_alert_sent_today(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_get_clients_merges_alert_sent_today(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -88,8 +88,8 @@ def test_get_clients_merges_alert_sent_today(tmp_path, monkeypatch):
     assert active["alert_sent_today"] is None
 
 
-def test_get_clients_filters_by_status_param(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_get_clients_filters_by_status_param(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
@@ -105,8 +105,8 @@ def test_get_clients_filters_by_status_param(tmp_path, monkeypatch):
     assert data[0]["client_id"] == "CLT002"
 
 
-def test_get_stats_returns_counts_and_cert_types(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_get_stats_returns_counts_and_cert_types(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -121,8 +121,8 @@ def test_get_stats_returns_counts_and_cert_types(tmp_path, monkeypatch):
     assert data["cert_types"] == ["ISO 9001"]
 
 
-def test_eligible_count_returns_both_channels(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_eligible_count_returns_both_channels(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -139,8 +139,8 @@ def test_eligible_count_returns_both_channels(tmp_path, monkeypatch):
     assert response.json() == {"whatsapp": 2, "email": 2}
 
 
-def test_eligible_count_filters_by_cert_type(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_eligible_count_filters_by_cert_type(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -154,8 +154,8 @@ def test_eligible_count_filters_by_cert_type(tmp_path, monkeypatch):
     assert response.json() == {"whatsapp": 1, "email": 1}
 
 
-def test_eligible_count_filters_by_search(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_eligible_count_filters_by_search(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -169,8 +169,8 @@ def test_eligible_count_filters_by_search(tmp_path, monkeypatch):
     assert response.json() == {"whatsapp": 1, "email": 1}
 
 
-def test_eligible_count_excludes_already_sent_today(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_eligible_count_excludes_already_sent_today(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -183,8 +183,8 @@ def test_eligible_count_excludes_already_sent_today(tmp_path, monkeypatch):
     assert response.json() == {"whatsapp": 0, "email": 1}
 
 
-def test_get_clients_filters_by_scheme_param(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_get_clients_filters_by_scheme_param(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -200,8 +200,8 @@ def test_get_clients_filters_by_scheme_param(tmp_path, monkeypatch):
     assert data[0]["client_id"] == "CLT002"
 
 
-def test_eligible_count_filters_by_scheme(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_eligible_count_filters_by_scheme(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -215,8 +215,8 @@ def test_eligible_count_filters_by_scheme(tmp_path, monkeypatch):
     assert response.json() == {"whatsapp": 1, "email": 1}
 
 
-def test_send_all_respects_scheme_filter(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_respects_scheme_filter(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -252,8 +252,8 @@ def test_send_all_respects_scheme_filter(tmp_path, monkeypatch):
     assert final["sent"] == 1
 
 
-def test_export_clients_includes_scheme_column(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_export_clients_includes_scheme_column(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -268,8 +268,8 @@ def test_export_clients_includes_scheme_column(tmp_path, monkeypatch):
     assert data_line.split(",")[6] == "ISI"
 
 
-def test_send_all_respects_cert_type_filter(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_respects_cert_type_filter(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -303,8 +303,8 @@ def test_send_all_respects_cert_type_filter(tmp_path, monkeypatch):
     assert final["sent"] == 1
 
 
-def test_send_all_respects_search_filter(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_respects_search_filter(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -338,8 +338,8 @@ def test_send_all_respects_search_filter(tmp_path, monkeypatch):
     assert final["sent"] == 1
 
 
-def test_send_all_emails_respects_cert_type_filter(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_emails_respects_cert_type_filter(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -375,8 +375,8 @@ def test_send_all_emails_respects_cert_type_filter(tmp_path, monkeypatch):
     assert final["sent"] == 1
 
 
-def test_send_all_emails_respects_search_filter(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_emails_respects_search_filter(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -412,8 +412,8 @@ def test_send_all_emails_respects_search_filter(tmp_path, monkeypatch):
     assert final["sent"] == 1
 
 
-def test_export_clients_streams_csv_with_all_matching_rows(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_export_clients_streams_csv_with_all_matching_rows(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -430,8 +430,8 @@ def test_export_clients_streams_csv_with_all_matching_rows(tmp_path, monkeypatch
     assert "CLT002" not in body
 
 
-def test_get_clients_rejects_out_of_range_pagination_params(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_get_clients_rejects_out_of_range_pagination_params(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -444,8 +444,8 @@ def test_get_clients_rejects_out_of_range_pagination_params(tmp_path, monkeypatc
     assert client.get("/api/clients", params={"page_size": 0}).status_code == 422
 
 
-def test_get_clients_sort_dir_is_case_insensitive(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_get_clients_sort_dir_is_case_insensitive(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "B Name", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -471,11 +471,11 @@ def test_get_clients_sort_dir_is_case_insensitive(tmp_path, monkeypatch):
     assert lower_ids == ["CLT001", "CLT002"]  # "B Name" sorts before "A Name" in descending order
 
 
-def test_export_clients_escapes_leading_formula_characters(tmp_path, monkeypatch):
+def test_export_clients_escapes_leading_formula_characters(tmp_path, monkeypatch, mongo_db):
     """A company/name field starting with =, +, -, or @ must not be written
     verbatim to the CSV: Excel (and similar tools) would interpret it as a
     formula, which is a well-known CSV/formula-injection vector."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "=cmd|'/c calc'!A1", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -491,8 +491,8 @@ def test_export_clients_escapes_leading_formula_characters(tmp_path, monkeypatch
     assert not company_field.startswith("=")
 
 
-def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -508,8 +508,8 @@ def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch):
     assert "24 July 2026" in data["html"]
 
 
-def test_email_preview_uses_scheme_specific_content(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_email_preview_uses_scheme_specific_content(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT004", "Deepa Rao", "FreshFoods", "d@x.com", "919000000001",
          "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -526,8 +526,8 @@ def test_email_preview_uses_scheme_specific_content(tmp_path, monkeypatch):
     assert "Your CRS registration for <strong>FreshFoods</strong> needs renewal." in data["html"]
 
 
-def test_email_preview_unknown_client_returns_404(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_email_preview_unknown_client_returns_404(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
@@ -553,8 +553,8 @@ def test_settings_info_reflects_env_and_never_exposes_token(monkeypatch):
     assert "token" not in data
 
 
-def test_message_log_returns_entries_joined_with_client_data(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_message_log_returns_entries_joined_with_client_data(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -575,8 +575,8 @@ def test_message_log_returns_entries_joined_with_client_data(tmp_path, monkeypat
     assert data[0]["phone"] == "919876543210"
 
 
-def test_message_log_handles_client_no_longer_in_roster(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_message_log_handles_client_no_longer_in_roster(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [])
     record_sent(db_path, "CLT999", "CRITICAL", "2026-07-18", "wamid.OLD", "919999999999", "2026-07-18T10:00:00")
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
@@ -587,8 +587,8 @@ def test_message_log_handles_client_no_longer_in_roster(tmp_path, monkeypatch):
     assert data[0]["name"] == "Unknown"
 
 
-def _setup_one_client(tmp_path, monkeypatch, status="CRITICAL"):
-    db_path = tmp_path / "clients.db"
+def _setup_one_client(tmp_path, monkeypatch, mongo_db, status="CRITICAL"):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", status],
@@ -603,8 +603,8 @@ def _setup_one_client(tmp_path, monkeypatch, status="CRITICAL"):
     return db_path
 
 
-def test_send_alert_success(tmp_path, monkeypatch):
-    db_path = _setup_one_client(tmp_path, monkeypatch)
+def test_send_alert_success(tmp_path, monkeypatch, mongo_db):
+    db_path = _setup_one_client(tmp_path, monkeypatch, mongo_db)
     mock_response = type("Resp", (), {
         "status_code": 200,
         "json": lambda self: {"messages": [{"id": "wamid.ABC"}]},
@@ -616,27 +616,27 @@ def test_send_alert_success(tmp_path, monkeypatch):
     assert "CLT001|CRITICAL|2026-07-18" in load_sent_log(db_path)
 
 
-def test_send_alert_unknown_client_returns_404(tmp_path, monkeypatch):
-    _setup_one_client(tmp_path, monkeypatch)
+def test_send_alert_unknown_client_returns_404(tmp_path, monkeypatch, mongo_db):
+    _setup_one_client(tmp_path, monkeypatch, mongo_db)
     response = client.post("/api/send/NOPE")
     assert response.status_code == 404
 
 
-def test_send_alert_ineligible_status_returns_400(tmp_path, monkeypatch):
-    _setup_one_client(tmp_path, monkeypatch, status="ACTIVE")
+def test_send_alert_ineligible_status_returns_400(tmp_path, monkeypatch, mongo_db):
+    _setup_one_client(tmp_path, monkeypatch, mongo_db, status="ACTIVE")
     response = client.post("/api/send/CLT001")
     assert response.status_code == 400
 
 
-def test_send_alert_duplicate_returns_409(tmp_path, monkeypatch):
-    db_path = _setup_one_client(tmp_path, monkeypatch)
+def test_send_alert_duplicate_returns_409(tmp_path, monkeypatch, mongo_db):
+    db_path = _setup_one_client(tmp_path, monkeypatch, mongo_db)
     record_sent(db_path, "CLT001", "CRITICAL", "2026-07-18", "wamid.OLD", None, "2026-07-18T09:00:00")
     response = client.post("/api/send/CLT001")
     assert response.status_code == 409
 
 
-def test_send_alert_api_failure_returns_502(tmp_path, monkeypatch):
-    _setup_one_client(tmp_path, monkeypatch)
+def test_send_alert_api_failure_returns_502(tmp_path, monkeypatch, mongo_db):
+    _setup_one_client(tmp_path, monkeypatch, mongo_db)
     mock_response = type("Resp", (), {
         "status_code": 400,
         "json": lambda self: {"error": {"message": "Invalid parameter"}},
@@ -648,8 +648,8 @@ def test_send_alert_api_failure_returns_502(tmp_path, monkeypatch):
     assert "Invalid parameter" in response.json()["detail"]
 
 
-def test_send_alert_uses_dashboard_test_number_override(tmp_path, monkeypatch):
-    _setup_one_client(tmp_path, monkeypatch)
+def test_send_alert_uses_dashboard_test_number_override(tmp_path, monkeypatch, mongo_db):
+    _setup_one_client(tmp_path, monkeypatch, mongo_db)
     monkeypatch.setenv("DASHBOARD_TEST_NUMBER", "919000000000")
     mock_response = type("Resp", (), {
         "status_code": 200,
@@ -662,12 +662,12 @@ def test_send_alert_uses_dashboard_test_number_override(tmp_path, monkeypatch):
     assert sent_payload["to"] == "919000000000"
 
 
-def test_send_alert_with_test_number_does_not_persist_dedup_log(tmp_path, monkeypatch):
+def test_send_alert_with_test_number_does_not_persist_dedup_log(tmp_path, monkeypatch, mongo_db):
     """Bug 1: a send redirected to DASHBOARD_TEST_NUMBER must NOT write the
     real client's dedup key to the sent_log table, or the real 9:30 AM CLI
     run (and future dashboard sends) would wrongly believe the client was
     already alerted today."""
-    db_path = _setup_one_client(tmp_path, monkeypatch)
+    db_path = _setup_one_client(tmp_path, monkeypatch, mongo_db)
     original_log = load_sent_log(db_path)
     monkeypatch.setenv("DASHBOARD_TEST_NUMBER", "919000000000")
     mock_response = type("Resp", (), {
@@ -685,11 +685,11 @@ def test_send_alert_with_test_number_does_not_persist_dedup_log(tmp_path, monkey
     assert "CLT001|CRITICAL|2026-07-18" not in on_disk_log
 
 
-def test_send_alert_concurrent_send_in_progress_returns_409(tmp_path, monkeypatch):
+def test_send_alert_concurrent_send_in_progress_returns_409(tmp_path, monkeypatch, mongo_db):
     """Bug 3: if a send for this client_id is already marked in-progress
     (e.g. an overlapping request got there first), a second request must be
     rejected with 409 rather than double-sending."""
-    _setup_one_client(tmp_path, monkeypatch)
+    _setup_one_client(tmp_path, monkeypatch, mongo_db)
     main_module._pending_sends.add("CLT001")
     try:
         response = client.post("/api/send/CLT001")
@@ -699,11 +699,11 @@ def test_send_alert_concurrent_send_in_progress_returns_409(tmp_path, monkeypatc
     assert "already in progress" in response.json()["detail"]
 
 
-def test_send_alert_skipped_duplicate_from_send_one_alert_returns_409(tmp_path, monkeypatch):
+def test_send_alert_skipped_duplicate_from_send_one_alert_returns_409(tmp_path, monkeypatch, mongo_db):
     """Bug 2: if send_one_alert() itself reports skipped_duplicate (e.g. its
     internal dedup logic diverges from the endpoint's own pre-check in the
     future), the endpoint must still surface a 409, not a bogus 502."""
-    _setup_one_client(tmp_path, monkeypatch)
+    _setup_one_client(tmp_path, monkeypatch, mongo_db)
 
     def fake_send_one_alert(*args, **kwargs):
         return {"action": "skipped_duplicate"}
@@ -714,8 +714,8 @@ def test_send_alert_skipped_duplicate_from_send_one_alert_returns_409(tmp_path, 
     assert "already sent today" in response.json()["detail"]
 
 
-def test_send_alert_no_template_for_scheme_returns_400(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_alert_no_template_for_scheme_returns_400(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -733,8 +733,8 @@ def test_send_alert_no_template_for_scheme_returns_400(tmp_path, monkeypatch):
     assert "CRS" in response.json()["detail"]
 
 
-def test_send_all_starts_job_and_reports_progress(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_starts_job_and_reports_progress(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -773,8 +773,8 @@ def test_send_all_starts_job_and_reports_progress(tmp_path, monkeypatch):
     assert final["total"] == 1
 
 
-def test_send_all_reports_sent_for_all_alertable_statuses(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_reports_sent_for_all_alertable_statuses(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -810,8 +810,8 @@ def test_send_all_reports_sent_for_all_alertable_statuses(tmp_path, monkeypatch)
     assert final["sent"] == 2
 
 
-def test_send_all_reports_skipped_no_template_for_unconfigured_scheme(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_reports_skipped_no_template_for_unconfigured_scheme(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -847,8 +847,8 @@ def test_send_all_reports_skipped_no_template_for_unconfigured_scheme(tmp_path, 
     assert final["skipped_no_template"] == 1
 
 
-def test_send_all_uses_dashboard_test_number_override(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_uses_dashboard_test_number_override(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -878,12 +878,12 @@ def test_send_all_uses_dashboard_test_number_override(tmp_path, monkeypatch):
     assert sent_payload["to"] == "919000000000"
 
 
-def test_send_all_job_reports_error_when_run_raises(tmp_path, monkeypatch):
+def test_send_all_job_reports_error_when_run_raises(tmp_path, monkeypatch, mongo_db):
     """If run() raises inside the background job (e.g. a locked DB or an
     unexpected error mid-send-loop), the job dict must record it so polling
     clients can distinguish a real crash from "0/0/0, nothing to do" -- not
     silently mark done=True with no trace of the failure."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -918,8 +918,8 @@ def test_send_all_job_reports_error_when_run_raises(tmp_path, monkeypatch):
     assert main_module._bulk_in_progress is False
 
 
-def test_send_all_job_error_is_none_on_success(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_job_error_is_none_on_success(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -949,13 +949,13 @@ def test_send_all_job_error_is_none_on_success(tmp_path, monkeypatch):
     assert final.get("error") is None
 
 
-def test_send_all_status_returns_404_for_unknown_job(tmp_path, monkeypatch):
-    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+def test_send_all_status_returns_404_for_unknown_job(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
     response = client.get("/api/send-all/status/does-not-exist")
     assert response.status_code == 404
 
 
-def test_send_all_missing_env_var_resets_bulk_in_progress_flag(tmp_path, monkeypatch):
+def test_send_all_missing_env_var_resets_bulk_in_progress_flag(tmp_path, monkeypatch, mongo_db):
     """If required WHATSAPP_TOKEN/PHONE_NUMBER_ID env vars are missing, setup
     for the background job fails before the thread ever starts. _bulk_in_progress
     must still be reset in that case -- otherwise every future bulk AND
@@ -963,7 +963,7 @@ def test_send_all_missing_env_var_resets_bulk_in_progress_flag(tmp_path, monkeyp
     of restarting the server process (this was a regression introduced when
     send-all moved to a background job; the pre-migration synchronous
     implementation reset the flag in a finally around this exact lookup)."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -992,8 +992,8 @@ def test_send_all_missing_env_var_resets_bulk_in_progress_flag(tmp_path, monkeyp
     assert second_response.status_code == 200
 
 
-def test_send_all_alerts_blocks_concurrent_calls(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_alerts_blocks_concurrent_calls(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setattr(main_module, "_bulk_in_progress", True)
@@ -1001,15 +1001,15 @@ def test_send_all_alerts_blocks_concurrent_calls(tmp_path, monkeypatch):
     assert response.status_code == 409
 
 
-def test_send_alert_blocked_while_bulk_in_progress(tmp_path, monkeypatch):
-    _setup_one_client(tmp_path, monkeypatch)
+def test_send_alert_blocked_while_bulk_in_progress(tmp_path, monkeypatch, mongo_db):
+    _setup_one_client(tmp_path, monkeypatch, mongo_db)
     monkeypatch.setattr(main_module, "_bulk_in_progress", True)
     response = client.post("/api/send/CLT001")
     assert response.status_code == 409
 
 
-def test_send_all_alerts_blocked_while_per_client_send_in_progress(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_all_alerts_blocked_while_per_client_send_in_progress(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [])
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     main_module._pending_sends.add("CLT999")
@@ -1034,8 +1034,8 @@ def test_client_template_returns_header_only_xlsx():
     assert rows == [tuple(HEADERS)]
 
 
-def test_upload_clients_success(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_upload_clients_success(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "upload.xlsx"
@@ -1055,12 +1055,11 @@ def test_upload_clients_success(tmp_path, monkeypatch):
     assert response.json() == {
         "status": "ok", "row_count": 1, "format": "roster", "stats": {"rows_written": 1},
     }
-    assert db_path.exists()
     assert read_clients(db_path)[0]["client_id"] == "CLT001"
 
 
-def test_upload_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_upload_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     response = client.post(
         "/api/upload-clients",
@@ -1070,8 +1069,8 @@ def test_upload_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
     assert response.status_code == 400
 
 
-def test_upload_clients_rejects_wrong_headers(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_upload_clients_rejects_wrong_headers(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "bad.xlsx"
@@ -1089,14 +1088,14 @@ def test_upload_clients_rejects_wrong_headers(tmp_path, monkeypatch):
             data={"import_format": "roster"},
         )
     assert response.status_code == 400
-    assert not db_path.exists()
+    assert db_path["clients"].count_documents({}) == 0
 
 
-def test_upload_clients_rejects_empty_active_sheet_with_clear_message(tmp_path, monkeypatch):
+def test_upload_clients_rejects_empty_active_sheet_with_clear_message(tmp_path, monkeypatch, mongo_db):
     """A multi-sheet workbook where the active (last-selected) sheet has no
     rows must not crash with an unhandled StopIteration mislabeled as a
     generic invalid-file error."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "multi_sheet.xlsx"
@@ -1117,11 +1116,11 @@ def test_upload_clients_rejects_empty_active_sheet_with_clear_message(tmp_path, 
         )
     assert response.status_code == 400
     assert "EmptyActive" in response.json()["detail"]
-    assert not db_path.exists()
+    assert db_path["clients"].count_documents({}) == 0
 
 
-def test_upload_clients_rejects_unknown_format(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_upload_clients_rejects_unknown_format(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "clients.xlsx"
@@ -1141,8 +1140,8 @@ def test_upload_clients_rejects_unknown_format(tmp_path, monkeypatch):
     assert "fmcs" in response.json()["detail"].lower()
 
 
-def test_upload_clients_missing_format_returns_422(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_upload_clients_missing_format_returns_422(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "clients.xlsx"
@@ -1160,12 +1159,12 @@ def test_upload_clients_missing_format_returns_422(tmp_path, monkeypatch):
     assert response.status_code == 422
 
 
-def test_upload_clients_selected_crs_but_file_is_roster_gives_targeted_error(tmp_path, monkeypatch):
+def test_upload_clients_selected_crs_but_file_is_roster_gives_targeted_error(tmp_path, monkeypatch, mongo_db):
     """Selecting the wrong format for a real file must name what the
     selected format actually needed, not the old generic
     "doesn't match any format" message -- proves the new per-format
     dispatch replaced the old cascade rather than just adding to it."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "clients.xlsx"
@@ -1185,14 +1184,14 @@ def test_upload_clients_selected_crs_but_file_is_roster_gives_targeted_error(tmp
     detail = response.json()["detail"]
     assert "CRS" in detail
     assert "License No." in detail
-    assert not db_path.exists()
+    assert db_path["clients"].count_documents({}) == 0
 
 
-def test_upload_clients_converts_raw_bis_isi_workbook(tmp_path, monkeypatch):
+def test_upload_clients_converts_raw_bis_isi_workbook(tmp_path, monkeypatch, mongo_db):
     """A raw BIS ISI licence export (govt column names, one sheet per IS
     standard, no Client ID/Phone/Company columns) should be auto-detected
     and converted into the roster schema, not rejected as a header mismatch."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "BIS ISI Data.xlsx"
@@ -1227,11 +1226,11 @@ def test_upload_clients_converts_raw_bis_isi_workbook(tmp_path, monkeypatch):
     assert rows[0]["cert_name"] == "IS 302 (Part 2 Sec 30)"
 
 
-def test_upload_clients_converts_single_sheet_bis_isi_workbook_with_standard_column(tmp_path, monkeypatch):
+def test_upload_clients_converts_single_sheet_bis_isi_workbook_with_standard_column(tmp_path, monkeypatch, mongo_db):
     """The current BIS ISI export format: everything in one sheet, with a
     "Standard" column carrying what used to be the sheet name -- each row's
     certification should come from that column, not a shared sheet name."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "BIS_Final_Edited_Master_File.xlsx"
@@ -1268,11 +1267,11 @@ def test_upload_clients_converts_single_sheet_bis_isi_workbook_with_standard_col
     assert rows["6298283"]["cert_name"] == "IS 10124 Part 2"
 
 
-def test_upload_clients_converts_raw_crs_workbook(tmp_path, monkeypatch):
+def test_upload_clients_converts_raw_crs_workbook(tmp_path, monkeypatch, mongo_db):
     """A raw BIS CRS registration export (govt column names, one sheet per
     Indian Standard, no Client ID/Company columns) should be auto-detected
     and converted into the roster schema, not rejected as a header mismatch."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "CRS Data.xlsx"
@@ -1307,8 +1306,8 @@ def test_upload_clients_converts_raw_crs_workbook(tmp_path, monkeypatch):
     assert rows[0]["cert_name"] == "Is 13252(Part 1):2010/ Iec 60950-1: 2005"
 
 
-def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
          "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
@@ -1330,16 +1329,15 @@ def test_upload_clients_backs_up_existing_file(tmp_path, monkeypatch):
         )
     assert response.status_code == 200
 
-    backup_path = db_path.parent / "clients.backup.db"
-    assert backup_path.exists()
+    assert db_path["clients_backup"].count_documents({}) > 0
 
 
-def test_upload_clients_rejects_blank_name_with_400_not_500(tmp_path, monkeypatch):
-    """A blank name cell violates the `name TEXT NOT NULL` constraint in
-    db.py, raising sqlite3.IntegrityError. The endpoint must surface this as
+def test_upload_clients_rejects_blank_name_with_400_not_500(tmp_path, monkeypatch, mongo_db):
+    """A blank name cell fails db.py's required-name validation, raising
+    ValueError. The endpoint must surface this as
     a clear 400, not let it bubble up as an opaque 500, and must not leave
     the previously-existing roster wiped (mode="replace" deletes first)."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
          "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
@@ -1368,8 +1366,8 @@ def test_upload_clients_rejects_blank_name_with_400_not_500(tmp_path, monkeypatc
     assert {r["client_id"] for r in rows} == {"CLT999"}
 
 
-def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
          "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
@@ -1401,8 +1399,8 @@ def test_merge_clients_adds_new_and_keeps_existing(tmp_path, monkeypatch):
     assert client_ids == {"CLT999", "CLT001"}
 
 
-def test_merge_clients_skips_duplicate_client_ids(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_merge_clients_skips_duplicate_client_ids(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma (old data)", "TechCorp", "old@x.com", "919999999999",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
@@ -1436,8 +1434,8 @@ def test_merge_clients_skips_duplicate_client_ids(tmp_path, monkeypatch):
     assert "CLT002" in by_id
 
 
-def test_merge_clients_converts_and_merges_raw_bis_isi_workbook(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_merge_clients_converts_and_merges_raw_bis_isi_workbook(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["9512485121", "Existing Firm Name", "Existing Firm Name", "existing@x.com", None,
          "IS 302 (Part 2 Sec 30)", "ISI", "9512485121", None, "01-01-2026", None, "ACTIVE"],
@@ -1473,8 +1471,8 @@ def test_merge_clients_converts_and_merges_raw_bis_isi_workbook(tmp_path, monkey
     assert by_id["8700138914"]["name"] == "Power Fan Industry"  # new client added
 
 
-def test_merge_clients_into_empty_roster(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_merge_clients_into_empty_roster(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "new.xlsx"
@@ -1497,11 +1495,11 @@ def test_merge_clients_into_empty_roster(tmp_path, monkeypatch):
     assert body["skipped_duplicates"] == 0
 
 
-def test_merge_clients_rejects_blank_name_with_400_and_rolls_back_batch(tmp_path, monkeypatch):
+def test_merge_clients_rejects_blank_name_with_400_and_rolls_back_batch(tmp_path, monkeypatch, mongo_db):
     """A blank name cell anywhere in the uploaded batch must surface as a
     400, and none of the batch's rows -- including a valid row that sorted
     before the bad one -- may be partially merged in (all-or-nothing)."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
          "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
@@ -1532,8 +1530,8 @@ def test_merge_clients_rejects_blank_name_with_400_and_rolls_back_batch(tmp_path
     assert {r["client_id"] for r in rows} == {"CLT999"}
 
 
-def test_merge_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
-    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+def test_merge_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
     response = client.post(
         "/api/merge-clients",
         files={"file": ("data.csv", b"not,a,spreadsheet", "text/csv")},
@@ -1542,8 +1540,8 @@ def test_merge_clients_rejects_non_xlsx_extension(tmp_path, monkeypatch):
     assert response.status_code == 400
 
 
-def test_merge_clients_selected_bis_isi_but_file_is_roster_gives_targeted_error(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_merge_clients_selected_bis_isi_but_file_is_roster_gives_targeted_error(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
 
     upload_path = tmp_path / "clients.xlsx"
@@ -1565,8 +1563,11 @@ def test_merge_clients_selected_bis_isi_but_file_is_roster_gives_targeted_error(
     assert "Firm Name" in detail
 
 
-def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_merge_clients_does_not_touch_clients_backup(tmp_path, monkeypatch, mongo_db):
+    """db.py's clients_backup safety net only fires for mode="replace" (which
+    clears the collection first) -- merge never deletes existing rows, so
+    there's nothing for it to protect against, unlike upload/replace."""
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT999", "Old Client", "OldCo", "o@x.com", "919999999999",
          "Old Cert", "ISI", "OLD-1", "01-01-2025", "01-01-2026", "https://x", "ACTIVE"],
@@ -1588,15 +1589,14 @@ def test_merge_clients_backs_up_existing_file(tmp_path, monkeypatch):
         )
     assert response.status_code == 200
 
-    backup_path = db_path.parent / "clients.backup.db"
-    assert backup_path.exists()
+    assert list(db_path["clients_backup"].find()) == []
 
 
 from db import load_email_sent_log, save_email_sent_log
 
 
-def _setup_one_email_client(tmp_path, monkeypatch, status="CRITICAL"):
-    db_path = tmp_path / "clients.db"
+def _setup_one_email_client(tmp_path, monkeypatch, mongo_db, status="CRITICAL"):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", status],
@@ -1609,8 +1609,8 @@ def _setup_one_email_client(tmp_path, monkeypatch, status="CRITICAL"):
     return db_path
 
 
-def test_send_email_success(tmp_path, monkeypatch):
-    db_path = _setup_one_email_client(tmp_path, monkeypatch)
+def test_send_email_success(tmp_path, monkeypatch, mongo_db):
+    db_path = _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
     mock_response = type("Resp", (), {
         "status_code": 200,
         "json": lambda self: {"messageId": "brevo-1"},
@@ -1623,20 +1623,20 @@ def test_send_email_success(tmp_path, monkeypatch):
     assert "CLT001|CRITICAL|2026-07-18" in log
 
 
-def test_send_email_unknown_client_returns_404(tmp_path, monkeypatch):
-    _setup_one_email_client(tmp_path, monkeypatch)
+def test_send_email_unknown_client_returns_404(tmp_path, monkeypatch, mongo_db):
+    _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
     response = client.post("/api/send-email/NOPE")
     assert response.status_code == 404
 
 
-def test_send_email_ineligible_status_returns_400(tmp_path, monkeypatch):
-    _setup_one_email_client(tmp_path, monkeypatch, status="ACTIVE")
+def test_send_email_ineligible_status_returns_400(tmp_path, monkeypatch, mongo_db):
+    _setup_one_email_client(tmp_path, monkeypatch, mongo_db, status="ACTIVE")
     response = client.post("/api/send-email/CLT001")
     assert response.status_code == 400
 
 
-def test_send_email_no_email_on_file_returns_400(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_email_no_email_on_file_returns_400(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT005", "No Email Co", "No Email Co", None, "919000000000",
          "ISO 9001", "ISI", "ISO-5", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -1649,8 +1649,8 @@ def test_send_email_no_email_on_file_returns_400(tmp_path, monkeypatch):
     assert "email" in response.json()["detail"].lower()
 
 
-def test_send_email_duplicate_returns_409(tmp_path, monkeypatch):
-    db_path = _setup_one_email_client(tmp_path, monkeypatch)
+def test_send_email_duplicate_returns_409(tmp_path, monkeypatch, mongo_db):
+    db_path = _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
     save_email_sent_log(db_path, {
         "CLT001|CRITICAL|2026-07-18": {"sent_at": "x", "message_id": "y", "email": "r@x.com"},
     })
@@ -1658,8 +1658,8 @@ def test_send_email_duplicate_returns_409(tmp_path, monkeypatch):
     assert response.status_code == 409
 
 
-def test_send_all_emails_starts_job_and_reports_progress(tmp_path, monkeypatch):
-    _setup_one_email_client(tmp_path, monkeypatch)
+def test_send_all_emails_starts_job_and_reports_progress(tmp_path, monkeypatch, mongo_db):
+    _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
     mock_response = type("Resp", (), {
         "status_code": 200,
         "json": lambda self: {"messageId": "brevo-1"},
@@ -1688,16 +1688,16 @@ def test_send_all_emails_status_returns_404_for_unknown_job():
     assert response.status_code == 404
 
 
-def test_send_all_emails_blocks_concurrent_calls(tmp_path, monkeypatch):
-    _setup_one_email_client(tmp_path, monkeypatch)
+def test_send_all_emails_blocks_concurrent_calls(tmp_path, monkeypatch, mongo_db):
+    _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
     monkeypatch.setattr(main_module, "_email_bulk_in_progress", True)
     response = client.post("/api/send-all-emails")
     assert response.status_code == 409
 
 
-def test_send_all_emails_does_not_block_on_whatsapp_bulk_in_progress(tmp_path, monkeypatch):
+def test_send_all_emails_does_not_block_on_whatsapp_bulk_in_progress(tmp_path, monkeypatch, mongo_db):
     """The two channels' bulk-send locks must be independent."""
-    _setup_one_email_client(tmp_path, monkeypatch)
+    _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
     monkeypatch.setattr(main_module, "_bulk_in_progress", True)  # WhatsApp's flag, not email's
     mock_response = type("Resp", (), {
         "status_code": 200,
@@ -1729,14 +1729,14 @@ def test_notice_preview_unknown_notice_returns_404():
     assert response.status_code == 404
 
 
-def test_notice_eligible_count_unknown_notice_returns_404(tmp_path, monkeypatch):
-    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+def test_notice_eligible_count_unknown_notice_returns_404(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
     response = client.get("/api/notices/does_not_exist/eligible-count")
     assert response.status_code == 404
 
 
-def test_notice_eligible_count_reflects_scheme_filter(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_notice_eligible_count_reflects_scheme_filter(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "OSHA", "CRS", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -1750,17 +1750,17 @@ def test_notice_eligible_count_reflects_scheme_filter(tmp_path, monkeypatch):
     assert response.json() == {"whatsapp": 1, "email": 1}
 
 
-def test_send_notice_whatsapp_unknown_notice_returns_404(tmp_path, monkeypatch):
-    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+def test_send_notice_whatsapp_unknown_notice_returns_404(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
     response = client.post("/api/notices/does_not_exist/send-whatsapp")
     assert response.status_code == 404
 
 
-def test_send_notice_whatsapp_rejects_concurrent_send_for_same_notice(tmp_path, monkeypatch):
+def test_send_notice_whatsapp_rejects_concurrent_send_for_same_notice(tmp_path, monkeypatch, mongo_db):
     """A second send request for the same notice+channel while one is
     already running must 409, not silently double-send the whole audience --
     there was previously no lock at all on the notice-send endpoints."""
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("WHATSAPP_TOKEN", "tok")
     monkeypatch.setenv("PHONE_NUMBER_ID", "pid")
@@ -1774,8 +1774,8 @@ def test_send_notice_whatsapp_rejects_concurrent_send_for_same_notice(tmp_path, 
         main_module._notice_sends_in_progress.discard("meity_series_guidelines_2026:whatsapp")
 
 
-def test_send_notice_email_rejects_concurrent_send_for_same_notice(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_notice_email_rejects_concurrent_send_for_same_notice(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
     monkeypatch.setenv("BREVO_API_KEY", "key")
     monkeypatch.setenv("EMAIL_SENDER", "sender@x.com")
@@ -1789,8 +1789,8 @@ def test_send_notice_email_rejects_concurrent_send_for_same_notice(tmp_path, mon
         main_module._notice_sends_in_progress.discard("meity_series_guidelines_2026:email")
 
 
-def test_send_notice_whatsapp_starts_job_and_reports_progress(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_notice_whatsapp_starts_job_and_reports_progress(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "OSHA", "CRS", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "ACTIVE"],
@@ -1828,8 +1828,8 @@ def test_send_notice_whatsapp_status_returns_404_for_unknown_job():
     assert response.status_code == 404
 
 
-def test_send_notice_email_starts_job_and_reports_progress(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_send_notice_email_starts_job_and_reports_progress(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "OSHA", "CRS", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "ACTIVE"],
@@ -1865,14 +1865,14 @@ def test_send_notice_email_status_returns_404_for_unknown_job():
     assert response.status_code == 404
 
 
-def test_notice_clients_unknown_notice_returns_404(tmp_path, monkeypatch):
-    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", tmp_path / "clients.db")
+def test_notice_clients_unknown_notice_returns_404(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
     response = client.get("/api/notices/does_not_exist/clients")
     assert response.status_code == 404
 
 
-def test_notice_clients_returns_paginated_rows_with_notice_status(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_notice_clients_returns_paginated_rows_with_notice_status(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
@@ -1899,8 +1899,8 @@ def test_notice_clients_returns_paginated_rows_with_notice_status(tmp_path, monk
     assert by_id["CLT002"]["notice_sent_whatsapp"] is False
 
 
-def test_notice_clients_respects_page_size(tmp_path, monkeypatch):
-    db_path = tmp_path / "clients.db"
+def test_notice_clients_respects_page_size(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
     _write_db(db_path, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],

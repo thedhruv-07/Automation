@@ -144,8 +144,8 @@ def test_send_one_email_alert_test_email_override_redirects_recipient():
     assert send_fn.call_args.kwargs["to_email"] == "test-inbox@x.com"
 
 
-def test_run_email_alerts_processes_all_alert_eligible_clients(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_email_alerts_processes_all_alert_eligible_clients(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [ROW_WITH_EMAIL, ROW_NO_EMAIL, ROW_INVALID_EMAIL], mode="replace")
     send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
 
@@ -161,10 +161,10 @@ def test_run_email_alerts_processes_all_alert_eligible_clients(tmp_path):
     assert send_fn.call_count == 1
 
 
-def test_run_email_alerts_stops_after_limit_sends(tmp_path):
+def test_run_email_alerts_stops_after_limit_sends(tmp_path, mongo_db):
     row2 = ("CLT004", "Sana Iqbal", "GreenBuild", "s@x.com", "919800000001",
             "ISO 9001", "ISI", "ISO-2", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
-    db_path = tmp_path / "clients.db"
+    db_path = mongo_db
     upsert_clients(db_path, [ROW_WITH_EMAIL, row2], mode="replace")
     send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
 
@@ -178,8 +178,8 @@ def test_run_email_alerts_stops_after_limit_sends(tmp_path):
     assert send_fn.call_count == 1
 
 
-def test_run_email_alerts_filters_by_cert_type(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_email_alerts_filters_by_cert_type(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [ROW_WITH_EMAIL, ROW_NO_EMAIL], mode="replace")
     send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
 
@@ -193,8 +193,8 @@ def test_run_email_alerts_filters_by_cert_type(tmp_path):
     assert results[0]["action"] == "skipped_no_email"  # ROW_NO_EMAIL has no email on file
 
 
-def test_run_email_alerts_filters_by_search(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_email_alerts_filters_by_search(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [ROW_WITH_EMAIL, ROW_NO_EMAIL], mode="replace")
     send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
 
@@ -208,8 +208,8 @@ def test_run_email_alerts_filters_by_search(tmp_path):
     assert results[0]["action"] == "skipped_no_email"  # ROW_NO_EMAIL has no email on file
 
 
-def test_run_email_alerts_filters_by_scheme(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_email_alerts_filters_by_scheme(tmp_path, mongo_db):
+    db_path = mongo_db
     fmcs_row = ("CLT004", "Deepa Rao", "FreshFoods", "d@x.com", "919000000001",
                 "FMCS-Cert", "FMCS", "FMCS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
     upsert_clients(db_path, [ROW_WITH_EMAIL, fmcs_row], mode="replace")
@@ -336,8 +336,8 @@ def test_send_email_via_brevo_includes_attachment_when_logo_present(tmp_path):
     ]
 
 
-def test_run_email_alerts_calls_on_progress_for_each_record(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_run_email_alerts_calls_on_progress_for_each_record(tmp_path, mongo_db):
+    db_path = mongo_db
     upsert_clients(db_path, [ROW_WITH_EMAIL], mode="replace")
     send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
     progress_calls = []
