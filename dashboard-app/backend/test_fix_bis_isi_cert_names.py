@@ -59,11 +59,10 @@ def test_load_correct_standards_returns_empty_when_no_matching_sheet(tmp_path):
     assert load_correct_standards(source_path) == {}
 
 
-def test_find_cert_name_corrections_flags_mismatches_only(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A, ROW_B], mode="replace")
+def test_find_cert_name_corrections_flags_mismatches_only(mongo_db):
+    upsert_clients(mongo_db, [ROW_A, ROW_B], mode="replace")
 
-    corrections = find_cert_name_corrections(db_path, {
+    corrections = find_cert_name_corrections(mongo_db, {
         "CLT001": "IS 9825",   # differs from stored "IS 12600" -- should be flagged
         "CLT002": "IS 12600",  # matches stored value -- should NOT be flagged
     })
@@ -71,10 +70,9 @@ def test_find_cert_name_corrections_flags_mismatches_only(tmp_path):
     assert corrections == [("CLT001", "IS 12600", "IS 9825")]
 
 
-def test_find_cert_name_corrections_ignores_client_ids_not_in_roster(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A], mode="replace")
+def test_find_cert_name_corrections_ignores_client_ids_not_in_roster(mongo_db):
+    upsert_clients(mongo_db, [ROW_A], mode="replace")
 
-    corrections = find_cert_name_corrections(db_path, {"UNKNOWN-ID": "IS 9825"})
+    corrections = find_cert_name_corrections(mongo_db, {"UNKNOWN-ID": "IS 9825"})
 
     assert corrections == []

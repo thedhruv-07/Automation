@@ -14,14 +14,11 @@ in the source file (including every non-BIS-ISI client), is left untouched.
 Usage: python fix_bis_isi_cert_names.py "<path to corrected master xlsx>" [--apply]
 Without --apply, runs in dry-run mode: reports what WOULD change, writes nothing.
 """
-import shutil
 import sys
-from datetime import datetime
-from pathlib import Path
 
 import openpyxl
 
-from db import DEFAULT_DB_PATH, get_connection
+from db import DEFAULT_DB_PATH
 
 
 def load_correct_standards(source_path) -> dict[str, str]:
@@ -55,40 +52,28 @@ def load_correct_standards(source_path) -> dict[str, str]:
         wb.close()
 
 
-def find_cert_name_corrections(db_path, correct_standards: dict[str, str]) -> list[tuple[str, str, str]]:
+def find_cert_name_corrections(db, correct_standards: dict[str, str]) -> list[tuple[str, str, str]]:
     """Returns (client_id, old_cert_name, new_cert_name) for every roster row
     whose cert_name should change."""
-    conn = get_connection(db_path)
-    try:
-        corrections = []
-        for client_id, correct_standard in correct_standards.items():
-            row = conn.execute(
-                "SELECT cert_name FROM clients WHERE client_id = ?", (client_id,)
-            ).fetchone()
-            if row is None:
-                continue
-            if row["cert_name"] != correct_standard:
-                corrections.append((client_id, row["cert_name"], correct_standard))
-        return corrections
-    finally:
-        conn.close()
+    corrections = []
+    for client_id, correct_standard in correct_standards.items():
+        doc = db["clients"].find_one({"_id": client_id}, {"cert_name": 1})
+        if doc is None:
+            continue
+        if doc.get("cert_name") != correct_standard:
+            corrections.append((client_id, doc.get("cert_name"), correct_standard))
+    return corrections
 
 
-def apply_corrections(db_path, corrections: list[tuple[str, str, str]]) -> Path:
-    """Backs up db_path, then writes the corrections. Returns the backup path."""
-    backup_path = Path(db_path).parent / f"clients.backup-{datetime.now():%Y%m%d-%H%M%S}.db"
-    shutil.copyfile(db_path, backup_path)
-
-    conn = get_connection(db_path)
-    try:
-        conn.executemany(
-            "UPDATE clients SET cert_name = ? WHERE client_id = ?",
-            [(new, client_id) for client_id, _old, new in corrections],
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    return backup_path
+def apply_corrections(db, corrections: list[tuple[str, str, str]]) -> None:
+    """Backs up the clients collection to clients_backup (same pattern as
+    db.py's upsert_clients replace mode), then writes the corrections."""
+    existing = list(db["clients"].find())
+    if existing:
+        db["clients_backup"].delete_many({})
+        db["clients_backup"].insert_many(existing)
+    for client_id, _old, new in corrections:
+        db["clients"].update_one({"_id": client_id}, {"$set": {"cert_name": new}})
 
 
 def main():
@@ -116,9 +101,9 @@ def main():
         print("\nDry run only -- no changes written. Re-run with --apply to write these changes.")
         return
 
-    backup_path = apply_corrections(DEFAULT_DB_PATH, corrections)
-    print(f"Backed up previous database to {backup_path}")
-    print(f"Applied {len(corrections)} corrections to {DEFAULT_DB_PATH}.")
+    apply_corrections(DEFAULT_DB_PATH, corrections)
+    print("Backed up the previous clients collection to clients_backup.")
+    print(f"Applied {len(corrections)} corrections.")
 
 
 if __name__ == "__main__":
