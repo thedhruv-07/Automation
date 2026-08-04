@@ -1,11 +1,18 @@
 # test_db.py
-import sqlite3
-from pathlib import Path
+from unittest.mock import patch, MagicMock
 
+import mongomock
 import pytest
 from db import (
-    init_db, read_clients, find_client_by_id, upsert_clients, RECORD_FIELDS, get_broadcast_clients_page,
+    init_db, read_clients, find_client_by_id, upsert_clients, RECORD_FIELDS,
+    get_broadcast_clients_page,
 )
+
+
+@pytest.fixture
+def mongo_db():
+    return mongomock.MongoClient()["cert_dashboard_test"]
+
 
 ROW_A = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
           "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
@@ -13,152 +20,140 @@ ROW_B = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
           "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
 
 
-def _insert_raw(db_path, rows):
-    init_db(db_path)
-    conn = sqlite3.connect(str(db_path))
+def _insert_raw(db, rows):
+    from db import to_iso_date
+    init_db(db)
     for row in rows:
-        expiry_iso = _ddmmyyyy_to_iso(row[8])
-        conn.execute(
-            f"INSERT INTO clients ({', '.join(RECORD_FIELDS)}, expiry_date_iso) "
-            f"VALUES ({', '.join(['?'] * (len(RECORD_FIELDS) + 1))})",
-            row + (expiry_iso,),
-        )
-    conn.commit()
-    conn.close()
+        doc = dict(zip(RECORD_FIELDS, row))
+        doc["_id"] = doc["client_id"]
+        doc["expiry_date_iso"] = to_iso_date(row[9])
+        doc["_seq"] = 0
+        db["clients"].insert_one(doc)
 
 
-def _ddmmyyyy_to_iso(value):
-    d, m, y = value.split("-")
-    return f"{y}-{m}-{d}"
+def test_init_db_is_idempotent(mongo_db):
+    init_db(mongo_db)
+    init_db(mongo_db)  # must not raise on second call
+    assert mongo_db["clients"].index_information() is not None
+    assert mongo_db["notice_sent_log"].index_information() is not None
 
 
-def test_init_db_creates_tables_and_is_idempotent(tmp_path):
-    db_path = tmp_path / "clients.db"
-    init_db(db_path)
-    init_db(db_path)  # must not raise on second call
-    conn = sqlite3.connect(str(db_path))
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    conn.close()
-    assert "clients" in tables
-    assert "sent_log" in tables
+def test_get_client_uses_env_mongodb_uri(monkeypatch):
+    monkeypatch.setenv("MONGODB_URI", "mongodb://custom-host:27017/mydb")
+    import db
+    with patch("db.MongoClient", return_value=MagicMock()) as mock_client:
+        db.get_client()
+    mock_client.assert_called_once_with("mongodb://custom-host:27017/mydb")
 
 
-def test_read_clients_returns_all_rows(tmp_path):
-    db_path = tmp_path / "clients.db"
-    _insert_raw(db_path, [ROW_A, ROW_B])
-    records = read_clients(db_path)
+def test_get_client_falls_back_to_localhost_default(monkeypatch):
+    monkeypatch.delenv("MONGODB_URI", raising=False)
+    import db
+    with patch("db.MongoClient", return_value=MagicMock()) as mock_client:
+        db.get_client()
+    mock_client.assert_called_once_with("mongodb://localhost:27017")
+
+
+def test_read_clients_returns_all_rows(mongo_db):
+    _insert_raw(mongo_db, [ROW_A, ROW_B])
+    records = read_clients(mongo_db)
     assert len(records) == 2
     assert {r["client_id"] for r in records} == {"CLT001", "CLT002"}
     assert records[0]["expiry_date"] in ("24-07-2026", "11-08-2026")  # original display format preserved
 
 
-def test_find_client_by_id_returns_matching_record(tmp_path):
-    db_path = tmp_path / "clients.db"
-    _insert_raw(db_path, [ROW_A, ROW_B])
-    record = find_client_by_id(db_path, "CLT002")
+def test_find_client_by_id_returns_matching_record(mongo_db):
+    _insert_raw(mongo_db, [ROW_A, ROW_B])
+    record = find_client_by_id(mongo_db, "CLT002")
     assert record["name"] == "Priya Mehta"
     assert record["status"] == "URGENT"
 
 
-def test_find_client_by_id_returns_none_for_unknown_id(tmp_path):
-    db_path = tmp_path / "clients.db"
-    init_db(db_path)
-    assert find_client_by_id(db_path, "NOPE") is None
+def test_find_client_by_id_returns_none_for_unknown_id(mongo_db):
+    init_db(mongo_db)
+    assert find_client_by_id(mongo_db, "NOPE") is None
 
 
-def test_upsert_replace_inserts_all_rows_and_reports_counts(tmp_path):
-    db_path = tmp_path / "clients.db"
+def test_upsert_replace_inserts_all_rows_and_reports_counts(mongo_db):
     rows = [ROW_A, ROW_B]
-    stats = upsert_clients(db_path, rows, mode="replace")
+    stats = upsert_clients(mongo_db, rows, mode="replace")
     assert stats == {"row_count": 2, "added": 2, "skipped_duplicates": 0}
-    assert len(read_clients(db_path)) == 2
+    assert len(read_clients(mongo_db)) == 2
 
 
-def test_upsert_replace_clears_previous_data(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A], mode="replace")
-    stats = upsert_clients(db_path, [ROW_B], mode="replace")
+def test_upsert_replace_clears_previous_data(mongo_db):
+    upsert_clients(mongo_db, [ROW_A], mode="replace")
+    stats = upsert_clients(mongo_db, [ROW_B], mode="replace")
     assert stats["row_count"] == 1
-    records = read_clients(db_path)
+    records = read_clients(mongo_db)
     assert [r["client_id"] for r in records] == ["CLT002"]
 
 
-def test_upsert_replace_backs_up_existing_db(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A], mode="replace")
-    upsert_clients(db_path, [ROW_B], mode="replace")
-    backup_path = tmp_path / "clients.backup.db"
-    assert backup_path.exists()
+def test_upsert_replace_backs_up_existing_data(mongo_db):
+    upsert_clients(mongo_db, [ROW_A], mode="replace")
+    upsert_clients(mongo_db, [ROW_B], mode="replace")
+    backed_up = list(mongo_db["clients_backup"].find())
+    assert [d["client_id"] for d in backed_up] == ["CLT001"]
 
 
-def test_upsert_merge_adds_new_and_skips_existing_ids(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A], mode="replace")
+def test_upsert_merge_adds_new_and_skips_existing_ids(mongo_db):
+    upsert_clients(mongo_db, [ROW_A], mode="replace")
 
     updated_row_a = ("CLT001", "SHOULD NOT OVERWRITE", "TechCorp", "r@x.com",
                        "919876543210", "ISO 9001", "ISI", "ISO-1", "01-01-2025",
                        "24-07-2026", "https://x", "CRITICAL")
-    stats = upsert_clients(db_path, [updated_row_a, ROW_B], mode="merge")
+    stats = upsert_clients(mongo_db, [updated_row_a, ROW_B], mode="merge")
 
     assert stats == {"row_count": 2, "added": 1, "skipped_duplicates": 1}
-    record = find_client_by_id(db_path, "CLT001")
+    record = find_client_by_id(mongo_db, "CLT001")
     assert record["name"] == "Rahul Sharma"  # kept, not overwritten
 
 
-def test_upsert_computes_expiry_date_iso_for_sorting(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A], mode="replace")
-    conn = sqlite3.connect(str(db_path))
-    iso = conn.execute("SELECT expiry_date_iso FROM clients WHERE client_id = 'CLT001'").fetchone()[0]
-    conn.close()
-    assert iso == "2026-07-24"
+def test_upsert_computes_expiry_date_iso_for_sorting(mongo_db):
+    upsert_clients(mongo_db, [ROW_A], mode="replace")
+    doc = mongo_db["clients"].find_one({"_id": "CLT001"})
+    assert doc["expiry_date_iso"] == "2026-07-24"
 
 
-def test_upsert_merge_drops_rows_with_blank_or_none_client_id(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A], mode="replace")
+def test_upsert_merge_drops_rows_with_blank_or_none_client_id(mongo_db):
+    upsert_clients(mongo_db, [ROW_A], mode="replace")
 
     blank_id_row = ("", "No ID Person", "Acme", "n@x.com", "919999999999",
                      "ISO 9001", "ISI", "ISO-2", "01-01-2025", "01-01-2027", "https://x", "OK")
     none_id_row = (None, "Also No ID", "Acme", "n2@x.com", "919999999998",
                     "ISO 9001", "ISI", "ISO-3", "01-01-2025", "01-01-2027", "https://x", "OK")
 
-    stats = upsert_clients(db_path, [blank_id_row, none_id_row, ROW_B], mode="merge")
+    stats = upsert_clients(mongo_db, [blank_id_row, none_id_row, ROW_B], mode="merge")
 
     # Only ROW_B (a genuinely new, valid client_id) should be added; the
-    # blank/None client_id rows are dropped and never reach the table.
+    # blank/None client_id rows are dropped and never reach the collection.
     assert stats == {"row_count": 2, "added": 1, "skipped_duplicates": 0}
-    records = read_clients(db_path)
+    records = read_clients(mongo_db)
     assert {r["client_id"] for r in records} == {"CLT001", "CLT002"}
 
 
-def test_upsert_merge_raises_on_constraint_violation_not_miscounted_as_duplicate(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A], mode="replace")
+def test_upsert_merge_raises_on_missing_name_not_miscounted_as_duplicate(mongo_db):
+    upsert_clients(mongo_db, [ROW_A], mode="replace")
 
-    # A brand-new client_id (not a duplicate of CLT001) but with a NULL name,
-    # which violates the `name TEXT NOT NULL` constraint.
+    # A brand-new client_id (not a duplicate of CLT001) but with no name.
     invalid_row = (
         "CLT099", None, "TechCorp", "r@x.com", "919876543210",
         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
     )
 
-    with pytest.raises(sqlite3.IntegrityError):
-        upsert_clients(db_path, [invalid_row], mode="merge")
+    with pytest.raises(ValueError):
+        upsert_clients(mongo_db, [invalid_row], mode="merge")
 
     # Must not have been silently dropped-and-counted as a duplicate skip:
-    # it was never inserted, and the pre-check confirms it wasn't treated
-    # as a duplicate of any existing row.
-    assert find_client_by_id(db_path, "CLT099") is None
+    # it was never inserted.
+    assert find_client_by_id(mongo_db, "CLT099") is None
 
 
-def test_upsert_merge_rolls_back_whole_batch_on_constraint_violation(tmp_path):
+def test_upsert_merge_rejects_whole_batch_on_missing_name(mongo_db):
     """A batch containing one genuinely-new, valid row followed by one row
-    that violates the NOT NULL constraint on name must not partially commit:
-    the valid row processed before the failing one must also be rolled back,
-    so the caller's "this whole operation failed" story matches reality."""
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [ROW_A], mode="replace")
+    with no name must not partially apply: the valid row must also not be
+    inserted, since the whole batch is validated before any insert."""
+    upsert_clients(mongo_db, [ROW_A], mode="replace")
 
     valid_new_row = ROW_B  # CLT002, new and valid
     invalid_row = (
@@ -166,12 +161,12 @@ def test_upsert_merge_rolls_back_whole_batch_on_constraint_violation(tmp_path):
         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
     )
 
-    with pytest.raises(sqlite3.IntegrityError):
-        upsert_clients(db_path, [valid_new_row, invalid_row], mode="merge")
+    with pytest.raises(ValueError):
+        upsert_clients(mongo_db, [valid_new_row, invalid_row], mode="merge")
 
-    # Neither CLT002 (valid, processed first) nor CLT099 (invalid) should
-    # have been committed -- only the pre-existing CLT001 remains.
-    records = read_clients(db_path)
+    # Neither CLT002 (valid) nor CLT099 (invalid) should have been inserted --
+    # only the pre-existing CLT001 remains.
+    records = read_clients(mongo_db)
     assert {r["client_id"] for r in records} == {"CLT001"}
 
 
@@ -191,85 +186,82 @@ FIVE_ROWS = [
 ]
 
 
-def _seeded_db(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, FIVE_ROWS, mode="replace")
-    return db_path
+def _seeded_db(mongo_db):
+    upsert_clients(mongo_db, FIVE_ROWS, mode="replace")
+    return mongo_db
 
 
-def test_get_clients_page_returns_page_and_total(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, total = get_clients_page(db_path, page=1, page_size=2)
+def test_get_clients_page_returns_page_and_total(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=2)
     assert total == 5
     assert len(rows) == 2
 
 
-def test_get_clients_page_second_page_has_remaining_rows(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, total = get_clients_page(db_path, page=3, page_size=2)
+def test_get_clients_page_second_page_has_remaining_rows(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=3, page_size=2)
     assert total == 5
     assert len(rows) == 1
 
 
-def test_get_clients_page_filters_by_status(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, total = get_clients_page(db_path, page=1, page_size=50, status="URGENT")
+def test_get_clients_page_filters_by_status(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, status="URGENT")
     assert total == 1
     assert rows[0]["client_id"] == "CLT002"
 
 
-def test_get_clients_page_filters_by_cert_type(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, total = get_clients_page(db_path, page=1, page_size=50, cert_type="ISO 9001")
+def test_get_clients_page_filters_by_cert_type(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, cert_type="ISO 9001")
     assert total == 2
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
 
 
-def test_get_clients_page_filters_by_search_matches_name_or_company(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, total = get_clients_page(db_path, page=1, page_size=50, search="tech")
+def test_get_clients_page_filters_by_search_matches_name_or_company(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, search="tech")
     # "TechCorp" (CLT001 company) and "EduTech" (CLT004 company) both contain "tech" as a substring
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT004"}
 
 
-def test_get_clients_page_filters_by_expiry_before(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, total = get_clients_page(db_path, page=1, page_size=50, expiry_before="2026-08-01")
+def test_get_clients_page_filters_by_expiry_before(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, expiry_before="2026-08-01")
     # CLT001 expiry_date_iso 2026-07-24, CLT005 expiry_date_iso 2026-01-12, both <= 2026-08-01
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT005"}
 
 
-def test_get_clients_page_sorts_by_expiry_date_chronologically_not_lexically(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, _ = get_clients_page(db_path, page=1, page_size=50, sort_key="expiry_date", sort_dir="asc")
+def test_get_clients_page_sorts_by_expiry_date_chronologically_not_lexically(mongo_db):
+    _seeded_db(mongo_db)
+    rows, _ = get_clients_page(mongo_db, page=1, page_size=50, sort_key="expiry_date", sort_dir="asc")
     # Chronological order by actual date, NOT lexical DD-MM-YYYY string order:
     # CLT005 2026-01-12, CLT001 2026-07-24, CLT002 2026-08-11, CLT003 2026-09-10, CLT004 2026-10-15
     assert [r["client_id"] for r in rows] == ["CLT005", "CLT001", "CLT002", "CLT003", "CLT004"]
 
 
-def test_get_clients_page_sorts_descending_by_name(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, _ = get_clients_page(db_path, page=1, page_size=50, sort_key="name", sort_dir="desc")
+def test_get_clients_page_sorts_descending_by_name(mongo_db):
+    _seeded_db(mongo_db)
+    rows, _ = get_clients_page(mongo_db, page=1, page_size=50, sort_key="name", sort_dir="desc")
     # Names: Rahul Sharma, Priya Mehta, Amit Verma, Sneha Kapoor, Rajesh Nair
     # Descending alphabetical: Sneha Kapoor, Rajesh Nair, Rahul Sharma, Priya Mehta, Amit Verma
-    # (verified with sorted(names, reverse=True) in plain Python - "Rahul" < "Rajesh"
-    # lexically since 'h' < 'j' at the 3rd char, so Amit Verma, not Rahul Sharma, is last)
     assert rows[0]["client_id"] == "CLT004"
     assert rows[-1]["client_id"] == "CLT003"
 
 
-def test_get_clients_page_defaults_to_client_id_order_when_no_sort_key(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, _ = get_clients_page(db_path, page=1, page_size=50)
+def test_get_clients_page_defaults_to_client_id_order_when_no_sort_key(mongo_db):
+    _seeded_db(mongo_db)
+    rows, _ = get_clients_page(mongo_db, page=1, page_size=50)
     assert [r["client_id"] for r in rows] == ["CLT001", "CLT002", "CLT003", "CLT004", "CLT005"]
 
 
 from db import get_stats, export_clients_rows, record_sent
 
 
-def test_get_stats_counts_by_status_and_total(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    stats = get_stats(db_path, today="2026-07-21")
+def test_get_stats_counts_by_status_and_total(mongo_db):
+    _seeded_db(mongo_db)
+    stats = get_stats(mongo_db, today="2026-07-21")
     assert stats["status_counts"]["total"] == 5
     assert stats["status_counts"]["CRITICAL"] == 1
     assert stats["status_counts"]["URGENT"] == 1
@@ -277,56 +269,56 @@ def test_get_stats_counts_by_status_and_total(tmp_path):
     assert stats["status_counts"]["EXPIRED"] == 1
 
 
-def test_get_stats_cert_types_are_distinct_and_sorted(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    stats = get_stats(db_path, today="2026-07-21")
+def test_get_stats_cert_types_are_distinct_and_sorted(mongo_db):
+    _seeded_db(mongo_db)
+    stats = get_stats(mongo_db, today="2026-07-21")
     assert stats["cert_types"] == ["GMP", "HACCP", "ISO 9001", "OSHA"]
 
 
-def test_get_stats_renewals_by_month_groups_by_year_month(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    stats = get_stats(db_path, today="2026-07-21")
+def test_get_stats_renewals_by_month_groups_by_year_month(mongo_db):
+    _seeded_db(mongo_db)
+    stats = get_stats(mongo_db, today="2026-07-21")
     by_month = {r["year_month"]: r["count"] for r in stats["renewals_by_month"]}
     assert by_month["2026-07"] == 1
     assert by_month["2026-08"] == 1
 
 
-def test_get_stats_eligible_not_sent_today_excludes_already_sent(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
-    stats = get_stats(db_path, today="2026-07-21")
+def test_get_stats_eligible_not_sent_today_excludes_already_sent(mongo_db):
+    _seeded_db(mongo_db)
+    record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
+    stats = get_stats(mongo_db, today="2026-07-21")
     # CRITICAL, URGENT, DUE SOON, EXPIRED = 4 alert-eligible rows; CLT001 already sent today
     assert stats["eligible_not_sent_today"] == 3
 
 
-def test_get_stats_eligible_not_sent_today_excludes_within_reminder_interval(tmp_path):
+def test_get_stats_eligible_not_sent_today_excludes_within_reminder_interval(mongo_db):
     """A client sent 5 days ago is still inside the 20-day reminder window,
     same as get_eligible_count -- the stat tile must agree with the send
     endpoint's actual dedup logic, not just exact-same-day sends."""
-    db_path = _seeded_db(tmp_path)
-    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-16", "wamid.ABC", "1", "2026-07-16T10:00:00")
-    stats = get_stats(db_path, today="2026-07-21")
+    _seeded_db(mongo_db)
+    record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-16", "wamid.ABC", "1", "2026-07-16T10:00:00")
+    stats = get_stats(mongo_db, today="2026-07-21")
     assert stats["eligible_not_sent_today"] == 3
 
 
-def test_export_clients_rows_yields_all_matching_rows_no_pagination(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows = list(export_clients_rows(db_path, cert_type="ISO 9001"))
+def test_export_clients_rows_yields_all_matching_rows_no_pagination(mongo_db):
+    _seeded_db(mongo_db)
+    rows = list(export_clients_rows(mongo_db, cert_type="ISO 9001"))
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
 
 
 from db import is_already_sent, load_sent_log, save_sent_log
 
 
-def test_is_already_sent_false_then_true_after_record_sent(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    assert is_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is False
-    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
-    assert is_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is True
+def test_is_already_sent_false_then_true_after_record_sent(mongo_db):
+    _seeded_db(mongo_db)
+    assert is_already_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21") is False
+    record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
+    assert is_already_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21") is True
 
 
-def test_save_sent_log_then_load_sent_log_round_trips_exactly(tmp_path):
-    db_path = _seeded_db(tmp_path)
+def test_save_sent_log_then_load_sent_log_round_trips_exactly(mongo_db):
+    _seeded_db(mongo_db)
     original = {
         "CLT001|CRITICAL|2026-07-21": {
             "sent_at": "2026-07-21T10:00:00",
@@ -339,45 +331,31 @@ def test_save_sent_log_then_load_sent_log_round_trips_exactly(tmp_path):
             "phone": "919812345678",
         },
     }
-    save_sent_log(db_path, original)
-    loaded = load_sent_log(db_path)
+    save_sent_log(mongo_db, original)
+    loaded = load_sent_log(mongo_db)
     assert loaded == original
 
 
-def test_resolve_default_db_path_uses_env_override(monkeypatch):
-    monkeypatch.setenv("DASHBOARD_DB_PATH", "/tmp/custom-dir/clients.db")
-    from db import _resolve_default_db_path
-    assert _resolve_default_db_path() == Path("/tmp/custom-dir/clients.db")
+from db import record_email_sent, is_email_already_sent, load_email_sent_log, save_email_sent_log
 
 
-def test_resolve_default_db_path_falls_back_to_repo_data_dir(monkeypatch):
-    monkeypatch.delenv("DASHBOARD_DB_PATH", raising=False)
-    from db import _resolve_default_db_path, REPO_ROOT
-    assert _resolve_default_db_path() == REPO_ROOT / "data" / "clients.db"
+def test_is_email_already_sent_false_then_true_after_record_email_sent(mongo_db):
+    _seeded_db(mongo_db)
+    assert is_email_already_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21") is False
+    record_email_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "brevo-msg-1", "r@x.com", "2026-07-21T10:00:00")
+    assert is_email_already_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21") is True
 
 
-from db import (
-    record_email_sent, is_email_already_sent, load_email_sent_log, save_email_sent_log,
-)
-
-
-def test_is_email_already_sent_false_then_true_after_record_email_sent(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    assert is_email_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is False
-    record_email_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "brevo-msg-1", "r@x.com", "2026-07-21T10:00:00")
-    assert is_email_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is True
-
-
-def test_email_dedup_is_independent_of_whatsapp_dedup(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "919876543210", "2026-07-21T10:00:00")
+def test_email_dedup_is_independent_of_whatsapp_dedup(mongo_db):
+    _seeded_db(mongo_db)
+    record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "919876543210", "2026-07-21T10:00:00")
     # WhatsApp was sent, but email for the same client/status/day should still be unsent
-    assert is_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is True
-    assert is_email_already_sent(db_path, "CLT001", "CRITICAL", "2026-07-21") is False
+    assert is_already_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21") is True
+    assert is_email_already_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21") is False
 
 
-def test_save_email_sent_log_then_load_email_sent_log_round_trips_exactly(tmp_path):
-    db_path = _seeded_db(tmp_path)
+def test_save_email_sent_log_then_load_email_sent_log_round_trips_exactly(mongo_db):
+    _seeded_db(mongo_db)
     original = {
         "CLT001|CRITICAL|2026-07-21": {
             "sent_at": "2026-07-21T10:00:00",
@@ -390,15 +368,15 @@ def test_save_email_sent_log_then_load_email_sent_log_round_trips_exactly(tmp_pa
             "email": "p@x.com",
         },
     }
-    save_email_sent_log(db_path, original)
-    loaded = load_email_sent_log(db_path)
+    save_email_sent_log(mongo_db, original)
+    loaded = load_email_sent_log(mongo_db)
     assert loaded == original
 
 
-def test_get_stats_eligible_not_emailed_today_excludes_already_emailed(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    record_email_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "brevo-msg-1", "r@x.com", "2026-07-21T10:00:00")
-    stats = get_stats(db_path, today="2026-07-21")
+def test_get_stats_eligible_not_emailed_today_excludes_already_emailed(mongo_db):
+    _seeded_db(mongo_db)
+    record_email_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "brevo-msg-1", "r@x.com", "2026-07-21T10:00:00")
+    stats = get_stats(mongo_db, today="2026-07-21")
     # CRITICAL, URGENT, DUE SOON, EXPIRED = 4 alert-eligible rows; CLT001 already emailed today
     assert stats["eligible_not_emailed_today"] == 3
     # WhatsApp's own count is untouched by the email send
@@ -411,308 +389,220 @@ from db import (
 )
 
 
-def test_get_eligible_clients_excludes_active_by_default(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows = get_eligible_clients(db_path)
+def test_get_eligible_clients_excludes_active_by_default(mongo_db):
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db)
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT002", "CLT003", "CLT005"}
 
 
-def test_get_eligible_clients_preserves_insertion_order(tmp_path):
+def test_get_eligible_clients_preserves_insertion_order(mongo_db):
     """run()/run_email_alerts() depend on this order matching read_clients()'s
-    order exactly -- see whatsapp_renewal_alerts.py's order-sensitive tests
-    (e.g. test_run_mixed_outcomes_in_single_call_preserves_earlier_successes)."""
-    db_path = _seeded_db(tmp_path)
-    rows = get_eligible_clients(db_path)
+    order exactly -- see whatsapp_renewal_alerts.py's order-sensitive tests."""
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db)
     assert [r["client_id"] for r in rows] == ["CLT001", "CLT002", "CLT003", "CLT005"]
 
 
-def test_get_eligible_clients_filters_by_cert_type(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows = get_eligible_clients(db_path, cert_type="ISO 9001")
+def test_get_eligible_clients_filters_by_cert_type(mongo_db):
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, cert_type="ISO 9001")
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
 
 
-def test_get_eligible_clients_filters_by_expiry_before(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows = get_eligible_clients(db_path, expiry_before="2026-08-01")
+def test_get_eligible_clients_filters_by_expiry_before(mongo_db):
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, expiry_before="2026-08-01")
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT005"}
 
 
-def test_get_eligible_clients_status_filter_narrows_within_alert_eligible_set(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows = get_eligible_clients(db_path, status="CRITICAL")
+def test_get_eligible_clients_status_filter_narrows_within_alert_eligible_set(mongo_db):
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, status="CRITICAL")
     assert {r["client_id"] for r in rows} == {"CLT001"}
 
 
-def test_get_eligible_clients_status_active_returns_empty(tmp_path):
+def test_get_eligible_clients_status_active_returns_empty(mongo_db):
     """ACTIVE is never alert-eligible, so filtering to it must yield nothing --
     the alert-eligibility restriction and the status filter are AND'ed
     together, not one replacing the other."""
-    db_path = _seeded_db(tmp_path)
-    rows = get_eligible_clients(db_path, status="ACTIVE")
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, status="ACTIVE")
     assert rows == []
 
 
-def test_get_eligible_clients_filters_by_search(tmp_path):
+def test_get_eligible_clients_filters_by_search(mongo_db):
     """CLT004 (EduTech, "tech" match) is ACTIVE and thus excluded from the
     alert-eligible set regardless of the search term, so only CLT001
     (TechCorp) should match."""
-    db_path = _seeded_db(tmp_path)
-    rows = get_eligible_clients(db_path, search="tech")
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, search="tech")
     assert {r["client_id"] for r in rows} == {"CLT001"}
 
 
-def test_get_eligible_count_counts_all_eligible_not_sent_today(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 4
+def test_get_eligible_count_counts_all_eligible_not_sent_today(mongo_db):
+    _seeded_db(mongo_db)
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp") == 4
 
 
-def test_get_eligible_count_excludes_already_sent_today(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 3
+def test_get_eligible_count_excludes_already_sent_today(mongo_db):
+    _seeded_db(mongo_db)
+    record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp") == 3
 
 
-def test_get_eligible_count_excludes_sent_within_reminder_interval(tmp_path):
+def test_get_eligible_count_excludes_sent_within_reminder_interval(mongo_db):
     """A client sent 5 days ago is still inside the 20-day reminder window --
     it must not count as eligible again, even though it wasn't sent today."""
-    db_path = _seeded_db(tmp_path)
-    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-16", "wamid.ABC", "1", "2026-07-16T10:00:00")
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 3
+    _seeded_db(mongo_db)
+    record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-16", "wamid.ABC", "1", "2026-07-16T10:00:00")
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp") == 3
 
 
-def test_get_eligible_count_includes_sent_after_reminder_interval_elapses(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-01", "wamid.ABC", "1", "2026-07-01T10:00:00")
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 4
+def test_get_eligible_count_includes_sent_after_reminder_interval_elapses(mongo_db):
+    _seeded_db(mongo_db)
+    record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-01", "wamid.ABC", "1", "2026-07-01T10:00:00")
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp") == 4
 
 
-def test_get_eligible_count_email_channel_is_independent_of_whatsapp(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    record_sent(db_path, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp") == 3
-    assert get_eligible_count(db_path, today="2026-07-21", channel="email") == 4
+def test_get_eligible_count_email_channel_is_independent_of_whatsapp(mongo_db):
+    _seeded_db(mongo_db)
+    record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp") == 3
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="email") == 4
 
 
-def test_get_eligible_count_filters_by_cert_type(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", cert_type="ISO 9001") == 2
+def test_get_eligible_count_filters_by_cert_type(mongo_db):
+    _seeded_db(mongo_db)
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp", cert_type="ISO 9001") == 2
 
 
-def test_get_eligible_count_filters_by_search(tmp_path):
+def test_get_eligible_count_filters_by_search(mongo_db):
     """CLT004 (EduTech, "tech" match) is ACTIVE and thus excluded from the
     alert-eligible set regardless of the search term, so only CLT001
     (TechCorp) should be counted."""
-    db_path = _seeded_db(tmp_path)
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", search="tech") == 1
+    _seeded_db(mongo_db)
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp", search="tech") == 1
 
 
-def test_get_eligible_count_status_active_returns_zero(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", status="ACTIVE") == 0
+def test_get_eligible_count_status_active_returns_zero(mongo_db):
+    _seeded_db(mongo_db)
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp", status="ACTIVE") == 0
 
 
-def test_get_eligible_count_rejects_unknown_channel(tmp_path):
-    db_path = _seeded_db(tmp_path)
+def test_get_eligible_count_rejects_unknown_channel(mongo_db):
+    _seeded_db(mongo_db)
     with pytest.raises(ValueError):
-        get_eligible_count(db_path, today="2026-07-21", channel="carrier-pigeon")
+        get_eligible_count(mongo_db, today="2026-07-21", channel="carrier-pigeon")
 
 
-def test_init_db_migrates_pre_scheme_database_and_backfills_isi(tmp_path):
-    """A database created before the scheme column existed (simulated here
-    by creating the clients table without it, bypassing init_db/SCHEMA) must
-    gain the column and have every existing row classified as 'ISI' the next
-    time init_db runs -- this is what makes the migration self-healing after
-    a Render free-tier reset restores an old clients.db."""
-    db_path = tmp_path / "clients.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("""
-        CREATE TABLE clients (
-            client_id TEXT PRIMARY KEY, name TEXT NOT NULL, company TEXT, email TEXT,
-            phone TEXT, cert_name TEXT, cert_id TEXT, issue_date TEXT, expiry_date TEXT,
-            expiry_date_iso TEXT, renewal_link TEXT, status TEXT NOT NULL
-        )
-    """)
-    conn.execute(
-        "INSERT INTO clients (client_id, name, cert_name, status) VALUES (?, ?, ?, ?)",
-        ("CLT001", "Pre-Migration Client", "IS 1717", "CRITICAL"),
-    )
-    conn.commit()
-    conn.close()
-
-    init_db(db_path)
-
-    conn = sqlite3.connect(str(db_path))
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(clients)")}
-    scheme = conn.execute("SELECT scheme FROM clients WHERE client_id = 'CLT001'").fetchone()[0]
-    conn.close()
-    assert "scheme" in columns
-    assert scheme == "ISI"
-
-
-def test_init_db_migration_does_not_overwrite_an_existing_scheme_value(tmp_path):
-    """Build a pre-migration table (no scheme column, same as the sibling
-    backfill test), let the first init_db() call add the column and backfill
-    to 'ISI', then explicitly set one row's scheme to a different value via
-    raw sqlite3 and call init_db() again. The second call must not clobber
-    that explicit value back to 'ISI' -- proving the backfill's
-    `WHERE scheme IS NULL` guard actually holds across repeated calls,
-    not just that a fresh scheme column defaults correctly once."""
-    db_path = tmp_path / "clients.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("""
-        CREATE TABLE clients (
-            client_id TEXT PRIMARY KEY, name TEXT NOT NULL, company TEXT, email TEXT,
-            phone TEXT, cert_name TEXT, cert_id TEXT, issue_date TEXT, expiry_date TEXT,
-            expiry_date_iso TEXT, renewal_link TEXT, status TEXT NOT NULL
-        )
-    """)
-    conn.execute(
-        "INSERT INTO clients (client_id, name, cert_name, status) VALUES (?, ?, ?, ?)",
-        ("CLT001", "Future Scheme Client", "FMCS-1", "CRITICAL"),
-    )
-    conn.commit()
-    conn.close()
-
-    init_db(db_path)  # adds scheme column, backfills CLT001 to 'ISI'
-
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("UPDATE clients SET scheme = 'FMCS' WHERE client_id = 'CLT001'")
-    conn.commit()
-    conn.close()
-
-    init_db(db_path)  # must not re-run the backfill over an already-set value
-
-    record = find_client_by_id(db_path, "CLT001")
-    assert record["scheme"] == "FMCS"
-
-
-def test_get_clients_page_filters_by_scheme(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows, total = get_clients_page(db_path, page=1, page_size=50, scheme="FMCS")
+def test_get_clients_page_filters_by_scheme(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, scheme="FMCS")
     assert total == 1
     assert rows[0]["client_id"] == "CLT004"
 
 
-def test_export_clients_rows_filters_by_scheme(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows = list(export_clients_rows(db_path, scheme="FMCS"))
+def test_export_clients_rows_filters_by_scheme(mongo_db):
+    _seeded_db(mongo_db)
+    rows = list(export_clients_rows(mongo_db, scheme="FMCS"))
     assert {r["client_id"] for r in rows} == {"CLT004"}
 
 
-def test_get_stats_schemes_are_distinct_and_sorted(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    stats = get_stats(db_path, today="2026-07-21")
+def test_get_stats_schemes_are_distinct_and_sorted(mongo_db):
+    _seeded_db(mongo_db)
+    stats = get_stats(mongo_db, today="2026-07-21")
     assert stats["schemes"] == ["FMCS", "ISI"]
 
 
-def test_get_eligible_clients_filters_by_scheme(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    rows = get_eligible_clients(db_path, scheme="ISI")
+def test_get_eligible_clients_filters_by_scheme(mongo_db):
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, scheme="ISI")
     # CLT004 is scheme FMCS but also ACTIVE (not alert-eligible) -- this
     # confirms the scheme filter and alert-eligibility both apply, not
     # either alone.
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT002", "CLT003", "CLT005"}
     # The only FMCS row (CLT004) is ACTIVE and thus never alert-eligible
-    # regardless of scheme, so filtering to scheme="FMCS" must yield nothing --
-    # this proves the scheme filter itself has an effect, not just that
-    # alert-eligibility filtering still works.
-    assert get_eligible_clients(db_path, scheme="FMCS") == []
+    # regardless of scheme, so filtering to scheme="FMCS" must yield nothing.
+    assert get_eligible_clients(mongo_db, scheme="FMCS") == []
 
 
-def test_get_eligible_count_filters_by_scheme(tmp_path):
-    db_path = _seeded_db(tmp_path)
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", scheme="FMCS") == 0
-    assert get_eligible_count(db_path, today="2026-07-21", channel="whatsapp", scheme="ISI") == 4
+def test_get_eligible_count_filters_by_scheme(mongo_db):
+    _seeded_db(mongo_db)
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp", scheme="FMCS") == 0
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp", scheme="ISI") == 4
 
 
-def test_init_db_creates_notice_sent_log_table(tmp_path):
-    db_path = tmp_path / "clients.db"
-    init_db(db_path)
+def test_record_and_check_notice_sent(mongo_db):
+    init_db(mongo_db)
 
-    conn = sqlite3.connect(str(db_path))
-    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    conn.close()
-    assert "notice_sent_log" in tables
+    assert is_notice_already_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "whatsapp") is False
 
+    record_notice_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
 
-def test_record_and_check_notice_sent(tmp_path):
-    db_path = tmp_path / "clients.db"
-    init_db(db_path)
-
-    assert is_notice_already_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp") is False
-
-    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
-
-    assert is_notice_already_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp") is True
+    assert is_notice_already_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "whatsapp") is True
     # A different channel for the same client/notice is tracked independently.
-    assert is_notice_already_sent(db_path, "CLT001", "transition_facilitation_2026", "email") is False
+    assert is_notice_already_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "email") is False
     # A different notice_id for the same client/channel is tracked independently.
-    assert is_notice_already_sent(db_path, "CLT001", "some_other_notice", "whatsapp") is False
+    assert is_notice_already_sent(mongo_db, "CLT001", "some_other_notice", "whatsapp") is False
 
 
-def test_get_broadcast_clients_returns_every_status(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
+def test_get_broadcast_clients_returns_every_status(mongo_db):
+    upsert_clients(mongo_db, [
         ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
         ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "OSHA", "ISI", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
     ], mode="replace")
 
-    records = get_broadcast_clients(db_path)
+    records = get_broadcast_clients(mongo_db)
 
     assert {r["client_id"] for r in records} == {"CLT001", "CLT002"}
 
 
-def test_get_broadcast_clients_honors_scheme_filter(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
+def test_get_broadcast_clients_honors_scheme_filter(mongo_db):
+    upsert_clients(mongo_db, [
         ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
         ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
     ], mode="replace")
 
-    records = get_broadcast_clients(db_path, scheme="CRS")
+    records = get_broadcast_clients(mongo_db, scheme="CRS")
 
     assert {r["client_id"] for r in records} == {"CLT002"}
 
 
-def test_get_notice_eligible_count_excludes_already_sent(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
+def test_get_notice_eligible_count_excludes_already_sent(mongo_db):
+    upsert_clients(mongo_db, [
         ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
         ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
     ], mode="replace")
-    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+    record_notice_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
 
-    count = get_notice_eligible_count(db_path, "transition_facilitation_2026", "whatsapp", scheme="CRS")
+    count = get_notice_eligible_count(mongo_db, "meity_series_guidelines_2026", "whatsapp", scheme="CRS")
 
     assert count == 1
 
 
-def test_get_notice_eligible_count_is_independent_per_notice_and_channel(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
+def test_get_notice_eligible_count_is_independent_per_notice_and_channel(mongo_db):
+    upsert_clients(mongo_db, [
         ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
     ], mode="replace")
-    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+    record_notice_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
 
     # Already sent via whatsapp for this notice -- excluded.
-    assert get_notice_eligible_count(db_path, "transition_facilitation_2026", "whatsapp") == 0
+    assert get_notice_eligible_count(mongo_db, "meity_series_guidelines_2026", "whatsapp") == 0
     # Not yet sent via email for this same notice -- still counted.
-    assert get_notice_eligible_count(db_path, "transition_facilitation_2026", "email") == 1
+    assert get_notice_eligible_count(mongo_db, "meity_series_guidelines_2026", "email") == 1
     # Not yet sent (via any channel) for a different notice -- still counted.
-    assert get_notice_eligible_count(db_path, "some_other_notice", "whatsapp") == 1
+    assert get_notice_eligible_count(mongo_db, "some_other_notice", "whatsapp") == 1
 
 
-def test_get_broadcast_clients_page_paginates_and_totals(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
+def test_get_broadcast_clients_page_paginates_and_totals(mongo_db):
+    upsert_clients(mongo_db, [
         ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
         ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
@@ -721,43 +611,41 @@ def test_get_broadcast_clients_page_paginates_and_totals(tmp_path):
          "GMP", "CRS", "GMP-1", "01-01-2025", "10-09-2026", "https://x", "DUE SOON"),
     ], mode="replace")
 
-    rows, total = get_broadcast_clients_page(db_path, "transition_facilitation_2026", page=1, page_size=2)
+    rows, total = get_broadcast_clients_page(mongo_db, "meity_series_guidelines_2026", page=1, page_size=2)
 
     assert total == 3
     assert len(rows) == 2
     assert [r["client_id"] for r in rows] == ["CLT001", "CLT002"]
 
-    rows_page2, total2 = get_broadcast_clients_page(db_path, "transition_facilitation_2026", page=2, page_size=2)
+    rows_page2, total2 = get_broadcast_clients_page(mongo_db, "meity_series_guidelines_2026", page=2, page_size=2)
     assert total2 == 3
     assert [r["client_id"] for r in rows_page2] == ["CLT003"]
 
 
-def test_get_broadcast_clients_page_honors_filters(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
+def test_get_broadcast_clients_page_honors_filters(mongo_db):
+    upsert_clients(mongo_db, [
         ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
         ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
     ], mode="replace")
 
-    rows, total = get_broadcast_clients_page(db_path, "transition_facilitation_2026", scheme="CRS")
+    rows, total = get_broadcast_clients_page(mongo_db, "meity_series_guidelines_2026", scheme="CRS")
 
     assert total == 1
     assert rows[0]["client_id"] == "CLT002"
 
 
-def test_get_broadcast_clients_page_reports_per_channel_notice_status(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
+def test_get_broadcast_clients_page_reports_per_channel_notice_status(mongo_db):
+    upsert_clients(mongo_db, [
         ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
         ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
          "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE"),
     ], mode="replace")
-    record_notice_sent(db_path, "CLT001", "transition_facilitation_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+    record_notice_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
 
-    rows, _ = get_broadcast_clients_page(db_path, "transition_facilitation_2026")
+    rows, _ = get_broadcast_clients_page(mongo_db, "meity_series_guidelines_2026")
     by_id = {r["client_id"]: r for r in rows}
 
     assert by_id["CLT001"]["notice_sent_whatsapp"] is True
@@ -766,14 +654,13 @@ def test_get_broadcast_clients_page_reports_per_channel_notice_status(tmp_path):
     assert by_id["CLT002"]["notice_sent_email"] is False
 
 
-def test_get_broadcast_clients_page_notice_status_is_independent_per_notice(tmp_path):
-    db_path = tmp_path / "clients.db"
-    upsert_clients(db_path, [
+def test_get_broadcast_clients_page_notice_status_is_independent_per_notice(mongo_db):
+    upsert_clients(mongo_db, [
         ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
          "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
     ], mode="replace")
-    record_notice_sent(db_path, "CLT001", "some_other_notice", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+    record_notice_sent(mongo_db, "CLT001", "some_other_notice", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
 
-    rows, _ = get_broadcast_clients_page(db_path, "transition_facilitation_2026")
+    rows, _ = get_broadcast_clients_page(mongo_db, "meity_series_guidelines_2026")
 
     assert rows[0]["notice_sent_whatsapp"] is False
