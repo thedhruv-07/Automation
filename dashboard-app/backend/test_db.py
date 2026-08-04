@@ -1,17 +1,11 @@
 # test_db.py
 from unittest.mock import patch, MagicMock
 
-import mongomock
 import pytest
 from db import (
     init_db, read_clients, find_client_by_id, upsert_clients, RECORD_FIELDS,
     get_broadcast_clients_page,
 )
-
-
-@pytest.fixture
-def mongo_db():
-    return mongomock.MongoClient()["cert_dashboard_test"]
 
 
 ROW_A = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
