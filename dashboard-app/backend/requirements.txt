@@ -6,3 +6,5 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
 python-multipart>=0.0.12
+pymongo>=4.9.0
+mongomock>=4.2.0
