@@ -52,16 +52,21 @@ def build_email_html(rec: dict, org_name: str, logo_src: str = "") -> str:
             transition plan.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0">
-            <tr><td align="center" style="padding:4px 0 22px;">
+            <tr><td align="center" style="padding:4px 0 14px;">
               <a href="{NOTICE_URL}" target="_blank" rel="noopener noreferrer"
                  style="background:#2a78d6;color:#fff;padding:15px 42px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">
                 Learn More
               </a>
             </td></tr>
+            <tr><td align="center" style="padding:0 0 26px;">
+              <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer"
+                 style="background:#ffffff;color:#2a78d6;padding:13px 40px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;display:inline-block;border:2px solid #2a78d6;">
+                Book an Appointment
+              </a>
+            </td></tr>
           </table>
           <p style="color:#52514e;font-size:13px;line-height:1.7;margin:0;">
-            Please reply to this message or contact us to schedule your free
-            consultation, or <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer" style="color:#2a78d6;">book an appointment directly</a>.
+            Please reply to this message or contact us to schedule your free consultation.
           </p>
         </td></tr>
         <tr><td style="background:#0b0b0b;padding:18px;text-align:center;">
