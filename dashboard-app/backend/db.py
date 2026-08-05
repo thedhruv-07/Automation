@@ -9,9 +9,17 @@ comparison of DD-MM-YYYY does not sort chronologically.
 """
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 
+from dotenv import load_dotenv
 from pymongo import MongoClient
 from pymongo.database import Database
+
+# Entry points (main.py, whatsapp_renewal_alerts.py, etc.) import this module
+# before calling load_dotenv() themselves, so MONGODB_URI wouldn't be in
+# os.environ yet when DEFAULT_DB_PATH below resolves it. Load .env here so
+# db.py is self-sufficient regardless of caller import order.
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 
 def get_client(mongodb_uri: str | None = None) -> MongoClient:
