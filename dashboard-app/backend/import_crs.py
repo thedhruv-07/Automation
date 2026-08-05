@@ -79,7 +79,10 @@ def import_crs_workbook(wb, out_ws, today=None):
     }
 
     for sheet_name in wb.sheetnames:
-        if sheet_name.strip().lower() == MASTER_SHEET_NAME:
+        # Only skip the master rollup sheet when per-standard sheets also
+        # exist to import from instead -- if it's the workbook's only sheet,
+        # there's nothing to double-count, so it needs to be imported.
+        if sheet_name.strip().lower() == MASTER_SHEET_NAME and len(wb.sheetnames) > 1:
             continue
 
         ws = wb[sheet_name]

@@ -134,6 +134,23 @@ def test_import_crs_workbook_master_sheet_name_match_is_case_insensitive():
     assert stats["rows_written"] == 1
 
 
+def test_import_crs_workbook_imports_the_master_sheet_when_it_is_the_only_sheet():
+    """Some real exports only ever contain the master rollup sheet, with no
+    separate per-standard sheets alongside it -- in that case there's
+    nothing to double-count, so the master sheet's rows must be imported
+    rather than skipped."""
+    same_row = ["0846", "R-7019869", "Panache Digilife Limited", "India",
+                "Is 13252(Part 1):2010/ Iec 60950-1: 2005", "Notebook", "Laptop/Notebook/Tablet",
+                "2024-01-15", "Register", "jitendra.d@vardhamantechnology.com", "913322634755"]
+    wb = _workbook("BIS_CRS_Master", PER_STANDARD_HEADERS, [same_row])
+    collector = RowCollector()
+
+    stats = import_crs_workbook(wb, collector)
+
+    assert stats["rows_written"] == 1
+    assert len(collector.rows) == 1
+
+
 def test_import_crs_workbook_skips_rows_missing_license_no_or_grant_date():
     wb = _workbook("IS 13252", PER_STANDARD_HEADERS, [
         [1, None, "No License Row", "India", "IS 13252", "Notebook", "Laptop", None,
