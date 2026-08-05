@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from datetime import datetime
 
@@ -851,7 +852,9 @@ async def upload_clients(file: UploadFile = File(...), import_format: str = Form
         )
 
     stats = _upsert_clients_or_400(collector.rows, mode="replace")
-    archive_upload(DEFAULT_DB_PATH, contents, file.filename, import_format, "replace", stats["row_count"])
+    await run_in_threadpool(
+        archive_upload, DEFAULT_DB_PATH, contents, file.filename, import_format, "replace", stats["row_count"],
+    )
     return {"status": "ok", "row_count": stats["row_count"], "format": import_format, "stats": format_stats}
 
 
@@ -919,7 +922,9 @@ async def merge_clients(file: UploadFile = File(...), import_format: str = Form(
         )
 
     stats = _upsert_clients_or_400(collector.rows, mode="merge")
-    archive_upload(DEFAULT_DB_PATH, contents, file.filename, import_format, "merge", stats["row_count"])
+    await run_in_threadpool(
+        archive_upload, DEFAULT_DB_PATH, contents, file.filename, import_format, "merge", stats["row_count"],
+    )
     return {
         "status": "ok", "row_count": stats["row_count"], "added": stats["added"],
         "skipped_duplicates": stats["skipped_duplicates"], "format": import_format, "stats": format_stats,
