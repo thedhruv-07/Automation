@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 
 import boto3
+from botocore.config import Config
 from pymongo.database import Database
 
 
@@ -31,6 +32,7 @@ def archive_upload(
             endpoint_url=endpoint,
             aws_access_key_id=os.environ["WASABI_ACCESS_KEY"],
             aws_secret_access_key=os.environ["WASABI_SECRET_KEY"],
+            config=Config(connect_timeout=5, read_timeout=10),
         )
         client.put_object(Bucket=bucket, Key=key, Body=contents)
         wasabi_url = f"{endpoint}/{bucket}/{key}"

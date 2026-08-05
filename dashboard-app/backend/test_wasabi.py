@@ -16,12 +16,10 @@ def test_archive_upload_records_metadata_and_wasabi_url(mongo_db, monkeypatch):
             mongo_db, b"fake xlsx bytes", "roster.xlsx", "roster", "replace", row_count=5,
         )
 
-    mock_boto_client.assert_called_once_with(
-        "s3",
-        endpoint_url="https://s3.us-central-1.wasabisys.com",
-        aws_access_key_id="key",
-        aws_secret_access_key="secret",
-    )
+    call_kwargs = mock_boto_client.call_args.kwargs
+    assert call_kwargs["endpoint_url"] == "https://s3.us-central-1.wasabisys.com"
+    assert call_kwargs["aws_access_key_id"] == "key"
+    assert call_kwargs["aws_secret_access_key"] == "secret"
     mock_s3.put_object.assert_called_once()
     call_kwargs = mock_s3.put_object.call_args.kwargs
     assert call_kwargs["Bucket"] == "my-bucket"
@@ -72,3 +70,21 @@ def test_archive_upload_records_null_url_and_continues_when_env_vars_missing(mon
     assert doc["mode"] == "merge"
     assert doc["row_count"] == 3
     assert doc["wasabi_url"] is None
+
+
+def test_archive_upload_bounds_the_boto3_client_timeout(mongo_db, monkeypatch):
+    monkeypatch.setenv("WASABI_ACCESS_KEY", "key")
+    monkeypatch.setenv("WASABI_SECRET_KEY", "secret")
+    monkeypatch.setenv("WASABI_BUCKET", "my-bucket")
+    monkeypatch.setenv("WASABI_ENDPOINT", "https://s3.us-central-1.wasabisys.com")
+
+    mock_s3 = MagicMock()
+    with patch("wasabi.boto3.client", return_value=mock_s3) as mock_boto_client:
+        archive_upload(
+            mongo_db, b"fake xlsx bytes", "roster.xlsx", "roster", "replace", row_count=5,
+        )
+
+    call_kwargs = mock_boto_client.call_args.kwargs
+    assert "config" in call_kwargs
+    assert call_kwargs["config"].connect_timeout is not None
+    assert call_kwargs["config"].read_timeout is not None
