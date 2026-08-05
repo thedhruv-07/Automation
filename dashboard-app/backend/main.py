@@ -34,6 +34,7 @@ from email_alerts import (  # noqa: E402
 from email_template import build_email_html  # noqa: E402
 from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
 from import_formats import IMPORT_FORMATS, FORMAT_DISPLAY_NAMES  # noqa: E402
+from wasabi import archive_upload  # noqa: E402
 from scheme_templates import get_email_content  # noqa: E402
 from notices import list_notices, get_notice_module  # noqa: E402
 from notice_sender import send_notice_whatsapp, send_notice_email  # noqa: E402
@@ -850,6 +851,7 @@ async def upload_clients(file: UploadFile = File(...), import_format: str = Form
         )
 
     stats = _upsert_clients_or_400(collector.rows, mode="replace")
+    archive_upload(DEFAULT_DB_PATH, contents, file.filename, import_format, "replace", stats["row_count"])
     return {"status": "ok", "row_count": stats["row_count"], "format": import_format, "stats": format_stats}
 
 
@@ -917,6 +919,7 @@ async def merge_clients(file: UploadFile = File(...), import_format: str = Form(
         )
 
     stats = _upsert_clients_or_400(collector.rows, mode="merge")
+    archive_upload(DEFAULT_DB_PATH, contents, file.filename, import_format, "merge", stats["row_count"])
     return {
         "status": "ok", "row_count": stats["row_count"], "added": stats["added"],
         "skipped_duplicates": stats["skipped_duplicates"], "format": import_format, "stats": format_stats,

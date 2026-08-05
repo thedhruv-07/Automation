@@ -1918,3 +1918,57 @@ def test_notice_clients_respects_page_size(tmp_path, monkeypatch, mongo_db):
     body = response.json()
     assert body["total"] == 2
     assert len(body["rows"]) == 1
+
+
+def test_upload_clients_records_an_upload_archive(mongo_db, monkeypatch, tmp_path):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.delenv("WASABI_ACCESS_KEY", raising=False)  # Wasabi itself isn't under test here
+
+    upload_path = tmp_path / "roster.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/upload-clients",
+            files={"file": ("roster.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
+        )
+    assert response.status_code == 200
+
+    doc = mongo_db["uploads"].find_one()
+    assert doc["filename"] == "roster.xlsx"
+    assert doc["import_format"] == "roster"
+    assert doc["mode"] == "replace"
+    assert doc["row_count"] == 1
+    # WASABI_ACCESS_KEY was deliberately unset above, so the archive itself
+    # fails and this is None -- but the record is still written and the
+    # upload itself still succeeded (200 above), proving archival failure
+    # never blocks the real import.
+    assert doc["wasabi_url"] is None
+
+
+def test_merge_clients_records_an_upload_archive_with_merge_mode(mongo_db, monkeypatch, tmp_path):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.delenv("WASABI_ACCESS_KEY", raising=False)
+
+    upload_path = tmp_path / "new.xlsx"
+    _write_xlsx(upload_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/merge-clients",
+            files={"file": ("new.xlsx", f,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"import_format": "roster"},
+        )
+    assert response.status_code == 200
+
+    doc = mongo_db["uploads"].find_one()
+    assert doc["mode"] == "merge"
