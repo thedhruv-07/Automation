@@ -10,15 +10,10 @@
 # you don't want to add a card, use "New Web Service" (manual, non-Blueprint)
 # instead and enter these same settings by hand -- see docs/DEPLOYMENT.md.
 #
-# FREE TIER: no persistent disk. clients.db lives on the service's ephemeral
-# filesystem (the repo-relative data/clients.db default -- no DASHBOARD_DB_PATH
-# override needed) and is wiped on every restart/redeploy/spin-down-from-
-# inactivity. See docs/DEPLOYMENT.md for the re-load-data-after-every-reset
-# workflow this implies. Upgrading to a paid instance + Render Disk later
-# just means adding back a `disk:` block and a DASHBOARD_DB_PATH env var
-# pointing at its mount path -- no code change either way, since db.py
-# already reads DASHBOARD_DB_PATH when set and falls back to data/clients.db
-# otherwise.
+# DATA PERSISTENCE: the app's data (client roster, send-dedup logs, notice
+# logs) lives in MongoDB Atlas, not on Render's filesystem at all -- so
+# unlike the old SQLite setup, a redeploy/restart/spin-down never wipes
+# anything, on the free tier or otherwise. No Render Disk is needed.
 services:
   - type: web
     name: absolute-veritas-dashboard-backend
@@ -41,9 +36,15 @@ services:
         sync: false
       - key: BREVO_API_KEY
         sync: false
-      - key: DASHBOARD_USERNAME
-        sync: false
-      - key: DASHBOARD_PASSWORD
-        sync: false
       - key: DASHBOARD_ALLOWED_ORIGIN
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: WASABI_ACCESS_KEY
+        sync: false
+      - key: WASABI_SECRET_KEY
+        sync: false
+      - key: WASABI_BUCKET
+        sync: false
+      - key: WASABI_ENDPOINT
         sync: false
