@@ -144,21 +144,26 @@ def upsert_clients(db: Database, rows: list[tuple], mode: str) -> dict:
 
     last = db["clients"].find_one(sort=[("_seq", -1)])
     next_seq = (last["_seq"] + 1) if last else 0
-    added = 0
+    existing_ids = set(db["clients"].distinct("_id"))
+
+    docs = []
     skipped = 0
     for row in rows:
         client_id = row[0]
-        if db["clients"].find_one({"_id": client_id}):
+        if client_id in existing_ids:
             skipped += 1
             continue
         doc = dict(zip(RECORD_FIELDS, row))
         doc["_id"] = client_id
         doc["expiry_date_iso"] = to_iso_date(row[9])
-        doc["_seq"] = next_seq + added
-        db["clients"].insert_one(doc)
-        added += 1
+        doc["_seq"] = next_seq + len(docs)
+        docs.append(doc)
+        existing_ids.add(client_id)  # a later row in this same file could repeat a client_id
+
+    if docs:
+        db["clients"].insert_many(docs)
     row_count = db["clients"].count_documents({})
-    return {"row_count": row_count, "added": added, "skipped_duplicates": skipped}
+    return {"row_count": row_count, "added": len(docs), "skipped_duplicates": skipped}
 
 
 def _client_filters_query(
