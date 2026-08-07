@@ -8,7 +8,6 @@ import base64
 import io
 import os
 import threading
-import traceback
 import uuid
 
 import openpyxl
@@ -852,17 +851,10 @@ async def upload_clients(file: UploadFile = File(...), import_format: str = Form
             ),
         )
 
-    try:
-        stats = _upsert_clients_or_400(collector.rows, mode="replace")
-        await run_in_threadpool(
-            archive_upload, DEFAULT_DB_PATH, contents, file.filename, import_format, "replace", stats["row_count"],
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        # TEMPORARY: surfaces the real exception for live debugging. Remove
-        # once the upload-hang root cause is found and fixed.
-        raise HTTPException(status_code=500, detail=traceback.format_exc())
+    stats = _upsert_clients_or_400(collector.rows, mode="replace")
+    await run_in_threadpool(
+        archive_upload, DEFAULT_DB_PATH, contents, file.filename, import_format, "replace", stats["row_count"],
+    )
     return {"status": "ok", "row_count": stats["row_count"], "format": import_format, "stats": format_stats}
 
 
@@ -929,17 +921,10 @@ async def merge_clients(file: UploadFile = File(...), import_format: str = Form(
             ),
         )
 
-    try:
-        stats = _upsert_clients_or_400(collector.rows, mode="merge")
-        await run_in_threadpool(
-            archive_upload, DEFAULT_DB_PATH, contents, file.filename, import_format, "merge", stats["row_count"],
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        # TEMPORARY: surfaces the real exception for live debugging. Remove
-        # once the upload-hang root cause is found and fixed.
-        raise HTTPException(status_code=500, detail=traceback.format_exc())
+    stats = _upsert_clients_or_400(collector.rows, mode="merge")
+    await run_in_threadpool(
+        archive_upload, DEFAULT_DB_PATH, contents, file.filename, import_format, "merge", stats["row_count"],
+    )
     return {
         "status": "ok", "row_count": stats["row_count"], "added": stats["added"],
         "skipped_duplicates": stats["skipped_duplicates"], "format": import_format, "stats": format_stats,

@@ -8,6 +8,7 @@ YYYY-MM-DD copy used for correct sorting/filtering, since plain string
 comparison of DD-MM-YYYY does not sort chronologically.
 """
 import os
+import weakref
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -48,7 +49,18 @@ ALERT_STATUSES = ("CRITICAL", "URGENT", "DUE SOON", "EXPIRED")
 REMINDER_INTERVAL_DAYS = 20
 
 
+_initialized_dbs: "weakref.WeakSet" = weakref.WeakSet()
+
+
 def init_db(db: Database) -> None:
+    """Creates the app's indexes. Nearly every function in this module calls
+    this at the top, so it's cached per Database instance (a WeakSet, not a
+    plain id() set, so it can't collide with a garbage-collected object's
+    reused memory address) -- otherwise every read and write would pay for
+    7 create_index round-trips to MongoDB on every single call, which is
+    pure waste once the indexes already exist."""
+    if db in _initialized_dbs:
+        return
     db["clients"].create_index("status")
     db["clients"].create_index("expiry_date_iso")
     db["clients"].create_index("cert_name")
@@ -58,6 +70,7 @@ def init_db(db: Database) -> None:
     db["notice_sent_log"].create_index(
         [("client_id", 1), ("notice_id", 1), ("channel", 1)], unique=True,
     )
+    _initialized_dbs.add(db)
 
 
 def to_iso_date(value) -> str | None:
