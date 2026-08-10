@@ -36,7 +36,7 @@ export default function App() {
   const [activeStatus, setActiveStatus] = useState("ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [certType, setCertType] = useState("ALL");
+  const [certType, setCertType] = useState([]);
   const [scheme, setScheme] = useState("ALL");
   const [expiryBefore, setExpiryBefore] = useState("");
   const [pageNum, setPageNum] = useState(1);
@@ -124,7 +124,7 @@ export default function App() {
 
   function handleClearAllFilters() {
     setActiveStatus("ALL");
-    setCertType("ALL");
+    setCertType([]);
     setScheme("ALL");
     setExpiryBefore("");
   }
@@ -185,7 +185,7 @@ export default function App() {
           const status = await getSendAllStatus(jobId);
           setSendAllJob(status);
           if (status.done) {
-            clearInterval(jobPollRef.current);
+            clearInterval(jobPollRef.current); 
             loadClients();
             loadStats();
           }
@@ -307,7 +307,7 @@ export default function App() {
       loadClients();
       loadStats();
       return result;
-    } catch (err) {
+    } catch (err) {      
       setToast({ type: "error", message: err.message });
       throw err;
     }
@@ -452,6 +452,7 @@ export default function App() {
               getNoticePreview={getNoticePreview}
               getNoticeClients={getNoticeClients}
               schemeOptions={schemeOptions}
+              certOptions={certOptions}
             />
           )}
         </main>

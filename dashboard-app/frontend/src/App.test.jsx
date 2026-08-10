@@ -182,7 +182,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() =>
       expect(api.sendAllEmailAlerts).toHaveBeenCalledWith({
-        status: "ALL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "BuildRight",
+        status: "ALL", certType: [], scheme: "ALL", expiryBefore: "", search: "BuildRight",
       })
     );
   });
@@ -367,7 +367,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Send All Eligible"));
     await waitFor(() =>
       expect(api.getEligibleCount).toHaveBeenCalledWith({
-        status: "ALL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "",
+        status: "ALL", certType: [], scheme: "ALL", expiryBefore: "", search: "",
       })
     );
   });
@@ -386,7 +386,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Send All Eligible"));
     await waitFor(() =>
       expect(api.getEligibleCount).toHaveBeenCalledWith({
-        status: "ALL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "BuildRight",
+        status: "ALL", certType: [], scheme: "ALL", expiryBefore: "", search: "BuildRight",
       })
     );
   });
@@ -436,7 +436,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() =>
       expect(api.sendAllAlerts).toHaveBeenCalledWith({
-        status: "CRITICAL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "",
+        status: "CRITICAL", certType: [], scheme: "ALL", expiryBefore: "", search: "",
       })
     );
   });
@@ -474,7 +474,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() =>
       expect(api.sendAllAlerts).toHaveBeenCalledWith({
-        status: "ALL", certType: "ALL", scheme: "ALL", expiryBefore: "", search: "BuildRight",
+        status: "ALL", certType: [], scheme: "ALL", expiryBefore: "", search: "BuildRight",
       })
     );
   });
