@@ -208,7 +208,7 @@ describe("sendAllAlerts", () => {
   it("adds status/cert_type/expiry_before/search/scheme as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
     await sendAllAlerts({
-      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
+      status: "CRITICAL", certType: ["OSHA"], expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
     });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/send-all?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight&scheme=ISI",
@@ -271,7 +271,7 @@ describe("sendAllEmailAlerts", () => {
   it("adds status/cert_type/expiry_before/search/scheme as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
     await sendAllEmailAlerts({
-      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
+      status: "CRITICAL", certType: ["OSHA"], expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
     });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/send-all-emails?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight&scheme=ISI",
@@ -311,10 +311,19 @@ describe("getEligibleCount", () => {
   it("passes status/cert_type/expiry_before/search/scheme as query params when given", async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ whatsapp: 1, email: 1 }) });
     await getEligibleCount({
-      status: "CRITICAL", certType: "OSHA", expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
+      status: "CRITICAL", certType: ["OSHA"], expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
     });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/eligible-count?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight&scheme=ISI",
+      { credentials: "include", headers: {} }
+    );
+  });
+
+  it("sends multiple cert_type values as repeated query params", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ whatsapp: 1, email: 1 }) });
+    await getEligibleCount({ certType: ["OSHA", "GMP"] });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/eligible-count?cert_type=OSHA&cert_type=GMP",
       { credentials: "include", headers: {} }
     );
   });

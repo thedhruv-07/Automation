@@ -5,7 +5,7 @@ export async function getClients(params = {}) {
   if (params.page) query.set("page", params.page);
   if (params.pageSize) query.set("page_size", params.pageSize);
   if (params.status && params.status !== "ALL") query.set("status", params.status);
-  if (params.certType && params.certType !== "ALL") query.set("cert_type", params.certType);
+  for (const c of params.certType || []) query.append("cert_type", c);
   if (params.scheme && params.scheme !== "ALL") query.set("scheme", params.scheme);
   if (params.expiryBefore) query.set("expiry_before", params.expiryBefore);
   if (params.search) query.set("search", params.search);
@@ -60,7 +60,7 @@ export async function sendAlert(clientId) {
 function scopeQueryString(params = {}) {
   const query = new URLSearchParams();
   if (params.status && params.status !== "ALL") query.set("status", params.status);
-  if (params.certType && params.certType !== "ALL") query.set("cert_type", params.certType);
+  for (const c of params.certType || []) query.append("cert_type", c);
   if (params.expiryBefore) query.set("expiry_before", params.expiryBefore);
   if (params.search) query.set("search", params.search);
   if (params.scheme && params.scheme !== "ALL") query.set("scheme", params.scheme);
@@ -130,7 +130,7 @@ export async function getEligibleCount(params = {}) {
 export function clientsExportUrl({ status, certType, expiryBefore, search, scheme } = {}) {
   const query = new URLSearchParams();
   if (status && status !== "ALL") query.set("status", status);
-  if (certType && certType !== "ALL") query.set("cert_type", certType);
+  for (const c of certType || []) query.append("cert_type", c);
   if (scheme && scheme !== "ALL") query.set("scheme", scheme);
   if (expiryBefore) query.set("expiry_before", expiryBefore);
   if (search) query.set("search", search);
@@ -202,7 +202,7 @@ export async function getNoticeClients(noticeId, params = {}) {
   if (params.page) query.set("page", params.page);
   if (params.pageSize) query.set("page_size", params.pageSize);
   if (params.status && params.status !== "ALL") query.set("status", params.status);
-  if (params.certType && params.certType !== "ALL") query.set("cert_type", params.certType);
+  for (const c of params.certType || []) query.append("cert_type", c);
   if (params.scheme && params.scheme !== "ALL") query.set("scheme", params.scheme);
   if (params.expiryBefore) query.set("expiry_before", params.expiryBefore);
   if (params.search) query.set("search", params.search);
