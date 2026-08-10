@@ -326,6 +326,7 @@ def _run_send_all_job(
             job["skipped_no_template"] += 1
         elif result["action"] == "failed":
             job["failed"] += 1
+            print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
 
     try:
         run(
@@ -473,6 +474,7 @@ def _run_send_all_email_job(
             job["skipped_no_email"] += 1
         elif result["action"] == "failed":
             job["failed"] += 1
+            print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
 
     try:
         run_email_alerts(
@@ -614,6 +616,7 @@ def _run_send_notice_whatsapp_job(
             job["skipped_no_template"] += 1
         elif result["action"] == "failed":
             job["failed"] += 1
+            print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
 
     try:
         send_notice_whatsapp(
@@ -695,6 +698,7 @@ def _run_send_notice_email_job(
             job["skipped_no_email"] += 1
         elif result["action"] == "failed":
             job["failed"] += 1
+            print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
 
     try:
         send_notice_email(
