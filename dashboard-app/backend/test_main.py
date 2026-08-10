@@ -154,6 +154,26 @@ def test_eligible_count_filters_by_cert_type(tmp_path, monkeypatch, mongo_db):
     assert response.json() == {"whatsapp": 1, "email": 1}
 
 
+def test_eligible_count_filters_by_multiple_cert_types(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    # httpx's TestClient expands a list value in `params` into repeated
+    # query params (cert_type=ISO+9001&cert_type=OSHA), matching what the
+    # real frontend sends.
+    response = client.get("/api/eligible-count", params={"cert_type": ["ISO 9001", "OSHA"]})
+    assert response.json() == {"whatsapp": 2, "email": 2}
+
+
 def test_eligible_count_filters_by_search(tmp_path, monkeypatch, mongo_db):
     db_path = mongo_db
     _write_db(db_path, [

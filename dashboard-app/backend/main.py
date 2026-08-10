@@ -117,7 +117,7 @@ def health():
 def get_clients(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=500),
-    status: str = "ALL", cert_type: str = "ALL", scheme: str = "ALL",
+    status: str = "ALL", cert_type: list[str] = Query([]), scheme: str = "ALL",
     expiry_before: str = "", search: str = "", sort_key: str = "", sort_dir: str = "asc",
 ):
     today = _today_str()
@@ -143,18 +143,18 @@ def stats():
 
 @app.get("/api/eligible-count")
 def eligible_count(
-    status: str = "", cert_type: str = "", expiry_before: str = "", search: str = "", scheme: str = "",
+    status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "",
 ):
     today = _today_str()
     return {
         "whatsapp": get_eligible_count(
             DEFAULT_DB_PATH, today, "whatsapp",
-            status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+            status=status or None, cert_type=cert_type, expiry_before=expiry_before or None,
             search=search or None, scheme=scheme or None,
         ),
         "email": get_eligible_count(
             DEFAULT_DB_PATH, today, "email",
-            status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+            status=status or None, cert_type=cert_type, expiry_before=expiry_before or None,
             search=search or None, scheme=scheme or None,
         ),
     }
@@ -171,7 +171,7 @@ def _csv_escape(value) -> str:
 
 @app.get("/api/clients/export")
 def export_clients(
-    status: str = "ALL", cert_type: str = "ALL", expiry_before: str = "", search: str = "", scheme: str = "ALL",
+    status: str = "ALL", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "ALL",
 ):
     def generate():
         yield ",".join(_csv_escape(h) for h in REQUIRED_HEADERS) + "\n"
@@ -351,7 +351,7 @@ def _run_send_all_job(
 
 @app.post("/api/send-all")
 def send_all_alerts(
-    status: str = "", cert_type: str = "", expiry_before: str = "", search: str = "", scheme: str = "",
+    status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "",
 ):
     global _bulk_in_progress
     with _send_lock:
@@ -378,7 +378,7 @@ def send_all_alerts(
             target=_run_send_all_job,
             args=(
                 job_id, token, phone_number_id, test_number,
-                status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
+                status or None, cert_type, expiry_before or None, search or None, scheme or None,
             ),
             daemon=True,
         )
@@ -492,7 +492,7 @@ def _run_send_all_email_job(
 
 @app.post("/api/send-all-emails")
 def send_all_emails(
-    status: str = "", cert_type: str = "", expiry_before: str = "", search: str = "", scheme: str = "",
+    status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "",
 ):
     global _email_bulk_in_progress
     with _email_send_lock:
@@ -519,7 +519,7 @@ def send_all_emails(
             target=_run_send_all_email_job,
             args=(
                 job_id, brevo_api_key, email_sender, test_email,
-                status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
+                status or None, cert_type, expiry_before or None, search or None, scheme or None,
             ),
             daemon=True,
         )
@@ -560,7 +560,7 @@ def notice_preview(notice_id: str):
 
 @app.get("/api/notices/{notice_id}/eligible-count")
 def notice_eligible_count(
-    notice_id: str, status: str = "", cert_type: str = "", expiry_before: str = "",
+    notice_id: str, status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "",
     search: str = "", scheme: str = "",
 ):
     if get_notice_module(notice_id) is None:
@@ -568,12 +568,12 @@ def notice_eligible_count(
     return {
         "whatsapp": get_notice_eligible_count(
             DEFAULT_DB_PATH, notice_id, "whatsapp",
-            status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+            status=status or None, cert_type=cert_type, expiry_before=expiry_before or None,
             search=search or None, scheme=scheme or None,
         ),
         "email": get_notice_eligible_count(
             DEFAULT_DB_PATH, notice_id, "email",
-            status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+            status=status or None, cert_type=cert_type, expiry_before=expiry_before or None,
             search=search or None, scheme=scheme or None,
         ),
     }
@@ -584,13 +584,13 @@ def notice_clients(
     notice_id: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=8, ge=1, le=500),
-    status: str = "", cert_type: str = "", expiry_before: str = "", search: str = "", scheme: str = "",
+    status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "",
 ):
     if get_notice_module(notice_id) is None:
         raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
     rows, total = get_broadcast_clients_page(
         DEFAULT_DB_PATH, notice_id, page=page, page_size=page_size,
-        status=status or None, cert_type=cert_type or None, expiry_before=expiry_before or None,
+        status=status or None, cert_type=cert_type, expiry_before=expiry_before or None,
         search=search or None, scheme=scheme or None,
     )
     return {"rows": rows, "total": total, "page": page, "page_size": page_size}
@@ -631,7 +631,7 @@ def _run_send_notice_whatsapp_job(
 
 @app.post("/api/notices/{notice_id}/send-whatsapp")
 def send_notice_whatsapp_endpoint(
-    notice_id: str, status: str = "", cert_type: str = "", expiry_before: str = "",
+    notice_id: str, status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "",
     search: str = "", scheme: str = "",
 ):
     if get_notice_module(notice_id) is None:
@@ -657,7 +657,7 @@ def send_notice_whatsapp_endpoint(
             target=_run_send_notice_whatsapp_job,
             args=(
                 job_id, notice_id, lock_key, token, phone_number_id, test_number,
-                status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
+                status or None, cert_type, expiry_before or None, search or None, scheme or None,
             ),
             daemon=True,
         )
@@ -712,7 +712,7 @@ def _run_send_notice_email_job(
 
 @app.post("/api/notices/{notice_id}/send-email")
 def send_notice_email_endpoint(
-    notice_id: str, status: str = "", cert_type: str = "", expiry_before: str = "",
+    notice_id: str, status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "",
     search: str = "", scheme: str = "",
 ):
     if get_notice_module(notice_id) is None:
@@ -738,7 +738,7 @@ def send_notice_email_endpoint(
             target=_run_send_notice_email_job,
             args=(
                 job_id, notice_id, lock_key, brevo_api_key, email_sender, test_email,
-                status or None, cert_type or None, expiry_before or None, search or None, scheme or None,
+                status or None, cert_type, expiry_before or None, search or None, scheme or None,
             ),
             daemon=True,
         )

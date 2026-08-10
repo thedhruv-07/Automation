@@ -343,7 +343,7 @@ def test_run_filters_by_cert_type(tmp_path, mongo_db):
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
     results = run(db_path=db_path, token="tok", phone_number_id="pid",
-                  today="2026-07-17", send_fn=send_fn, cert_type="OSHA")
+                  today="2026-07-17", send_fn=send_fn, cert_type=["OSHA"])
 
     assert len(results) == 1
     assert results[0]["client_id"] == "CLT002"
