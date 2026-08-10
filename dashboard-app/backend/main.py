@@ -554,7 +554,7 @@ def notice_preview(notice_id: str):
     if module is None:
         raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
     placeholder = {"client_id": "SAMPLE", "name": "Sample Client", "company": "Sample Company"}
-    html = module.build_email_html(placeholder, "Absolute Veritas")
+    html = module.build_email_html(placeholder, "Absolute Veritas", logo_src=_logo_data_uri())
     return {"subject": module.EMAIL_SUBJECT, "html": html}
 
 

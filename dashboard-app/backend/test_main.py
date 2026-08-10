@@ -1744,6 +1744,12 @@ def test_notice_preview_returns_subject_and_html():
     assert "Sample Company" in data["html"]
 
 
+def test_notice_preview_includes_the_company_logo():
+    response = client.get("/api/notices/meity_series_guidelines_2026/preview")
+    assert response.status_code == 200
+    assert "data:image/png;base64," in response.json()["html"]
+
+
 def test_notice_preview_unknown_notice_returns_404():
     response = client.get("/api/notices/does_not_exist/preview")
     assert response.status_code == 404
