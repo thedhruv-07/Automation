@@ -185,7 +185,7 @@ def test_run_email_alerts_filters_by_cert_type(tmp_path, mongo_db):
 
     results = run_email_alerts(
         db_path, "api-key", "sender@x.com", "Absolute Veritas",
-        today="2026-07-17", send_fn=send_fn, cert_type="OSHA",
+        today="2026-07-17", send_fn=send_fn, cert_type=["OSHA"],
     )
 
     assert len(results) == 1

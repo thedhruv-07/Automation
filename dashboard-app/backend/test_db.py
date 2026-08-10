@@ -208,9 +208,31 @@ def test_get_clients_page_filters_by_status(mongo_db):
 
 def test_get_clients_page_filters_by_cert_type(mongo_db):
     _seeded_db(mongo_db)
-    rows, total = get_clients_page(mongo_db, page=1, page_size=50, cert_type="ISO 9001")
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, cert_type=["ISO 9001"])
     assert total == 2
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
+
+
+def test_get_clients_page_filters_by_multiple_cert_types(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, cert_type=["OSHA", "GMP"])
+    assert total == 2
+    assert {r["client_id"] for r in rows} == {"CLT002", "CLT004"}
+
+
+def test_get_clients_page_cert_type_empty_list_means_no_filter(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, cert_type=[])
+    assert total == 5
+
+
+def test_get_clients_page_cert_type_all_sentinel_means_no_filter(mongo_db):
+    """A stale client or a direct API call could still send the old
+    single-value sentinel wrapped in a list -- must not be treated as a
+    literal cert_name match."""
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, cert_type=["ALL"])
+    assert total == 5
 
 
 def test_get_clients_page_filters_by_search_matches_name_or_company(mongo_db):
@@ -297,7 +319,7 @@ def test_get_stats_eligible_not_sent_today_excludes_within_reminder_interval(mon
 
 def test_export_clients_rows_yields_all_matching_rows_no_pagination(mongo_db):
     _seeded_db(mongo_db)
-    rows = list(export_clients_rows(mongo_db, cert_type="ISO 9001"))
+    rows = list(export_clients_rows(mongo_db, cert_type=["ISO 9001"]))
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
 
 
@@ -399,7 +421,7 @@ def test_get_eligible_clients_preserves_insertion_order(mongo_db):
 
 def test_get_eligible_clients_filters_by_cert_type(mongo_db):
     _seeded_db(mongo_db)
-    rows = get_eligible_clients(mongo_db, cert_type="ISO 9001")
+    rows = get_eligible_clients(mongo_db, cert_type=["ISO 9001"])
     assert {r["client_id"] for r in rows} == {"CLT001", "CLT003"}
 
 
@@ -467,7 +489,7 @@ def test_get_eligible_count_email_channel_is_independent_of_whatsapp(mongo_db):
 
 def test_get_eligible_count_filters_by_cert_type(mongo_db):
     _seeded_db(mongo_db)
-    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp", cert_type="ISO 9001") == 2
+    assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp", cert_type=["ISO 9001"]) == 2
 
 
 def test_get_eligible_count_filters_by_search(mongo_db):

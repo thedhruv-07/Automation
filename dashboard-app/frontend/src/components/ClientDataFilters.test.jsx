@@ -4,20 +4,21 @@ import ClientDataFilters from "./ClientDataFilters";
 import { isoDateMonthsFromToday } from "../sortUtils";
 
 describe("ClientDataFilters", () => {
-  it("calls onCertTypeChange when a cert type is selected", () => {
+  it("calls onCertTypeChange when a cert type is checked", () => {
     const onCertTypeChange = vi.fn();
     render(
       <ClientDataFilters
         certOptions={["ISO 9001", "OSHA"]}
-        certType="ALL"
+        certType={[]}
         onCertTypeChange={onCertTypeChange}
         expiryBefore=""
         onExpiryBeforeChange={() => {}}
         onClearAll={() => {}}
       />
     );
-    fireEvent.change(screen.getByLabelText("Filter by certification type"), { target: { value: "OSHA" } });
-    expect(onCertTypeChange).toHaveBeenCalledWith("OSHA");
+    fireEvent.click(screen.getByLabelText("Filter by certification type"));
+    fireEvent.click(screen.getByText("OSHA"));
+    expect(onCertTypeChange).toHaveBeenCalledWith(["OSHA"]);
   });
 
   it("calls onSchemeChange when a scheme is selected", () => {
@@ -25,7 +26,7 @@ describe("ClientDataFilters", () => {
     render(
       <ClientDataFilters
         certOptions={[]}
-        certType="ALL"
+        certType={[]}
         onCertTypeChange={() => {}}
         schemeOptions={["ISI", "FMCS"]}
         scheme="ALL"
@@ -43,7 +44,7 @@ describe("ClientDataFilters", () => {
     render(
       <ClientDataFilters
         certOptions={[]}
-        certType="ALL"
+        certType={[]}
         onCertTypeChange={() => {}}
         schemeOptions={["ISI", "FMCS"]}
         scheme="FMCS"
@@ -61,7 +62,7 @@ describe("ClientDataFilters", () => {
     render(
       <ClientDataFilters
         certOptions={[]}
-        certType="ALL"
+        certType={[]}
         onCertTypeChange={() => {}}
         expiryBefore=""
         onExpiryBeforeChange={onExpiryBeforeChange}
@@ -77,7 +78,7 @@ describe("ClientDataFilters", () => {
     render(
       <ClientDataFilters
         certOptions={[]}
-        certType="ALL"
+        certType={[]}
         onCertTypeChange={() => {}}
         expiryBefore=""
         onExpiryBeforeChange={onExpiryBeforeChange}
@@ -93,7 +94,7 @@ describe("ClientDataFilters", () => {
     render(
       <ClientDataFilters
         certOptions={[]}
-        certType="ALL"
+        certType={[]}
         onCertTypeChange={() => {}}
         expiryBefore=""
         onExpiryBeforeChange={onExpiryBeforeChange}
@@ -109,7 +110,7 @@ describe("ClientDataFilters", () => {
     render(
       <ClientDataFilters
         certOptions={[]}
-        certType="ALL"
+        certType={[]}
         onCertTypeChange={() => {}}
         expiryBefore=""
         onExpiryBeforeChange={onExpiryBeforeChange}
@@ -124,7 +125,7 @@ describe("ClientDataFilters", () => {
     const { rerender } = render(
       <ClientDataFilters
         certOptions={[]}
-        certType="ALL"
+        certType={[]}
         onCertTypeChange={() => {}}
         expiryBefore=""
         onExpiryBeforeChange={() => {}}
@@ -136,7 +137,7 @@ describe("ClientDataFilters", () => {
     rerender(
       <ClientDataFilters
         certOptions={[]}
-        certType="ISO 9001"
+        certType={["ISO 9001"]}
         onCertTypeChange={() => {}}
         expiryBefore=""
         onExpiryBeforeChange={() => {}}
@@ -151,7 +152,7 @@ describe("ClientDataFilters", () => {
     render(
       <ClientDataFilters
         certOptions={[]}
-        certType="ISO 9001"
+        certType={["ISO 9001"]}
         onCertTypeChange={() => {}}
         expiryBefore=""
         onExpiryBeforeChange={() => {}}

@@ -167,7 +167,7 @@ def upsert_clients(db: Database, rows: list[tuple], mode: str) -> dict:
 
 
 def _client_filters_query(
-    status: str | None = None, cert_type: str | None = None,
+    status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
     scheme: str | None = None,
 ) -> dict:
@@ -178,8 +178,12 @@ def _client_filters_query(
     query: dict = {}
     if status and status != "ALL":
         query["status"] = status
-    if cert_type and cert_type != "ALL":
-        query["cert_name"] = cert_type
+    # Defensive: a stale client or a direct API call could still send the
+    # old single-value sentinel ("ALL") or blank strings inside the list --
+    # both must mean "no filter", not a literal cert_name match.
+    cert_type = [c for c in (cert_type or []) if c and c != "ALL"]
+    if cert_type:
+        query["cert_name"] = {"$in": cert_type}
     if scheme and scheme != "ALL":
         query["scheme"] = scheme
     if expiry_before:
@@ -207,7 +211,7 @@ def _and_query(*parts: dict) -> dict:
 
 def get_clients_page(
     db: Database, page: int = 1, page_size: int = 50, status: str | None = None,
-    cert_type: str | None = None, expiry_before: str | None = None,
+    cert_type: list[str] | None = None, expiry_before: str | None = None,
     search: str | None = None, sort_key: str | None = None, sort_dir: str = "asc",
     scheme: str | None = None,
 ) -> tuple[list[dict], int]:
@@ -289,7 +293,7 @@ def get_stats(db: Database, today: str) -> dict:
 
 
 def export_clients_rows(
-    db: Database, status: str | None = None, cert_type: str | None = None,
+    db: Database, status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
     scheme: str | None = None,
 ):
@@ -300,7 +304,7 @@ def export_clients_rows(
 
 
 def get_eligible_clients(
-    db: Database, status: str | None = None, cert_type: str | None = None,
+    db: Database, status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
     scheme: str | None = None,
 ) -> list[dict]:
@@ -315,7 +319,7 @@ def get_eligible_clients(
 
 
 def get_broadcast_clients(
-    db: Database, status: str | None = None, cert_type: str | None = None,
+    db: Database, status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
     scheme: str | None = None,
 ) -> list[dict]:
@@ -329,7 +333,7 @@ def get_broadcast_clients(
 
 def get_broadcast_clients_page(
     db: Database, notice_id: str, page: int = 1, page_size: int = 50,
-    status: str | None = None, cert_type: str | None = None,
+    status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
     scheme: str | None = None,
 ) -> tuple[list[dict], int]:
@@ -362,7 +366,7 @@ def get_broadcast_clients_page(
 
 def get_eligible_count(
     db: Database, today: str, channel: str, status: str | None = None,
-    cert_type: str | None = None, expiry_before: str | None = None,
+    cert_type: list[str] | None = None, expiry_before: str | None = None,
     search: str | None = None, scheme: str | None = None,
 ) -> int:
     """Counts alert-eligible clients not yet sent via the given channel
@@ -379,7 +383,7 @@ def get_eligible_count(
 
 def get_notice_eligible_count(
     db: Database, notice_id: str, channel: str, status: str | None = None,
-    cert_type: str | None = None, expiry_before: str | None = None,
+    cert_type: list[str] | None = None, expiry_before: str | None = None,
     search: str | None = None, scheme: str | None = None,
 ) -> int:
     """Counts clients matching the given filters (any status -- see

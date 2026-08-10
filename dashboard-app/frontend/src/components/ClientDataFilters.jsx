@@ -1,4 +1,5 @@
 import { isoDateMonthsFromToday } from "../sortUtils";
+import MultiSelectDropdown from "./MultiSelectDropdown";
 
 const DURATION_PRESETS = [
   { label: "3 months", months: 3 },
@@ -11,7 +12,7 @@ export default function ClientDataFilters({
   schemeOptions = [], scheme = "ALL", onSchemeChange = () => {},
   expiryBefore, onExpiryBeforeChange, onClearAll,
 }) {
-  const hasFilters = certType !== "ALL" || scheme !== "ALL" || expiryBefore !== "";
+  const hasFilters = certType.length > 0 || scheme !== "ALL" || expiryBefore !== "";
 
   return (
     <div className="bg-surface border border-line rounded-xl p-4 flex flex-wrap gap-4 items-center">
@@ -29,17 +30,13 @@ export default function ClientDataFilters({
           <option key={s} value={s}>{s}</option>
         ))}
       </select>
-      <select
-        value={certType}
-        onChange={(e) => onCertTypeChange(e.target.value)}
-        aria-label="Filter by certification type"
-        className="min-w-[180px] bg-surface-page border border-line rounded-lg px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-      >
-        <option value="ALL">All Cert Types</option>
-        {certOptions.map((cert) => (
-          <option key={cert} value={cert}>{cert}</option>
-        ))}
-      </select>
+      <MultiSelectDropdown
+        options={certOptions}
+        selected={certType}
+        onChange={onCertTypeChange}
+        label="All Cert Types"
+        ariaLabel="Filter by certification type"
+      />
       <label className="flex items-center gap-2 text-sm text-ink-secondary">
         Expiry before
         <input
