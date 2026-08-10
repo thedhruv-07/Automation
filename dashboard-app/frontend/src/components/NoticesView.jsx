@@ -9,12 +9,12 @@ const JOB_POLL_MS = 500;
 export default function NoticesView({
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients,
-  schemeOptions = [],
+  schemeOptions = [], certOptions = [],
 }) {
   const [notices, setNotices] = useState([]);
   const [selectedNoticeId, setSelectedNoticeId] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [certType, setCertType] = useState("ALL");
+  const [certType, setCertType] = useState([]);
   const [scheme, setScheme] = useState("ALL");
   const [status, setStatus] = useState("ALL");
   const [expiryBefore, setExpiryBefore] = useState("");
@@ -68,7 +68,7 @@ export default function NoticesView({
 
   function handleClearAllFilters() {
     setStatus("ALL");
-    setCertType("ALL");
+    setCertType([]);
     setScheme("ALL");
     setExpiryBefore("");
   }
@@ -140,7 +140,7 @@ export default function NoticesView({
       </div>
 
       <ClientDataFilters
-        certOptions={[]}
+        certOptions={certOptions}
         certType={certType}
         onCertTypeChange={setCertType}
         schemeOptions={schemeOptions}

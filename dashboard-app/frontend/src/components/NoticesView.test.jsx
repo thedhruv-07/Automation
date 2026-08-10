@@ -125,4 +125,23 @@ describe("NoticesView", () => {
     ));
     await waitFor(() => expect(screen.getByText(/3 sent, 0 skipped, 0 failed/)).toBeInTheDocument());
   });
+
+  it("passes real cert-type options through to the filter dropdown", async () => {
+    setup({ certOptions: ["ISO 9001", "OSHA"] });
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    fireEvent.click(screen.getByLabelText("Filter by certification type"));
+    expect(screen.getByText("ISO 9001")).toBeInTheDocument();
+    expect(screen.getByText("OSHA")).toBeInTheDocument();
+  });
+
+  it("includes selected cert types in the eligible-count request", async () => {
+    const { props } = setup({ certOptions: ["ISO 9001", "OSHA"] });
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    fireEvent.change(screen.getByLabelText("Which notice?"), { target: { value: "transition_facilitation_2026" } });
+    fireEvent.click(screen.getByLabelText("Filter by certification type"));
+    fireEvent.click(screen.getByText("OSHA"));
+    await waitFor(() => expect(props.getNoticeEligibleCount).toHaveBeenCalledWith(
+      "transition_facilitation_2026", expect.objectContaining({ certType: ["OSHA"] })
+    ));
+  });
 });
