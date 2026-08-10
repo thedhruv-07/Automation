@@ -26,9 +26,16 @@ const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPI
 const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
 const BULK_JOB_POLL_MS = 500;
+const VALID_VIEWS = new Set([
+  "dashboard", "clientData", "excelSync", "whatsappSettings", "messageLog", "notices",
+]);
+const ACTIVE_VIEW_STORAGE_KEY = "activeView";
 
 export default function App() {
-  const [activeView, setActiveView] = useState("clientData");
+  const [activeView, setActiveView] = useState(() => {
+    const stored = localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
+    return VALID_VIEWS.has(stored) ? stored : "clientData";
+  });
   const [page, setPage] = useState({ rows: [], total: 0, page: 1, page_size: PAGE_SIZE });
   const [clientsLoading, setClientsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -54,6 +61,10 @@ export default function App() {
   const [emailBulkModalOpen, setEmailBulkModalOpen] = useState(false);
   const [sendAllEmailJob, setSendAllEmailJob] = useState(null);
   const [filteredEligibleCount, setFilteredEligibleCount] = useState({ whatsapp: 0, email: 0 });
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, activeView);
+  }, [activeView]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), SEARCH_DEBOUNCE_MS);

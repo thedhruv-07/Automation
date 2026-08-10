@@ -22,6 +22,7 @@ const sampleStats = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  localStorage.clear();
   api.getClients.mockResolvedValue(samplePage(sampleClients));
   api.getStats.mockResolvedValue(sampleStats);
   api.getEligibleCount.mockResolvedValue({ whatsapp: 0, email: 0 });
@@ -323,6 +324,18 @@ describe("App", () => {
       expect(screen.getByText("Merged — added 2 new clients, skipped 1 already on file (9 total).")).toBeInTheDocument()
     );
     expect(api.getClients).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays on the same view across a refresh (simulated by unmount/remount)", async () => {
+    const { unmount } = render(<App />);
+    await waitFor(() => screen.getByText("Rahul Sharma"));
+    fireEvent.click(screen.getByText("Excel Sync"));
+    await waitFor(() => screen.getByLabelText("Upload client spreadsheet"));
+    unmount();
+
+    render(<App />);
+    await waitFor(() => screen.getByLabelText("Upload client spreadsheet"));
+    expect(screen.queryByText("Rahul Sharma")).not.toBeInTheDocument();
   });
 
   it("navigates to Message Log and displays fetched entries", async () => {
