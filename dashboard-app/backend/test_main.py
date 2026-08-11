@@ -1998,3 +1998,47 @@ def test_merge_clients_records_an_upload_archive_with_merge_mode(mongo_db, monke
 
     doc = mongo_db["uploads"].find_one()
     assert doc["mode"] == "merge"
+
+
+def test_notice_log_returns_entries_joined_with_client_and_notice_data(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "CRS", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    from db import record_notice_sent
+    record_notice_sent(db_path, "CLT001", "meity_series_guidelines_2026", "whatsapp", "wamid.OLD", "2026-07-18T10:00:00")
+    record_notice_sent(db_path, "CLT001", "meity_series_guidelines_2026", "email", "brevo.NEW", "2026-07-19T10:00:00")
+
+    response = client.get("/api/notice-log")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    # newest first
+    assert data[0]["message_id"] == "brevo.NEW"
+    assert data[0]["channel"] == "email"
+    assert data[0]["name"] == "Rahul Sharma"
+    assert data[0]["company"] == "TechCorp"
+    assert data[0]["notice_id"] == "meity_series_guidelines_2026"
+    assert data[0]["notice_label"] == "MeitY Series Guidelines — IS/IEC 62368-1:2023"
+
+
+def test_notice_log_handles_client_no_longer_in_roster(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
+    _write_db(db_path, [])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    from db import record_notice_sent
+    record_notice_sent(db_path, "CLT999", "meity_series_guidelines_2026", "whatsapp", "wamid.OLD", "2026-07-18T10:00:00")
+
+    response = client.get("/api/notice-log")
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["name"] == "Unknown"
+
+
+def test_notice_log_returns_empty_list_when_nothing_sent(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    response = client.get("/api/notice-log")
+    assert response.status_code == 200
+    assert response.json() == []

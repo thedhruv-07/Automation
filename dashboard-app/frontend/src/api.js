@@ -46,6 +46,12 @@ export async function getMessageLog() {
   return res.json();
 }
 
+export async function getNoticeLog() {
+  const res = await fetch(`${API_BASE}/api/notice-log`, { credentials: "include", headers: {} });
+  if (!res.ok) throw new Error(`Failed to load notice log: ${res.status}`);
+  return res.json();
+}
+
 export async function sendAlert(clientId) {
   const res = await fetch(`${API_BASE}/api/send/${clientId}`, {
     method: "POST", credentials: "include", headers: {},

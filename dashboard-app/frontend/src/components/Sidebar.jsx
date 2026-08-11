@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { key: "whatsapp", label: "WhatsApp Settings", icon: "whatsapp", view: "whatsappSettings" },
   { key: "log", label: "Message Log", icon: "log", view: "messageLog" },
   { key: "notices", label: "Notices", icon: "notices", view: "notices" },
+  { key: "noticeLog", label: "Notice Log", icon: "log", view: "noticeLog" },
 ];
 
 function NavIcon({ name }) {

@@ -19,6 +19,16 @@ const MESSAGE_LOG_COLUMNS = [
   { key: "message_id", header: "Message ID" },
 ];
 
+const NOTICE_LOG_COLUMNS = [
+  { key: "client_id", header: "Client ID" },
+  { key: "name", header: "Full Name" },
+  { key: "company", header: "Company" },
+  { key: "notice_label", header: "Notice" },
+  { key: "channel", header: "Channel" },
+  { key: "sent_at", header: "Sent At" },
+  { key: "message_id", header: "Message ID" },
+];
+
 function escapeCsvValue(value) {
   const str = String(value ?? "");
   if (/[",\n]/.test(str)) {
@@ -59,4 +69,12 @@ export function messageLogToCsv(entries) {
 
 export function downloadMessageLogCsv(entries, filename = `message_log_export_${new Date().toISOString().slice(0, 10)}.csv`) {
   downloadCsv(messageLogToCsv(entries), filename);
+}
+
+export function noticeLogToCsv(entries) {
+  return rowsToCsv(entries, NOTICE_LOG_COLUMNS);
+}
+
+export function downloadNoticeLogCsv(entries, filename = `notice_log_export_${new Date().toISOString().slice(0, 10)}.csv`) {
+  downloadCsv(noticeLogToCsv(entries), filename);
 }

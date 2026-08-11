@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getClients, sendAlert, sendAllAlerts, uploadClientsFile, mergeClientsFile,
-  getMessageLog, getSettingsInfo, getEmailPreview,
+  getMessageLog, getNoticeLog, getSettingsInfo, getEmailPreview,
   getStats, getSendAllStatus,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
@@ -105,6 +105,23 @@ describe("getMessageLog", () => {
   it("throws when the response is not ok", async () => {
     global.fetch.mockResolvedValue({ ok: false, status: 500 });
     await expect(getMessageLog()).rejects.toThrow("Failed to load message log: 500");
+  });
+});
+
+describe("getNoticeLog", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => [{ client_id: "CLT001", message_id: "wamid.ABC", notice_id: "meity_series_guidelines_2026" }],
+    });
+    const log = await getNoticeLog();
+    expect(log).toEqual([{ client_id: "CLT001", message_id: "wamid.ABC", notice_id: "meity_series_guidelines_2026" }]);
+    expect(global.fetch).toHaveBeenCalledWith("/api/notice-log", { credentials: "include", headers: {} });
+  });
+
+  it("throws when the response is not ok", async () => {
+    global.fetch.mockResolvedValue({ ok: false, status: 500 });
+    await expect(getNoticeLog()).rejects.toThrow("Failed to load notice log: 500");
   });
 });
 

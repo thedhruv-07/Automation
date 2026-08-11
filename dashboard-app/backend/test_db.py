@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 from db import (
-    init_db, read_clients, find_client_by_id, upsert_clients, RECORD_FIELDS,
+    init_db, read_clients, find_client_by_id, find_clients_by_ids, upsert_clients, RECORD_FIELDS,
     get_broadcast_clients_page,
 )
 
@@ -66,6 +66,19 @@ def test_find_client_by_id_returns_matching_record(mongo_db):
 def test_find_client_by_id_returns_none_for_unknown_id(mongo_db):
     init_db(mongo_db)
     assert find_client_by_id(mongo_db, "NOPE") is None
+
+
+def test_find_clients_by_ids_returns_a_dict_keyed_by_id(mongo_db):
+    _insert_raw(mongo_db, [ROW_A, ROW_B])
+    result = find_clients_by_ids(mongo_db, ["CLT001", "CLT002", "NOPE"])
+    assert set(result.keys()) == {"CLT001", "CLT002"}
+    assert result["CLT001"]["name"] == "Rahul Sharma"
+    assert result["CLT002"]["name"] == "Priya Mehta"
+
+
+def test_find_clients_by_ids_returns_empty_dict_for_empty_input(mongo_db):
+    init_db(mongo_db)
+    assert find_clients_by_ids(mongo_db, []) == {}
 
 
 def test_upsert_replace_inserts_all_rows_and_reports_counts(mongo_db):
@@ -402,6 +415,7 @@ def test_get_stats_eligible_not_emailed_today_excludes_already_emailed(mongo_db)
 from db import get_eligible_clients, get_eligible_count
 from db import (
     is_notice_already_sent, record_notice_sent, get_broadcast_clients, get_notice_eligible_count,
+    load_notice_sent_log,
 )
 
 
@@ -560,6 +574,20 @@ def test_record_and_check_notice_sent(mongo_db):
     assert is_notice_already_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "email") is False
     # A different notice_id for the same client/channel is tracked independently.
     assert is_notice_already_sent(mongo_db, "CLT001", "some_other_notice", "whatsapp") is False
+
+
+def test_load_notice_sent_log_returns_every_recorded_entry(mongo_db):
+    init_db(mongo_db)
+    record_notice_sent(mongo_db, "CLT001", "meity_series_guidelines_2026", "whatsapp", "wamid.ABC", "2026-07-27T10:00:00")
+    record_notice_sent(mongo_db, "CLT002", "meity_series_guidelines_2026", "email", "brevo.XYZ", "2026-07-28T10:00:00")
+
+    entries = load_notice_sent_log(mongo_db)
+
+    assert len(entries) == 2
+    by_client = {e["client_id"]: e for e in entries}
+    assert by_client["CLT001"]["channel"] == "whatsapp"
+    assert by_client["CLT001"]["message_id"] == "wamid.ABC"
+    assert by_client["CLT002"]["channel"] == "email"
 
 
 def test_get_broadcast_clients_returns_every_status(mongo_db):

@@ -24,6 +24,7 @@ from db import (  # noqa: E402
     upsert_clients, find_client_by_id, load_sent_log, save_sent_log,
     is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
     get_eligible_count, get_notice_eligible_count, get_broadcast_clients_page,
+    load_notice_sent_log, find_clients_by_ids,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, filter_alertable, normalize_phone,
@@ -234,10 +235,11 @@ def settings_info():
 @app.get("/api/message-log")
 def message_log():
     sent_log = load_sent_log(DEFAULT_DB_PATH)
+    parsed = [(key.split("|", 2), info) for key, info in sent_log.items()]
+    clients_by_id = find_clients_by_ids(DEFAULT_DB_PATH, [client_id for (client_id, _, _), _ in parsed])
     entries = []
-    for key, info in sent_log.items():
-        client_id, status_tier, _date = key.split("|", 2)
-        found = find_client_by_id(DEFAULT_DB_PATH, client_id) or {}
+    for (client_id, status_tier, _date), info in parsed:
+        found = clients_by_id.get(client_id, {})
         entries.append({
             "client_id": client_id,
             "name": found.get("name", "Unknown"),
@@ -247,6 +249,28 @@ def message_log():
             "phone": info.get("phone"),
             "message_id": info.get("message_id"),
             "sent_at": info.get("sent_at"),
+        })
+    entries.sort(key=lambda e: e["sent_at"] or "", reverse=True)
+    return entries
+
+
+@app.get("/api/notice-log")
+def notice_log():
+    notice_labels = {n["id"]: n["label"] for n in list_notices()}
+    records = load_notice_sent_log(DEFAULT_DB_PATH)
+    clients_by_id = find_clients_by_ids(DEFAULT_DB_PATH, [r["client_id"] for r in records])
+    entries = []
+    for record in records:
+        found = clients_by_id.get(record["client_id"], {})
+        entries.append({
+            "client_id": record["client_id"],
+            "name": found.get("name", "Unknown"),
+            "company": found.get("company", ""),
+            "notice_id": record["notice_id"],
+            "notice_label": notice_labels.get(record["notice_id"], record["notice_id"]),
+            "channel": record["channel"],
+            "message_id": record["message_id"],
+            "sent_at": record["sent_at"],
         })
     entries.sort(key=lambda e: e["sent_at"] or "", reverse=True)
     return entries

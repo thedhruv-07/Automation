@@ -7,6 +7,7 @@ import ClientDataFilters from "./components/ClientDataFilters";
 import ClientTable from "./components/ClientTable";
 import ExcelSyncView from "./components/ExcelSyncView";
 import MessageLogView from "./components/MessageLogView";
+import NoticeLogView from "./components/NoticeLogView";
 import WhatsAppSettingsView from "./components/WhatsAppSettingsView";
 import NoticesView from "./components/NoticesView";
 import SendConfirmModal from "./components/SendConfirmModal";
@@ -16,7 +17,7 @@ import EmailPreviewModal from "./components/EmailPreviewModal";
 import Toast from "./components/Toast";
 import {
   getClients, getStats, sendAlert, sendAllAlerts, getSendAllStatus, uploadClientsFile,
-  mergeClientsFile, getMessageLog, getSettingsInfo, getEmailPreview,
+  mergeClientsFile, getMessageLog, getNoticeLog, getSettingsInfo, getEmailPreview,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients,
@@ -27,7 +28,7 @@ const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
 const BULK_JOB_POLL_MS = 500;
 const VALID_VIEWS = new Set([
-  "dashboard", "clientData", "excelSync", "whatsappSettings", "messageLog", "notices",
+  "dashboard", "clientData", "excelSync", "whatsappSettings", "messageLog", "notices", "noticeLog",
 ]);
 const ACTIVE_VIEW_STORAGE_KEY = "activeView";
 
@@ -450,6 +451,8 @@ export default function App() {
           )}
 
           {activeView === "messageLog" && <MessageLogView fetchLog={getMessageLog} />}
+
+          {activeView === "noticeLog" && <NoticeLogView fetchLog={getNoticeLog} />}
 
           {activeView === "whatsappSettings" && <WhatsAppSettingsView fetchInfo={getSettingsInfo} />}
 

@@ -101,6 +101,17 @@ def find_client_by_id(db: Database, client_id: str) -> dict | None:
     return _doc_to_dict(doc) if doc else None
 
 
+def find_clients_by_ids(db: Database, client_ids: list[str]) -> dict[str, dict]:
+    """Bulk lookup: {client_id: record} for every id found, in one round
+    trip. Callers that would otherwise call find_client_by_id in a loop
+    (e.g. joining a log of hundreds/thousands of entries against the
+    roster) should use this instead -- one query beats one-per-entry."""
+    if not client_ids:
+        return {}
+    docs = db["clients"].find({"_id": {"$in": list(set(client_ids))}})
+    return {doc["_id"]: _doc_to_dict(doc) for doc in docs}
+
+
 def upsert_clients(db: Database, rows: list[tuple], mode: str) -> dict:
     """rows: list of tuples in RECORD_FIELDS order (client_id first, scheme
     right after cert_name).
@@ -482,3 +493,20 @@ def record_notice_sent(db: Database, client_id, notice_id, channel, message_id, 
         {"$set": {"message_id": message_id, "sent_at": sent_at}},
         upsert=True,
     )
+
+
+def load_notice_sent_log(db: Database) -> list[dict]:
+    """Every notice_sent_log entry across every notice/channel, newest first
+    isn't guaranteed here -- callers sort as needed (main.py's /api/notice-log
+    sorts by sent_at)."""
+    init_db(db)
+    return [
+        {
+            "client_id": doc["client_id"],
+            "notice_id": doc["notice_id"],
+            "channel": doc["channel"],
+            "message_id": doc.get("message_id"),
+            "sent_at": doc.get("sent_at"),
+        }
+        for doc in db["notice_sent_log"].find()
+    ]
