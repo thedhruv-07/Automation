@@ -119,6 +119,53 @@ def test_send_notice_email_skips_client_already_sent_to(tmp_path, mongo_db):
     send_fn.assert_not_called()
 
 
+def test_send_notice_email_respects_limit_and_leaves_the_rest_unattempted(tmp_path, mongo_db):
+    """Brevo's send API returns a normal success response even once the
+    account is over its real daily quota -- there's no synchronous
+    rejection to detect. limit is the only thing standing between us and
+    silently recording hundreds of false "sent" results, so once it's hit
+    the remaining eligible clients must be left completely untouched (not
+    attempted, not marked sent) rather than attempted and failing."""
+    db_path = mongo_db
+    row_b = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+             "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE")
+    row_c = ("CLT003", "Amit Verma", "HealthFirst", "a@x.com", "919800000000",
+             "OSHA", "CRS", "OSHA-2", "01-01-2025", "01-01-2027", "https://x", "ACTIVE")
+    upsert_clients(db_path, [CRS_ROW, row_b, row_c], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
+
+    results = send_notice_email(
+        db_path, "meity_series_guidelines_2026", "api-key", "sender@x.com", "Absolute Veritas",
+        send_fn=send_fn, scheme="CRS", limit=1,
+    )
+
+    assert len(results) == 1
+    assert results[0]["action"] == "sent"
+    assert send_fn.call_count == 1
+    from db import is_notice_already_sent
+    assert is_notice_already_sent(db_path, "CLT001", "meity_series_guidelines_2026", "email") is True
+    assert is_notice_already_sent(db_path, "CLT002", "meity_series_guidelines_2026", "email") is False
+    assert is_notice_already_sent(db_path, "CLT003", "meity_series_guidelines_2026", "email") is False
+
+
+def test_send_notice_email_test_send_counts_against_limit(tmp_path, mongo_db):
+    """A test-email send still makes a real Brevo API call and consumes
+    real quota, so it must count against the limit too."""
+    db_path = mongo_db
+    row_b = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+             "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE")
+    upsert_clients(db_path, [CRS_ROW, row_b], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-test"}))
+
+    results = send_notice_email(
+        db_path, "meity_series_guidelines_2026", "api-key", "sender@x.com", "Absolute Veritas",
+        send_fn=send_fn, scheme="CRS", limit=1, test_email="test@example.com",
+    )
+
+    assert len(results) == 1
+    assert send_fn.call_count == 1
+
+
 def test_send_notice_email_uses_the_notice_module_content(tmp_path, mongo_db):
     """Proves the email actually sent is the notice's own content (subject,
     URL), not the renewal-alert template -- the whole point of this feature

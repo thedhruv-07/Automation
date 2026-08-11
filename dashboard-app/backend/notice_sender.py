@@ -90,7 +90,19 @@ def send_notice_email(
     dry_run: bool = False, test_email: str | None = None, send_fn=post_email_via_brevo,
     on_progress=None, status: str | None = None, cert_type: str | None = None,
     expiry_before: str | None = None, search: str | None = None, scheme: str | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
+    """limit caps how many actual sends (action == "sent") this call makes --
+    e.g. Brevo's real daily quota. Once hit, remaining eligible records are
+    left untouched (not attempted, not marked sent), so a later call
+    naturally picks them up via the same permanent notice_sent_log dedup
+    that already skips today's sent ones.
+
+    This cap matters more here than it might look: Brevo's send API
+    returns a normal 200/201 with a real message_id even when the account
+    is over quota -- there's no synchronous rejection to detect, so
+    without this limit the only way to find out a send didn't really
+    happen is checking Brevo's own event log after the fact."""
     module = get_notice_module(notice_id)
     if module is None:
         raise ValueError(f"Unknown notice_id: {notice_id!r}")
@@ -100,8 +112,12 @@ def send_notice_email(
         search=search, scheme=scheme,
     )
     results = []
+    sent_count = 0
 
     for rec in records:
+        if limit is not None and sent_count >= limit:
+            break
+
         to_email = test_email or rec.get("email")
 
         if not to_email or "@" not in str(to_email):
@@ -135,6 +151,9 @@ def send_notice_email(
             try:
                 ok, info = send_fn(payload, brevo_api_key)
                 if ok:
+                    # Counts against the quota limit even for a test send --
+                    # it still consumes one real Brevo API call either way.
+                    sent_count += 1
                     if not test_email:
                         record_notice_sent(
                             db_path, rec["client_id"], notice_id, "email",

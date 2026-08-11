@@ -31,7 +31,7 @@ from whatsapp_renewal_alerts import (  # noqa: E402
     send_one_alert, run,
 )
 from email_alerts import (  # noqa: E402
-    send_email_via_brevo, send_one_email_alert, run_email_alerts,
+    send_email_via_brevo, send_one_email_alert, run_email_alerts, BREVO_DAILY_LIMIT,
 )
 from email_template import build_email_html  # noqa: E402
 from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
@@ -506,7 +506,7 @@ def _run_send_all_email_job(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before,
-            search=search, scheme=scheme,
+            search=search, scheme=scheme, limit=BREVO_DAILY_LIMIT,
         )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
@@ -730,6 +730,7 @@ def _run_send_notice_email_job(
             DEFAULT_DB_PATH, notice_id, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before, search=search, scheme=scheme,
+            limit=BREVO_DAILY_LIMIT,
         )
     except Exception as exc:
         _send_notice_email_jobs[job_id]["error"] = str(exc)
