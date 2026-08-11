@@ -40,6 +40,9 @@ describe("messageLogToCsv", () => {
     expect(lines[1]).toContain(formatted.includes(",") ? `"${formatted}"` : formatted);
     // the raw ISO timestamp (with its literal "T" separator) must not leak into the export
     expect(lines[1]).not.toContain("2026-07-18T10:00:00");
+    // phone is wrapped in ="..." (CSV-escaped as ""..."") so Excel treats it
+    // as text instead of mangling it into scientific notation
+    expect(lines[1]).toContain('"=""919876543210"""');
   });
 });
 
@@ -55,5 +58,15 @@ describe("noticeLogToCsv", () => {
     const formatted = formatSentAt("2026-07-18T10:00:00");
     expect(lines[1]).toContain(formatted.includes(",") ? `"${formatted}"` : formatted);
     expect(lines[1]).not.toContain("2026-07-18T10:00:00");
+    expect(lines[1]).toContain('"=""919876543210"""');
+  });
+
+  it("leaves a blank phone as an empty field, not =\"\"", () => {
+    const csv = noticeLogToCsv([
+      { client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", phone: null,
+        notice_label: "Notice", channel: "email", sent_at: "2026-07-18T10:00:00", message_id: "brevo.ABC" },
+    ]);
+    const lines = csv.split("\n");
+    expect(lines[1]).toContain(",TechCorp,,Notice,");
   });
 });

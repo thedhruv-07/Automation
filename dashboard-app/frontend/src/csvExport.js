@@ -1,5 +1,14 @@
 import { formatSentAt } from "./sortUtils";
 
+// Excel auto-detects long digit strings (phone numbers) as numbers, mangling
+// them into scientific notation (8.67699E+12) and right-aligning them like
+// other numbers. Wrapping in ="..." forces Excel to evaluate it as a formula
+// that returns the literal text, which displays left-aligned and unmangled.
+function forceExcelText(value) {
+  const str = String(value ?? "");
+  return str ? `="${str}"` : str;
+}
+
 const CLIENT_COLUMNS = [
   { key: "client_id", header: "Client ID" },
   { key: "name", header: "Full Name" },
@@ -16,7 +25,7 @@ const MESSAGE_LOG_COLUMNS = [
   { key: "company", header: "Company" },
   { key: "cert_name", header: "Certification" },
   { key: "status_tier", header: "Alert Tier" },
-  { key: "phone", header: "Phone" },
+  { key: "phone", header: "Phone", format: forceExcelText },
   { key: "sent_at", header: "Sent At", format: formatSentAt },
   { key: "message_id", header: "Message ID" },
 ];
@@ -25,7 +34,7 @@ const NOTICE_LOG_COLUMNS = [
   { key: "client_id", header: "Client ID" },
   { key: "name", header: "Full Name" },
   { key: "company", header: "Company" },
-  { key: "phone", header: "Phone" },
+  { key: "phone", header: "Phone", format: forceExcelText },
   { key: "notice_label", header: "Notice" },
   { key: "channel", header: "Channel" },
   { key: "sent_at", header: "Sent At", format: formatSentAt },
