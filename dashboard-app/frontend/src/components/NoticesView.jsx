@@ -5,19 +5,31 @@ import EmailPreviewModal from "./EmailPreviewModal";
 import NoticeClientsTable from "./NoticeClientsTable";
 
 const JOB_POLL_MS = 500;
+const FILTERS_STORAGE_KEY = "noticesFilters";
+
+function loadStoredFilters() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FILTERS_STORAGE_KEY));
+    if (!stored || typeof stored !== "object") return null;
+    return stored;
+  } catch {
+    return null;
+  }
+}
 
 export default function NoticesView({
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients,
   schemeOptions = [], certOptions = [],
 }) {
+  const stored = loadStoredFilters();
   const [notices, setNotices] = useState([]);
-  const [selectedNoticeId, setSelectedNoticeId] = useState("");
+  const [selectedNoticeId, setSelectedNoticeId] = useState(stored?.selectedNoticeId || "");
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [certType, setCertType] = useState([]);
-  const [scheme, setScheme] = useState("ALL");
-  const [status, setStatus] = useState("ALL");
-  const [expiryBefore, setExpiryBefore] = useState("");
+  const [certType, setCertType] = useState(Array.isArray(stored?.certType) ? stored.certType : []);
+  const [scheme, setScheme] = useState(stored?.scheme || "ALL");
+  const [status, setStatus] = useState(stored?.status || "ALL");
+  const [expiryBefore, setExpiryBefore] = useState(stored?.expiryBefore || "");
   const [eligibleCount, setEligibleCount] = useState({ whatsapp: 0, email: 0 });
   const [clientsPageNum, setClientsPageNum] = useState(1);
   const [clientsPage, setClientsPage] = useState({ rows: [], total: 0, page: 1, page_size: 8 });
@@ -32,6 +44,13 @@ export default function NoticesView({
   useEffect(() => {
     listNotices().then(setNotices).catch((err) => setError(err.message));
   }, [listNotices]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      FILTERS_STORAGE_KEY,
+      JSON.stringify({ selectedNoticeId, status, certType, scheme, expiryBefore }),
+    );
+  }, [selectedNoticeId, status, certType, scheme, expiryBefore]);
 
   useEffect(() => {
     if (!selectedNoticeId) return;

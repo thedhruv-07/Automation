@@ -338,6 +338,25 @@ describe("App", () => {
     expect(screen.queryByText("Rahul Sharma")).not.toBeInTheDocument();
   });
 
+  it("keeps the scheme and cert-type filters across a refresh (simulated by unmount/remount)", async () => {
+    api.getStats.mockResolvedValue({ ...sampleStats, schemes: ["ISI", "CRS"] });
+    const { unmount } = render(<App />);
+    await waitFor(() => screen.getByText("Rahul Sharma"));
+    fireEvent.change(screen.getByLabelText("Filter by scheme"), { target: { value: "CRS" } });
+    fireEvent.click(screen.getByLabelText("Filter by certification type"));
+    const dropdownOption = screen.getAllByText("ISO 9001").find((el) => el.closest("label"));
+    fireEvent.click(dropdownOption);
+    await waitFor(() => expect(api.getClients).toHaveBeenCalledWith(
+      expect.objectContaining({ scheme: "CRS", certType: ["ISO 9001"] })
+    ));
+    unmount();
+
+    render(<App />);
+    await waitFor(() => expect(api.getClients).toHaveBeenCalledWith(
+      expect.objectContaining({ scheme: "CRS", certType: ["ISO 9001"] })
+    ));
+  });
+
   it("navigates to Message Log and displays fetched entries", async () => {
     api.getMessageLog.mockResolvedValue([
       { client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", cert_name: "ISO 9001",

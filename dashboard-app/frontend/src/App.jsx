@@ -31,22 +31,36 @@ const VALID_VIEWS = new Set([
   "dashboard", "clientData", "excelSync", "whatsappSettings", "messageLog", "notices", "noticeLog",
 ]);
 const ACTIVE_VIEW_STORAGE_KEY = "activeView";
+const CLIENT_FILTERS_STORAGE_KEY = "clientDataFilters";
+
+function loadStoredClientFilters() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CLIENT_FILTERS_STORAGE_KEY));
+    if (!stored || typeof stored !== "object") return null;
+    return stored;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const [activeView, setActiveView] = useState(() => {
     const stored = localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
     return VALID_VIEWS.has(stored) ? stored : "clientData";
   });
+  const storedClientFilters = loadStoredClientFilters();
   const [page, setPage] = useState({ rows: [], total: 0, page: 1, page_size: PAGE_SIZE });
   const [clientsLoading, setClientsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [stats, setStats] = useState(null);
-  const [activeStatus, setActiveStatus] = useState("ALL");
+  const [activeStatus, setActiveStatus] = useState(storedClientFilters?.activeStatus || "ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [certType, setCertType] = useState([]);
-  const [scheme, setScheme] = useState("ALL");
-  const [expiryBefore, setExpiryBefore] = useState("");
+  const [certType, setCertType] = useState(
+    Array.isArray(storedClientFilters?.certType) ? storedClientFilters.certType : []
+  );
+  const [scheme, setScheme] = useState(storedClientFilters?.scheme || "ALL");
+  const [expiryBefore, setExpiryBefore] = useState(storedClientFilters?.expiryBefore || "");
   const [pageNum, setPageNum] = useState(1);
   const [sortKey, setSortKey] = useState(null);
   const [sortAsc, setSortAsc] = useState(true);
@@ -66,6 +80,13 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, activeView);
   }, [activeView]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      CLIENT_FILTERS_STORAGE_KEY,
+      JSON.stringify({ activeStatus, certType, scheme, expiryBefore }),
+    );
+  }, [activeStatus, certType, scheme, expiryBefore]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), SEARCH_DEBOUNCE_MS);

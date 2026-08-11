@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import NoticesView from "./NoticesView";
+
+beforeEach(() => {
+  localStorage.clear();
+});
 
 function setup(overrides = {}) {
   const props = {
@@ -142,6 +146,22 @@ describe("NoticesView", () => {
     fireEvent.click(screen.getByText("OSHA"));
     await waitFor(() => expect(props.getNoticeEligibleCount).toHaveBeenCalledWith(
       "transition_facilitation_2026", expect.objectContaining({ certType: ["OSHA"] })
+    ));
+  });
+
+  it("keeps the selected notice, scheme, and cert types across a refresh (simulated by unmount/remount)", async () => {
+    const overrides = { certOptions: ["ISO 9001", "OSHA"], schemeOptions: ["ISI", "CRS"] };
+    const { unmount } = setup(overrides);
+    await waitFor(() => screen.getByLabelText("Which notice?"));
+    fireEvent.change(screen.getByLabelText("Which notice?"), { target: { value: "transition_facilitation_2026" } });
+    fireEvent.change(screen.getByLabelText("Filter by scheme"), { target: { value: "CRS" } });
+    fireEvent.click(screen.getByLabelText("Filter by certification type"));
+    fireEvent.click(screen.getByText("OSHA"));
+    unmount();
+
+    const { props } = setup(overrides);
+    await waitFor(() => expect(props.getNoticeEligibleCount).toHaveBeenCalledWith(
+      "transition_facilitation_2026", expect.objectContaining({ scheme: "CRS", certType: ["OSHA"] })
     ));
   });
 });
