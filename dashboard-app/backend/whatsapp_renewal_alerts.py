@@ -16,7 +16,13 @@ REMINDER_INTERVAL_DAYS = 20
 
 
 def normalize_phone(raw: str | int) -> str:
-    return re.sub(r"\D", "", str(raw))
+    digits = re.sub(r"\D", "", str(raw))
+    # Some contact data uses "00" as the international trunk-dialing prefix
+    # instead of "+" (e.g. "0086-0755-..." for a Chinese number) -- WhatsApp's
+    # API expects country_code+number with no such prefix, so strip it.
+    if digits.startswith("00"):
+        digits = digits[2:]
+    return digits
 
 
 def format_expiry(value) -> str:

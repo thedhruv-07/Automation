@@ -18,6 +18,19 @@ def test_normalize_phone_strips_spaces_and_hyphens():
     assert normalize_phone("+91 98765-43210") == "919876543210"
 
 
+def test_normalize_phone_strips_00_international_trunk_prefix():
+    """Some contact data uses "00" as the international access code instead
+    of "+" -- WhatsApp's API expects country_code+number with neither."""
+    assert normalize_phone("0091 98765 43210") == "919876543210"
+
+
+def test_normalize_phone_strips_00_prefix_even_when_result_is_still_malformed():
+    """The function only strips the trunk prefix -- it doesn't validate
+    whether what's left is a real deliverable number (e.g. a landline).
+    That validation happens on Meta's side, not here."""
+    assert normalize_phone("(0086)-0755-86360200") == "86075586360200"
+
+
 def test_format_expiry_from_ddmmyyyy_string():
     assert format_expiry("24-07-2026") == "24 July 2026"
 
