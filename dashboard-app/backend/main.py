@@ -266,6 +266,7 @@ def notice_log():
             "client_id": record["client_id"],
             "name": found.get("name", "Unknown"),
             "company": found.get("company", ""),
+            "phone": found.get("phone"),
             "notice_id": record["notice_id"],
             "notice_label": notice_labels.get(record["notice_id"], record["notice_id"]),
             "channel": record["channel"],

@@ -123,7 +123,7 @@ export default function NoticeLogView({ fetchLog }) {
                     </span>
                     <div>
                       <p className="font-medium">{e.name}</p>
-                      <p className="text-xs text-ink-muted">{e.company}</p>
+                      <p className="text-xs text-ink-muted">{e.company}{e.phone ? ` · ${e.phone}` : ""}</p>
                     </div>
                   </div>
                 </td>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clientsToCsv, messageLogToCsv } from "./csvExport";
+import { clientsToCsv, messageLogToCsv, noticeLogToCsv } from "./csvExport";
 
 describe("clientsToCsv", () => {
   it("builds a header row plus one row per client", () => {
@@ -36,5 +36,20 @@ describe("messageLogToCsv", () => {
     const lines = csv.split("\n");
     expect(lines[0]).toBe("Client ID,Full Name,Company,Certification,Alert Tier,Phone,Sent At,Message ID");
     expect(lines[1]).toBe("CLT001,Rahul Sharma,TechCorp,ISO 9001,CRITICAL,919876543210,2026-07-18T10:00:00,wamid.ABC");
+  });
+});
+
+describe("noticeLogToCsv", () => {
+  it("builds a header row plus one row per log entry", () => {
+    const csv = noticeLogToCsv([
+      { client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", phone: "919876543210",
+        notice_label: "MeitY Series Guidelines — IS/IEC 62368-1:2023", channel: "whatsapp",
+        sent_at: "2026-07-18T10:00:00", message_id: "wamid.ABC" },
+    ]);
+    const lines = csv.split("\n");
+    expect(lines[0]).toBe("Client ID,Full Name,Company,Phone,Notice,Channel,Sent At,Message ID");
+    expect(lines[1]).toBe(
+      "CLT001,Rahul Sharma,TechCorp,919876543210,MeitY Series Guidelines — IS/IEC 62368-1:2023,whatsapp,2026-07-18T10:00:00,wamid.ABC"
+    );
   });
 });

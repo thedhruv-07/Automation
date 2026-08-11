@@ -23,6 +23,7 @@ const NOTICE_LOG_COLUMNS = [
   { key: "client_id", header: "Client ID" },
   { key: "name", header: "Full Name" },
   { key: "company", header: "Company" },
+  { key: "phone", header: "Phone" },
   { key: "notice_label", header: "Notice" },
   { key: "channel", header: "Channel" },
   { key: "sent_at", header: "Sent At" },

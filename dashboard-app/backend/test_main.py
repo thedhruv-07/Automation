@@ -2020,6 +2020,7 @@ def test_notice_log_returns_entries_joined_with_client_and_notice_data(tmp_path,
     assert data[0]["channel"] == "email"
     assert data[0]["name"] == "Rahul Sharma"
     assert data[0]["company"] == "TechCorp"
+    assert data[0]["phone"] == "919876543210"
     assert data[0]["notice_id"] == "meity_series_guidelines_2026"
     assert data[0]["notice_label"] == "MeitY Series Guidelines — IS/IEC 62368-1:2023"
 
