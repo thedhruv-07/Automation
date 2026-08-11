@@ -8,6 +8,7 @@ export default function NoticeLogView({ fetchLog }) {
   const [entries, setEntries] = useState([]);
   const [loadError, setLoadError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [channelFilter, setChannelFilter] = useState("ALL");
   const [page, setPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -28,6 +29,9 @@ export default function NoticeLogView({ fetchLog }) {
   }, []);
 
   let rows = entries;
+  if (channelFilter !== "ALL") {
+    rows = rows.filter((e) => e.channel === channelFilter);
+  }
   if (searchTerm) {
     const term = searchTerm.toLowerCase();
     rows = rows.filter(
@@ -37,7 +41,7 @@ export default function NoticeLogView({ fetchLog }) {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, channelFilter]);
 
   const totalRows = rows.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
@@ -55,6 +59,16 @@ export default function NoticeLogView({ fetchLog }) {
           </p>
         </div>
         <div className="flex gap-3">
+          <select
+            value={channelFilter}
+            onChange={(e) => setChannelFilter(e.target.value)}
+            aria-label="Filter by channel"
+            className="px-3 py-1.5 rounded-lg border border-line bg-surface text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent"
+          >
+            <option value="ALL">All Channels</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="email">Email</option>
+          </select>
           <input
             type="text"
             value={searchTerm}

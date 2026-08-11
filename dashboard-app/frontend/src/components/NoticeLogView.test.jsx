@@ -35,6 +35,24 @@ describe("NoticeLogView", () => {
     expect(screen.getByText("Priya Mehta")).toBeInTheDocument();
   });
 
+  it("filters entries by channel", async () => {
+    const fetchLog = vi.fn().mockResolvedValue(entries);
+    render(<NoticeLogView fetchLog={fetchLog} />);
+    await waitFor(() => screen.getByText("Rahul Sharma"));
+
+    fireEvent.change(screen.getByLabelText("Filter by channel"), { target: { value: "whatsapp" } });
+    expect(screen.getByText("Rahul Sharma")).toBeInTheDocument();
+    expect(screen.queryByText("Priya Mehta")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter by channel"), { target: { value: "email" } });
+    expect(screen.queryByText("Rahul Sharma")).not.toBeInTheDocument();
+    expect(screen.getByText("Priya Mehta")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter by channel"), { target: { value: "ALL" } });
+    expect(screen.getByText("Rahul Sharma")).toBeInTheDocument();
+    expect(screen.getByText("Priya Mehta")).toBeInTheDocument();
+  });
+
   it("re-fetches when Refresh Log is clicked", async () => {
     const fetchLog = vi.fn().mockResolvedValue(entries);
     render(<NoticeLogView fetchLog={fetchLog} />);
