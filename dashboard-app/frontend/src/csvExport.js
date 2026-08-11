@@ -1,3 +1,5 @@
+import { formatSentAt } from "./sortUtils";
+
 const CLIENT_COLUMNS = [
   { key: "client_id", header: "Client ID" },
   { key: "name", header: "Full Name" },
@@ -15,7 +17,7 @@ const MESSAGE_LOG_COLUMNS = [
   { key: "cert_name", header: "Certification" },
   { key: "status_tier", header: "Alert Tier" },
   { key: "phone", header: "Phone" },
-  { key: "sent_at", header: "Sent At" },
+  { key: "sent_at", header: "Sent At", format: formatSentAt },
   { key: "message_id", header: "Message ID" },
 ];
 
@@ -26,7 +28,7 @@ const NOTICE_LOG_COLUMNS = [
   { key: "phone", header: "Phone" },
   { key: "notice_label", header: "Notice" },
   { key: "channel", header: "Channel" },
-  { key: "sent_at", header: "Sent At" },
+  { key: "sent_at", header: "Sent At", format: formatSentAt },
   { key: "message_id", header: "Message ID" },
 ];
 
@@ -40,7 +42,10 @@ function escapeCsvValue(value) {
 
 function rowsToCsv(rows, columns) {
   const header = columns.map((c) => c.header).join(",");
-  const lines = rows.map((row) => columns.map((col) => escapeCsvValue(row[col.key])).join(","));
+  const lines = rows.map((row) => columns.map((col) => {
+    const value = col.format ? col.format(row[col.key]) : row[col.key];
+    return escapeCsvValue(value);
+  }).join(","));
   return [header, ...lines].join("\n");
 }
 

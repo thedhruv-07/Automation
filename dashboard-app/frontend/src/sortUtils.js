@@ -75,6 +75,14 @@ export function sortClients(clients, sortKey, sortAsc) {
   return rows;
 }
 
+export function formatSentAt(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso || "—";
+  return d.toLocaleString(undefined, {
+    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
 export function isoDateMonthsFromToday(monthsAhead) {
   // Date.setMonth rolls overflow days into the following month (e.g. 31 Jan +
   // 1 month -> 3 Mar, not a clamped 28/29 Feb) -- that's the native JS

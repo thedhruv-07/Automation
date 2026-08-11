@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { clientsToCsv, messageLogToCsv, noticeLogToCsv } from "./csvExport";
+import { formatSentAt } from "./sortUtils";
 
 describe("clientsToCsv", () => {
   it("builds a header row plus one row per client", () => {
@@ -28,19 +29,22 @@ describe("clientsToCsv", () => {
 });
 
 describe("messageLogToCsv", () => {
-  it("builds a header row plus one row per log entry", () => {
+  it("builds a header row plus one row per log entry, with Sent At formatted for readability", () => {
     const csv = messageLogToCsv([
       { client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", cert_name: "ISO 9001",
         status_tier: "CRITICAL", phone: "919876543210", sent_at: "2026-07-18T10:00:00", message_id: "wamid.ABC" },
     ]);
     const lines = csv.split("\n");
     expect(lines[0]).toBe("Client ID,Full Name,Company,Certification,Alert Tier,Phone,Sent At,Message ID");
-    expect(lines[1]).toBe("CLT001,Rahul Sharma,TechCorp,ISO 9001,CRITICAL,919876543210,2026-07-18T10:00:00,wamid.ABC");
+    const formatted = formatSentAt("2026-07-18T10:00:00");
+    expect(lines[1]).toContain(formatted.includes(",") ? `"${formatted}"` : formatted);
+    // the raw ISO timestamp (with its literal "T" separator) must not leak into the export
+    expect(lines[1]).not.toContain("2026-07-18T10:00:00");
   });
 });
 
 describe("noticeLogToCsv", () => {
-  it("builds a header row plus one row per log entry", () => {
+  it("builds a header row plus one row per log entry, with Sent At formatted for readability", () => {
     const csv = noticeLogToCsv([
       { client_id: "CLT001", name: "Rahul Sharma", company: "TechCorp", phone: "919876543210",
         notice_label: "MeitY Series Guidelines — IS/IEC 62368-1:2023", channel: "whatsapp",
@@ -48,8 +52,8 @@ describe("noticeLogToCsv", () => {
     ]);
     const lines = csv.split("\n");
     expect(lines[0]).toBe("Client ID,Full Name,Company,Phone,Notice,Channel,Sent At,Message ID");
-    expect(lines[1]).toBe(
-      "CLT001,Rahul Sharma,TechCorp,919876543210,MeitY Series Guidelines — IS/IEC 62368-1:2023,whatsapp,2026-07-18T10:00:00,wamid.ABC"
-    );
+    const formatted = formatSentAt("2026-07-18T10:00:00");
+    expect(lines[1]).toContain(formatted.includes(",") ? `"${formatted}"` : formatted);
+    expect(lines[1]).not.toContain("2026-07-18T10:00:00");
   });
 });

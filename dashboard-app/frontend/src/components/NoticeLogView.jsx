@@ -1,16 +1,8 @@
 import { useEffect, useState } from "react";
-import { initialsFor } from "../sortUtils";
+import { initialsFor, formatSentAt } from "../sortUtils";
 import { downloadNoticeLogCsv } from "../csvExport";
 
 const PAGE_SIZE = 8;
-
-function formatSentAt(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso || "—";
-  return d.toLocaleString(undefined, {
-    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
-}
 
 export default function NoticeLogView({ fetchLog }) {
   const [entries, setEntries] = useState([]);
