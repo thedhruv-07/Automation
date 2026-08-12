@@ -935,7 +935,7 @@ git commit -m "feat: add /api/adhoc-notices endpoints for phone-list broadcasts"
 
 ---
 
-### Task 6: Phone-list upload — shared parsing, `db.py` storage, CLI script, and an `/api` endpoint
+### Task 6: Phone-list upload — shared parsing, `db.py` storage, CLI script, `/api` endpoint, and Excel Sync UI
 
 **Design change from the original spec:** the design doc described a one-time, engineer-run CLI script as the only way to load a phone list. After seeing the actual Excel Sync page, a reusable **upload UI** (both Replace and Merge, matching the existing roster upload's two-button pattern) is worth building instead — so this list (and any future ad-hoc list) can be loaded/reloaded without needing a script run by hand each time. The parsing logic is shared between the CLI script (kept, for scripted/offline use) and the new endpoint, so neither duplicates the other.
 
@@ -946,6 +946,11 @@ git commit -m "feat: add /api/adhoc-notices endpoints for phone-list broadcasts"
 - Modify: `dashboard-app/backend/test_db.py`
 - Modify: `dashboard-app/backend/main.py`
 - Modify: `dashboard-app/backend/test_main.py`
+- Modify: `dashboard-app/frontend/src/api.js`
+- Modify: `dashboard-app/frontend/src/api.test.js`
+- Modify: `dashboard-app/frontend/src/components/ExcelSyncView.jsx`
+- Modify: `dashboard-app/frontend/src/components/ExcelSyncView.test.jsx`
+- Modify: `dashboard-app/frontend/src/App.jsx`
 
 - [ ] **Step 1: Write the shared parsing module**
 
@@ -1324,7 +1329,7 @@ def _write_xlsx_sheet(path, sheet_title, headers, rows):
     wb.save(path)
 ```
 
-- [ ] **Step 8: Run the tests**
+- [ ] **Step 8: Run the backend tests**
 
 Run: `cd dashboard-app/backend && python -m pytest test_import_adhoc_recipients.py test_db.py test_main.py -q -k "adhoc"`
 Expected: all pass.
@@ -1332,31 +1337,403 @@ Expected: all pass.
 Run: `cd dashboard-app/backend && python -m pytest -q`
 Expected: all pass (full suite, no regressions).
 
-- [ ] **Step 9: Run the real import for the first time**
+- [ ] **Step 9: Add `uploadAdhocRecipientsFile` to `api.js`**
 
-The UI (Task 7) will handle re-uploads going forward, but the very first load can go through the same endpoint via a quick script, or through the UI once Task 7 is done and the local dev server is running with `Numbers_Only_Deduplicated.xlsx` selected. Either is fine — there's no need to use the CLI script specifically now that the endpoint exists, though it still works identically if preferred:
+Add to `dashboard-app/frontend/src/api.js`, after `mergeClientsFile` (both existing upload/merge functions, so this reads naturally alongside them):
 
-Run: `cd dashboard-app/backend && python import_adhoc_recipients.py "C:\Users\dhruv\OneDrive\Desktop\Numbers_Only_Deduplicated.xlsx" independence_day_2026 replace`
-Expected: prints `Replaced 2692 recipients for notice_id='independence_day_2026' (skipped 0 blank rows in the file, 0 already on file).` — if the count differs from 2692, stop and check why before proceeding.
+```js
 
-- [ ] **Step 10: Verify directly against the real database**
+export async function uploadAdhocRecipientsFile(noticeId, file, mode) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("mode", mode);
+  const res = await fetch(`${API_BASE}/api/adhoc-notices/${noticeId}/upload-recipients`, {
+    method: "POST", credentials: "include", headers: {}, body: formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Upload failed: ${res.status}`);
+  }
+  return data;
+}
+```
+
+- [ ] **Step 10: Add `api.test.js` tests**
+
+Add to `dashboard-app/frontend/src/api.test.js`:
+
+```js
+describe("uploadAdhocRecipientsFile", () => {
+  it("posts the file and mode, returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true, json: async () => ({ status: "ok", imported: 2692, skipped_duplicates: 0, skipped_blank_in_file: 0 }),
+    });
+    const file = new File(["x"], "numbers.xlsx");
+    const result = await uploadAdhocRecipientsFile("independence_day_2026", file, "replace");
+    expect(result.imported).toBe(2692);
+    const [url, opts] = global.fetch.mock.calls[0];
+    expect(url).toBe("/api/adhoc-notices/independence_day_2026/upload-recipients");
+    expect(opts.method).toBe("POST");
+    expect(opts.body.get("mode")).toBe("replace");
+  });
+
+  it("throws the backend's detail message on failure", async () => {
+    global.fetch.mockResolvedValue({ ok: false, status: 400, json: async () => ({ detail: "bad file" }) });
+    const file = new File(["x"], "numbers.xlsx");
+    await expect(uploadAdhocRecipientsFile("independence_day_2026", file, "replace")).rejects.toThrow("bad file");
+  });
+});
+```
+
+Add `uploadAdhocRecipientsFile` to the existing `import { ... } from "./api";` block at the top of `api.test.js`.
+
+- [ ] **Step 11: Extend `ExcelSyncView.jsx` with an ad-hoc phone-list option**
+
+Replace the full contents of `dashboard-app/frontend/src/components/ExcelSyncView.jsx`:
+
+```jsx
+import { useRef, useState } from "react";
+import { downloadClientTemplate } from "../api";
+
+const FORMAT_LABELS = { bis_isi: "BIS ISI licence", crs: "CRS registration" };
+const ADHOC_PREFIX = "adhoc:";
+
+export default function ExcelSyncView({ onUpload, onMerge, adhocNotices = [], onUploadAdhocRecipients }) {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [importFormat, setImportFormat] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const [runningAction, setRunningAction] = useState(null); // "replace" | "merge" | null
+  const [result, setResult] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const adhocNoticeId = importFormat.startsWith(ADHOC_PREFIX) ? importFormat.slice(ADHOC_PREFIX.length) : null;
+
+  function pickFile(file) {
+    if (!file) return;
+    setSelectedFile(file);
+    setResult(null);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setDragActive(false);
+    pickFile(e.dataTransfer.files?.[0]);
+  }
+
+  async function handleUploadClick() {
+    if (!selectedFile || !importFormat) return;
+    setRunningAction("replace");
+    try {
+      if (adhocNoticeId) {
+        const res = await onUploadAdhocRecipients(adhocNoticeId, selectedFile, "replace");
+        setResult({ type: "success", mode: "adhoc-replace", ...res });
+      } else {
+        const res = await onUpload(selectedFile, importFormat);
+        setResult({ type: "success", mode: "replace", rowCount: res.row_count, format: res.format, stats: res.stats });
+      }
+      setSelectedFile(null);
+      setImportFormat("");
+    } catch (err) {
+      setResult({ type: "error", message: err.message });
+    } finally {
+      setRunningAction(null);
+    }
+  }
+
+  async function handleMergeClick() {
+    if (!selectedFile || !importFormat) return;
+    setRunningAction("merge");
+    try {
+      if (adhocNoticeId) {
+        const res = await onUploadAdhocRecipients(adhocNoticeId, selectedFile, "merge");
+        setResult({ type: "success", mode: "adhoc-merge", ...res });
+      } else {
+        const res = await onMerge(selectedFile, importFormat);
+        setResult({
+          type: "success", mode: "merge", rowCount: res.row_count, format: res.format,
+          stats: res.stats, added: res.added, skippedDuplicates: res.skipped_duplicates,
+        });
+      }
+      setSelectedFile(null);
+      setImportFormat("");
+    } catch (err) {
+      setResult({ type: "error", message: err.message });
+    } finally {
+      setRunningAction(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-end justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-ink-primary">Excel Sync</h2>
+          <p className="text-ink-secondary text-sm mt-1">
+            Replace the client roster, or merge in new clients from an updated spreadsheet.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={downloadClientTemplate}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-ink-secondary border border-line hover:text-ink-primary transition-colors"
+        >
+          Download Template
+        </button>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-ink-secondary mb-2">
+          File format
+        </label>
+        <select
+          value={importFormat}
+          onChange={(e) => setImportFormat(e.target.value)}
+          aria-label="Import format"
+          className="min-w-[220px] bg-surface-page border border-line rounded-lg px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+        >
+          <option value="" disabled>-- Select format --</option>
+          <option value="roster">Roster (dashboard template)</option>
+          <option value="bis_isi">BIS ISI (raw government export)</option>
+          <option value="crs">CRS (raw government export)</option>
+          <option value="fmcs" disabled>FMCS (coming soon)</option>
+          {adhocNotices.length > 0 && (
+            <optgroup label="Ad-hoc phone lists">
+              {adhocNotices.map((n) => (
+                <option key={n.id} value={`${ADHOC_PREFIX}${n.id}`}>{n.label}</option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </div>
+
+      <div
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={handleDrop}
+        className={`bg-surface border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
+          dragActive ? "border-accent bg-accent/5" : "border-line"
+        }`}
+      >
+        <svg
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round" className="h-12 w-12 text-accent mb-4" aria-hidden="true"
+        >
+          <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5-5 5 5M12 5v12" />
+        </svg>
+        <p className="font-semibold text-ink-primary mb-1">
+          {selectedFile ? selectedFile.name : "Drag and drop your .xlsx file here, or click to browse"}
+        </p>
+        <p className="text-xs text-ink-muted">
+          Select the file's format above, then drop it here or click to browse.
+        </p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx"
+          aria-label="Upload client spreadsheet"
+          className="hidden"
+          onChange={(e) => pickFile(e.target.files?.[0])}
+        />
+      </div>
+
+      {selectedFile && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            disabled={runningAction !== null || !importFormat}
+            className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors disabled:opacity-50"
+          >
+            {runningAction === "replace" ? "Uploading…" : "Upload and Replace Client Data"}
+          </button>
+          <button
+            type="button"
+            onClick={handleMergeClick}
+            disabled={runningAction !== null || !importFormat}
+            className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/5 transition-colors disabled:opacity-50"
+          >
+            {runningAction === "merge" ? "Merging…" : "Upload and Merge with Existing Data"}
+          </button>
+        </div>
+      )}
+
+      {result?.type === "success" && result.mode?.startsWith("adhoc") && (
+        <div className="bg-status-good/10 border border-status-good/30 rounded-lg px-4 py-2 text-sm text-ink-primary">
+          {result.mode === "adhoc-merge" ? (
+            <>
+              Merged — added {result.imported} new number{result.imported === 1 ? "" : "s"}, skipped{" "}
+              {result.skipped_duplicates} already on file
+              {result.skipped_blank_in_file ? ` (${result.skipped_blank_in_file} blank row(s) in the file also skipped)` : ""}.
+            </>
+          ) : (
+            <>
+              Replaced — {result.imported} number{result.imported === 1 ? "" : "s"} loaded
+              {result.skipped_blank_in_file ? ` (${result.skipped_blank_in_file} blank row(s) in the file skipped)` : ""}.
+            </>
+          )}
+        </div>
+      )}
+      {result?.type === "success" && !result.mode?.startsWith("adhoc") && (
+        <div className="bg-status-good/10 border border-status-good/30 rounded-lg px-4 py-2 text-sm text-ink-primary">
+          {result.mode === "merge" ? (
+            <>
+              Merged{FORMAT_LABELS[result.format] ? ` (converted ${FORMAT_LABELS[result.format]} export)` : ""} —{" "}
+              added {result.added} new client{result.added === 1 ? "" : "s"}, skipped{" "}
+              {result.skippedDuplicates} already on file ({result.rowCount} total now).
+            </>
+          ) : FORMAT_LABELS[result.format] ? (
+            <>
+              Converted {FORMAT_LABELS[result.format]} export — {result.rowCount} row{result.rowCount === 1 ? "" : "s"} loaded
+              from {result.stats?.sheets_used} sheet{result.stats?.sheets_used === 1 ? "" : "s"}
+              {result.stats?.sheets_empty ? `, ${result.stats.sheets_empty} sheet(s) skipped (empty)` : ""}
+              {result.stats?.rows_skipped_missing_key
+                ? `, ${result.stats.rows_skipped_missing_key} row(s) skipped (missing required identifier / date)`
+                : ""}.
+            </>
+          ) : (
+            <>Import succeeded — {result.rowCount} row{result.rowCount === 1 ? "" : "s"} loaded.</>
+          )}
+        </div>
+      )}
+      {result?.type === "error" && (
+        <div className="bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-2 text-sm text-ink-primary">
+          Import failed: {result.message}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 12: Add `ExcelSyncView.test.jsx` tests for the ad-hoc path**
+
+Add to `dashboard-app/frontend/src/components/ExcelSyncView.test.jsx`:
+
+```jsx
+  it("shows ad-hoc notices as options in the format dropdown when provided", () => {
+    render(<ExcelSyncView onUpload={vi.fn()} adhocNotices={[
+      { id: "independence_day_2026", label: "Independence Day Special Offer 2026" },
+    ]} />);
+    expect(screen.getByText("Independence Day Special Offer 2026")).toBeInTheDocument();
+  });
+
+  it("routes an ad-hoc format selection to onUploadAdhocRecipients instead of onUpload", async () => {
+    const onUpload = vi.fn();
+    const onUploadAdhocRecipients = vi.fn().mockResolvedValue({ imported: 2692, skipped_duplicates: 0, skipped_blank_in_file: 0 });
+    render(<ExcelSyncView
+      onUpload={onUpload}
+      adhocNotices={[{ id: "independence_day_2026", label: "Independence Day Special Offer 2026" }]}
+      onUploadAdhocRecipients={onUploadAdhocRecipients}
+    />);
+    const input = screen.getByLabelText("Upload client spreadsheet");
+    const file = makeFile("numbers.xlsx");
+    fireEvent.change(input, { target: { files: [file] } });
+    selectFormat("adhoc:independence_day_2026");
+    fireEvent.click(screen.getByText("Upload and Replace Client Data"));
+
+    await waitFor(() => expect(onUploadAdhocRecipients).toHaveBeenCalledWith("independence_day_2026", file, "replace"));
+    expect(onUpload).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText(/Replaced — 2692 numbers loaded/)).toBeInTheDocument());
+  });
+
+  it("routes an ad-hoc merge to onUploadAdhocRecipients with mode 'merge'", async () => {
+    const onUploadAdhocRecipients = vi.fn().mockResolvedValue({ imported: 1, skipped_duplicates: 1, skipped_blank_in_file: 0 });
+    render(<ExcelSyncView
+      onUpload={vi.fn()}
+      onMerge={vi.fn()}
+      adhocNotices={[{ id: "independence_day_2026", label: "Independence Day Special Offer 2026" }]}
+      onUploadAdhocRecipients={onUploadAdhocRecipients}
+    />);
+    const input = screen.getByLabelText("Upload client spreadsheet");
+    fireEvent.change(input, { target: { files: [makeFile("numbers.xlsx")] } });
+    selectFormat("adhoc:independence_day_2026");
+    fireEvent.click(screen.getByText("Upload and Merge with Existing Data"));
+
+    await waitFor(() => expect(onUploadAdhocRecipients).toHaveBeenCalledWith("independence_day_2026", expect.any(File), "merge"));
+    await waitFor(() => expect(screen.getByText(/added 1 new number, skipped 1 already on file/)).toBeInTheDocument());
+  });
+```
+
+- [ ] **Step 13: Wire `App.jsx`**
+
+Add `uploadAdhocRecipientsFile` to the existing `from "./api"` import block in `dashboard-app/frontend/src/App.jsx` (alongside the `listAdhocNotices, getAdhocNoticeCount, sendAdhocNotice, getAdhocNoticeSendStatus` already imported there for the Notices page).
+
+Add a new handler right after `handleMergeClients` (`dashboard-app/frontend/src/App.jsx:333-348`):
+
+```jsx
+
+  async function handleUploadAdhocRecipients(noticeId, file, mode) {
+    try {
+      const result = await uploadAdhocRecipientsFile(noticeId, file, mode);
+      return result;
+    } catch (err) {
+      setToast({ type: "error", message: err.message });
+      throw err;
+    }
+  }
+```
+
+(No `setToast` success message here, no `loadClients()`/`loadStats()` call — unlike the roster upload, ad-hoc recipients aren't clients and don't affect the dashboard's client list or stats. `ExcelSyncView` already renders its own inline success summary for this path.)
+
+Update the `<ExcelSyncView>` render call (`dashboard-app/frontend/src/App.jsx:472`) to pass the new props. Since `App.jsx` doesn't currently fetch the ad-hoc notice list for anything outside `NoticesView`, add a small `useEffect` near the top of the component (alongside other startup data loads) to fetch it once:
+
+```jsx
+  const [adhocNotices, setAdhocNotices] = useState([]);
+
+  useEffect(() => {
+    listAdhocNotices().then(setAdhocNotices).catch(() => {});
+  }, []);
+```
+
+Then:
+
+```jsx
+            <ExcelSyncView
+              onUpload={handleUploadClients}
+              onMerge={handleMergeClients}
+              adhocNotices={adhocNotices}
+              onUploadAdhocRecipients={handleUploadAdhocRecipients}
+            />
+```
+
+- [ ] **Step 14: Run the frontend tests**
+
+Run: `cd dashboard-app/frontend && npx vitest run src/api.test.js src/components/ExcelSyncView.test.jsx`
+Expected: all pass.
+
+Run: `cd dashboard-app/frontend && npx vitest run`
+Expected: all pass (full suite, no regressions).
+
+- [ ] **Step 15: Run the real import for the first time**
+
+With both local dev servers running, open the Excel Sync page, select "Independence Day Special Offer 2026" under "Ad-hoc phone lists" in the format dropdown, drop in `Numbers_Only_Deduplicated.xlsx`, and click "Upload and Replace Client Data". Expected: an inline success message reading "Replaced — 2692 numbers loaded."
+
+(The CLI script still works identically if the UI isn't available yet at this point in implementation: `cd dashboard-app/backend && python import_adhoc_recipients.py "C:\Users\dhruv\OneDrive\Desktop\Numbers_Only_Deduplicated.xlsx" independence_day_2026 replace` — prints `Replaced 2692 recipients for notice_id='independence_day_2026' (skipped 0 blank rows in the file, 0 already on file).`)
+
+If the count differs from 2692, stop and check why before proceeding.
+
+- [ ] **Step 16: Verify directly against the real database**
 
 Run: `cd dashboard-app/backend && python3 -c "from db import DEFAULT_DB_PATH; print(DEFAULT_DB_PATH['adhoc_recipients'].count_documents({'notice_id': 'independence_day_2026'}))"`
 Expected: `2692`.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 17: Commit**
 
 ```bash
 git add dashboard-app/backend/import_adhoc_recipients.py dashboard-app/backend/test_import_adhoc_recipients.py \
   dashboard-app/backend/db.py dashboard-app/backend/test_db.py \
-  dashboard-app/backend/main.py dashboard-app/backend/test_main.py
-git commit -m "feat: add a reusable phone-list upload endpoint (replace/merge) for ad-hoc notices
+  dashboard-app/backend/main.py dashboard-app/backend/test_main.py \
+  dashboard-app/frontend/src/api.js dashboard-app/frontend/src/api.test.js \
+  dashboard-app/frontend/src/components/ExcelSyncView.jsx dashboard-app/frontend/src/components/ExcelSyncView.test.jsx \
+  dashboard-app/frontend/src/App.jsx
+git commit -m "feat: add a reusable phone-list upload UI (replace/merge) for ad-hoc notices
 
 Replaces the original one-time-script-only design -- the CLI script is
 kept for scripted/offline use, but the normal path is now an upload
-endpoint (and, in the next task, a UI on the Excel Sync page), so a list
-like this can be reloaded without needing an engineer to run a script by
-hand each time."
+option on the existing Excel Sync page (both Replace and Merge, matching
+the roster upload's existing pattern), so a list like this can be
+reloaded without needing an engineer to run a script by hand each time."
 ```
 
 ---
