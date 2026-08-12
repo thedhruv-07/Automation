@@ -99,7 +99,7 @@ def send_notice_whatsapp(
 def send_adhoc_whatsapp_notice(
     db_path, notice_id: str, token: str, phone_number_id: str,
     dry_run: bool = False, test_number: str | None = None, send_fn=send_message,
-    on_progress=None, limit: int | None = None,
+    on_progress=None, limit: int | None = None, pace_seconds: float = 0.0,
 ) -> list[dict]:
     """Sends a fully static (no personalization) WhatsApp template to every
     phone number imported for this notice_id via adhoc_recipients. Unlike
@@ -108,10 +108,13 @@ def send_adhoc_whatsapp_notice(
     so this doesn't call get_broadcast_clients or module.build_whatsapp_payload(rec, ...)
     the way the roster-based sender does.
 
-    limit caps real sends per call (the WhatsApp Business Account's actual
-    messaging-tier limit) -- once hit, remaining recipients are left
-    completely untouched (not attempted), same convention as
-    send_notice_email's limit."""
+    limit caps real sends per call -- once hit, remaining recipients are
+    left completely untouched (not attempted). pace_seconds sleeps between
+    each real send attempt. Both exist because Meta's own template_analytics
+    API confirmed unpaced bursts get silently throttled (a genuine
+    message_id returned synchronously, but never actually counted as sent)
+    well before this account's nominal 2,000/24h messaging-tier ceiling --
+    see send_notice_whatsapp's docstring for the full finding."""
     module = get_adhoc_notice_module(notice_id)
     if module is None:
         raise ValueError(f"Unknown adhoc notice_id: {notice_id!r}")
@@ -139,6 +142,8 @@ def send_adhoc_whatsapp_notice(
             else:
                 try:
                     ok, info = send_fn(payload, token, phone_number_id)
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
                     if ok:
                         sent_count += 1
                         if not test_number:
@@ -156,6 +161,8 @@ def send_adhoc_whatsapp_notice(
                             "to": to_phone, "error": info.get("error"),
                         }
                 except Exception as exc:
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
                     result = {"phone": phone, "action": "failed", "to": to_phone, "error": str(exc)}
 
         results.append(result)
