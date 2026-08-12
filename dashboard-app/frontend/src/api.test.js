@@ -6,6 +6,7 @@ import {
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients,
+  listAdhocNotices, getAdhocNoticeCount, sendAdhocNotice, getAdhocNoticeSendStatus,
 } from "./api";
 
 beforeEach(() => {
@@ -451,6 +452,59 @@ describe("getNoticeSendStatus", () => {
     expect(result).toEqual({ total: 2, sent: 1, skipped: 0, failed: 0, done: false });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/notices/transition_facilitation_2026/send-whatsapp/status/job-1",
+      { credentials: "include", headers: {} }
+    );
+  });
+});
+
+describe("listAdhocNotices", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true, json: async () => [{ id: "independence_day_2026", label: "Independence Day Special Offer 2026" }],
+    });
+    const notices = await listAdhocNotices();
+    expect(notices).toEqual([{ id: "independence_day_2026", label: "Independence Day Special Offer 2026" }]);
+    expect(global.fetch).toHaveBeenCalledWith("/api/adhoc-notices", { credentials: "include", headers: {} });
+  });
+});
+
+describe("getAdhocNoticeCount", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ total: 2692, not_yet_sent: 2692 }) });
+    const count = await getAdhocNoticeCount("independence_day_2026");
+    expect(count).toEqual({ total: 2692, not_yet_sent: 2692 });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/adhoc-notices/independence_day_2026/count", { credentials: "include", headers: {} }
+    );
+  });
+});
+
+describe("sendAdhocNotice", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "job-1" }) });
+    const result = await sendAdhocNotice("independence_day_2026");
+    expect(result).toEqual({ job_id: "job-1" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/adhoc-notices/independence_day_2026/send-whatsapp",
+      { method: "POST", credentials: "include", headers: {} }
+    );
+  });
+
+  it("throws the backend's detail message on failure", async () => {
+    global.fetch.mockResolvedValue({ ok: false, status: 409, json: async () => ({ detail: "already in progress" }) });
+    await expect(sendAdhocNotice("independence_day_2026")).rejects.toThrow("already in progress");
+  });
+});
+
+describe("getAdhocNoticeSendStatus", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true, json: async () => ({ total: 2692, sent: 300, skipped: 0, skipped_no_template: 0, failed: 0, done: false }),
+    });
+    const status = await getAdhocNoticeSendStatus("independence_day_2026", "job-1");
+    expect(status.sent).toBe(300);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/adhoc-notices/independence_day_2026/send-whatsapp/status/job-1",
       { credentials: "include", headers: {} }
     );
   });

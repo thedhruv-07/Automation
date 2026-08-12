@@ -18,6 +18,10 @@ function setup(overrides = {}) {
     }),
     getNoticePreview: vi.fn().mockResolvedValue({ subject: "Test Subject", html: "<p>Test</p>" }),
     getNoticeClients: vi.fn().mockResolvedValue({ rows: [], total: 0, page: 1, page_size: 8 }),
+    listAdhocNotices: vi.fn().mockResolvedValue([]),
+    getAdhocNoticeCount: vi.fn().mockResolvedValue({ total: 0, not_yet_sent: 0 }),
+    sendAdhocNotice: vi.fn().mockResolvedValue({ job_id: "adhoc-job-1" }),
+    getAdhocNoticeSendStatus: vi.fn().mockResolvedValue({ total: 0, sent: 0, skipped: 0, failed: 0, done: true }),
     ...overrides,
   };
   return { ...render(<NoticesView {...props} />), props };

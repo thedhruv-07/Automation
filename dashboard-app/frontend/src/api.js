@@ -239,3 +239,36 @@ export async function getNoticeSendStatus(noticeId, channel, jobId) {
   if (!res.ok) throw new Error(`Failed to load notice send status: ${res.status}`);
   return res.json();
 }
+
+export async function listAdhocNotices() {
+  const res = await fetch(`${API_BASE}/api/adhoc-notices`, { credentials: "include", headers: {} });
+  if (!res.ok) throw new Error(`Failed to load adhoc notices: ${res.status}`);
+  return res.json();
+}
+
+export async function getAdhocNoticeCount(noticeId) {
+  const res = await fetch(`${API_BASE}/api/adhoc-notices/${noticeId}/count`, {
+    credentials: "include", headers: {},
+  });
+  if (!res.ok) throw new Error(`Failed to load adhoc notice count: ${res.status}`);
+  return res.json();
+}
+
+export async function sendAdhocNotice(noticeId) {
+  const res = await fetch(`${API_BASE}/api/adhoc-notices/${noticeId}/send-whatsapp`, {
+    method: "POST", credentials: "include", headers: {},
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Send failed: ${res.status}`);
+  }
+  return data;
+}
+
+export async function getAdhocNoticeSendStatus(noticeId, jobId) {
+  const res = await fetch(`${API_BASE}/api/adhoc-notices/${noticeId}/send-whatsapp/status/${jobId}`, {
+    credentials: "include", headers: {},
+  });
+  if (!res.ok) throw new Error(`Failed to load adhoc notice send status: ${res.status}`);
+  return res.json();
+}

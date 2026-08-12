@@ -3,6 +3,7 @@ import ClientDataFilters from "./ClientDataFilters";
 import SendAllConfirmModal from "./SendAllConfirmModal";
 import EmailPreviewModal from "./EmailPreviewModal";
 import NoticeClientsTable from "./NoticeClientsTable";
+import AdhocNoticeBroadcast from "./AdhocNoticeBroadcast";
 
 const JOB_POLL_MS = 500;
 const FILTERS_STORAGE_KEY = "noticesFilters";
@@ -20,6 +21,7 @@ function loadStoredFilters() {
 export default function NoticesView({
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients,
+  listAdhocNotices, getAdhocNoticeCount, sendAdhocNotice, getAdhocNoticeSendStatus,
   schemeOptions = [], certOptions = [],
 }) {
   const stored = loadStoredFilters();
@@ -236,6 +238,15 @@ export default function NoticesView({
         onConfirm={startSend("email", setEmailModalOpen, setEmailJob)}
         onCancel={() => closeModal(setEmailModalOpen, setEmailJob)}
       />
+
+      <div className="pt-4 border-t border-line">
+        <AdhocNoticeBroadcast
+          listAdhocNotices={listAdhocNotices}
+          getAdhocNoticeCount={getAdhocNoticeCount}
+          sendAdhocNotice={sendAdhocNotice}
+          getAdhocNoticeSendStatus={getAdhocNoticeSendStatus}
+        />
+      </div>
     </div>
   );
 }
