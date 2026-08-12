@@ -10,13 +10,28 @@ to everyone matching a filter). Each entry names a module implementing:
 To add a new notice: write notice_<id>.py implementing the above, then add
 one line below plus a display label. No endpoint/frontend changes needed --
 the Notices page and its endpoints already iterate this registry.
+
+ADHOC_NOTICES is a separate, smaller registry for notices that target a
+flat imported phone list (db.py's adhoc_recipients) instead of the roster --
+those modules only implement get_whatsapp_template() and a
+build_whatsapp_payload(to_phone, template_name, template_lang) that takes a
+bare phone number, not a roster rec dict, since there's no roster record
+behind these recipients at all.
 """
 import notice_meity_series_guidelines_2026
+import notice_independence_day_2026
 
 NOTICES = {
     "meity_series_guidelines_2026": {
         "label": "MeitY Series Guidelines — IS/IEC 62368-1:2023",
         "module": notice_meity_series_guidelines_2026,
+    },
+}
+
+ADHOC_NOTICES = {
+    "independence_day_2026": {
+        "label": "Independence Day Special Offer 2026",
+        "module": notice_independence_day_2026,
     },
 }
 
@@ -27,4 +42,13 @@ def list_notices() -> list[dict]:
 
 def get_notice_module(notice_id: str):
     entry = NOTICES.get(notice_id)
+    return entry["module"] if entry else None
+
+
+def list_adhoc_notices() -> list[dict]:
+    return [{"id": notice_id, "label": entry["label"]} for notice_id, entry in ADHOC_NOTICES.items()]
+
+
+def get_adhoc_notice_module(notice_id: str):
+    entry = ADHOC_NOTICES.get(notice_id)
     return entry["module"] if entry else None
