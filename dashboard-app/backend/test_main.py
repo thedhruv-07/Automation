@@ -2043,3 +2043,40 @@ def test_notice_log_returns_empty_list_when_nothing_sent(tmp_path, monkeypatch, 
     response = client.get("/api/notice-log")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_adhoc_notices_list_includes_independence_day_2026():
+    response = client.get("/api/adhoc-notices")
+    assert response.status_code == 200
+    ids = {n["id"] for n in response.json()}
+    assert "independence_day_2026" in ids
+
+
+def test_adhoc_notice_count_unknown_notice_returns_404():
+    response = client.get("/api/adhoc-notices/does_not_exist/count")
+    assert response.status_code == 404
+
+
+def test_adhoc_notice_count_returns_total_and_not_yet_sent(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    mongo_db["adhoc_recipients"].insert_many([
+        {"_id": "919876543210", "notice_id": "independence_day_2026", "source": "test"},
+        {"_id": "919812345678", "notice_id": "independence_day_2026", "source": "test"},
+    ])
+    from db import record_notice_sent
+    record_notice_sent(mongo_db, "919876543210", "independence_day_2026", "whatsapp", "wamid.ABC", "2026-08-11T10:00:00")
+
+    response = client.get("/api/adhoc-notices/independence_day_2026/count")
+    assert response.status_code == 200
+    assert response.json() == {"total": 2, "not_yet_sent": 1}
+
+
+def test_send_adhoc_notice_whatsapp_unknown_notice_returns_404(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    response = client.post("/api/adhoc-notices/does_not_exist/send-whatsapp")
+    assert response.status_code == 404
+
+
+def test_send_adhoc_notice_whatsapp_status_unknown_job_returns_404():
+    response = client.get("/api/adhoc-notices/independence_day_2026/send-whatsapp/status/does-not-exist")
+    assert response.status_code == 404
