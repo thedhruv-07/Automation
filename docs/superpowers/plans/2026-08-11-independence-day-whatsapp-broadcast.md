@@ -25,9 +25,10 @@ Add to `dashboard-app/backend/db.py`, after `load_notice_sent_log` (end of file)
 
 def get_adhoc_recipients(db: Database, notice_id: str) -> list[str]:
     """Every phone number imported for this ad-hoc notice_id -- see
-    adhoc_recipients, populated once by import_adhoc_recipients.py, not by
-    any app code path. Unlike the roster-based get_broadcast_clients, there
-    are no per-recipient fields (name/company/etc.) at all, just the number
+    adhoc_recipients, populated via the Excel Sync upload UI or the
+    import_adhoc_recipients.py CLI script (Task 6), not by any other app
+    code path. Unlike the roster-based get_broadcast_clients, there are no
+    per-recipient fields (name/company/etc.) at all, just the number
     itself."""
     init_db(db)
     return [doc["_id"] for doc in db["adhoc_recipients"].find({"notice_id": notice_id}, {"_id": 1})]
@@ -129,8 +130,9 @@ Create `dashboard-app/backend/notice_independence_day_2026.py`:
 ```python
 """Content for the "Independence Day Special Offer" one-time WhatsApp-only
 broadcast, sent to a flat imported list of phone numbers with no
-corresponding roster/client record (see adhoc_recipients in db.py, and
-import_adhoc_recipients.py which populates it). Unlike the roster-based
+corresponding roster/client record (see adhoc_recipients in db.py, populated
+via the Excel Sync upload UI or the import_adhoc_recipients.py CLI script --
+Task 6). Unlike the roster-based
 notices in this file's sibling modules, there is no build_email_html (this
 notice is WhatsApp-only) and the message is fully static -- no
 per-recipient personalization, since the phone list has no name/company
@@ -933,49 +935,68 @@ git commit -m "feat: add /api/adhoc-notices endpoints for phone-list broadcasts"
 
 ---
 
-### Task 6: One-time data import script
+### Task 6: Phone-list upload — shared parsing, `db.py` storage, CLI script, and an `/api` endpoint
+
+**Design change from the original spec:** the design doc described a one-time, engineer-run CLI script as the only way to load a phone list. After seeing the actual Excel Sync page, a reusable **upload UI** (both Replace and Merge, matching the existing roster upload's two-button pattern) is worth building instead — so this list (and any future ad-hoc list) can be loaded/reloaded without needing a script run by hand each time. The parsing logic is shared between the CLI script (kept, for scripted/offline use) and the new endpoint, so neither duplicates the other.
 
 **Files:**
 - Create: `dashboard-app/backend/import_adhoc_recipients.py`
+- Create: `dashboard-app/backend/test_import_adhoc_recipients.py`
+- Modify: `dashboard-app/backend/db.py`
+- Modify: `dashboard-app/backend/test_db.py`
+- Modify: `dashboard-app/backend/main.py`
+- Modify: `dashboard-app/backend/test_main.py`
 
-- [ ] **Step 1: Write the script**
+- [ ] **Step 1: Write the shared parsing module**
 
 Create `dashboard-app/backend/import_adhoc_recipients.py`:
 
 ```python
-"""One-time import: loads a flat phone-number list into the adhoc_recipients
-collection for a given ad-hoc notice_id. Not part of any app code path --
-run once by hand, per docs/superpowers/specs/2026-08-11-independence-day-whatsapp-broadcast-design.md.
+"""Parses a flat phone-number list (matching Numbers_Only_Deduplicated.xlsx's
+actual format) into rows ready for db.py's save_adhoc_recipients(). Shared by
+the CLI entry point below (for scripted/offline use) and
+/api/adhoc-notices/{notice_id}/upload-recipients (the normal path, via the
+Excel Sync page).
 
-Usage: python import_adhoc_recipients.py "<path to xlsx>" <notice_id>
+Expects a sheet named "Numbers" with a "Digits Only" column and a "Source"
+column. Any other sheet (e.g. "Needs Review") is ignored -- this only reads
+the "Numbers" sheet.
 
-Expects a sheet named "Numbers" with a "Digits Only" column (matches
-Numbers_Only_Deduplicated.xlsx's actual format) and a "Source" column.
-Any other sheet (e.g. "Needs Review") is ignored -- this only reads the
-"Numbers" sheet."""
+CLI usage: python import_adhoc_recipients.py "<path to xlsx>" <notice_id> [replace|merge]
+"""
 import sys
 
 import openpyxl
 
-from db import DEFAULT_DB_PATH
 from whatsapp_renewal_alerts import normalize_phone
 
 
-def import_adhoc_recipients(source_path: str, notice_id: str) -> dict:
-    wb = openpyxl.load_workbook(source_path, read_only=True, data_only=True)
+def parse_adhoc_recipients_workbook(wb) -> tuple[list[dict], int]:
+    """Returns (rows, skipped_blank_count). rows are {"_id": phone, "source":
+    ...} dicts, deduplicated within the file itself (a repeated number in the
+    sheet doesn't produce two rows). Raises ValueError if the workbook
+    doesn't have the expected sheet/column -- callers turn that into a clear
+    400 (the API endpoint) or a clear CLI error message."""
+    if "Numbers" not in wb.sheetnames:
+        raise ValueError('Expected a sheet named "Numbers" (found: ' + ", ".join(wb.sheetnames) + ")")
     ws = wb["Numbers"]
-    rows = ws.iter_rows(values_only=True)
-    header = next(rows)
+    rows_iter = ws.iter_rows(values_only=True)
+    try:
+        header = next(rows_iter)
+    except StopIteration:
+        raise ValueError('The "Numbers" sheet has no rows')
     index_map = {str(h).strip().lower(): i for i, h in enumerate(header) if h is not None}
+    if "digits only" not in index_map:
+        raise ValueError('Expected a "Digits Only" column in the "Numbers" sheet')
 
     digits_idx = index_map["digits only"]
     source_idx = index_map.get("source")
 
-    docs = []
+    rows = []
     seen = set()
     skipped_blank = 0
-    for row in rows:
-        raw = row[digits_idx]
+    for row in rows_iter:
+        raw = row[digits_idx] if digits_idx < len(row) else None
         if not raw:
             skipped_blank += 1
             continue
@@ -983,28 +1004,17 @@ def import_adhoc_recipients(source_path: str, notice_id: str) -> dict:
         if not phone or phone in seen:
             continue
         seen.add(phone)
-        docs.append({
+        rows.append({
             "_id": phone,
-            "notice_id": notice_id,
-            "source": row[source_idx] if source_idx is not None else None,
+            "source": row[source_idx] if source_idx is not None and source_idx < len(row) else None,
         })
 
-    wb.close()
-
-    db = DEFAULT_DB_PATH
-    if docs:
-        db["adhoc_recipients"].delete_many({"notice_id": notice_id})
-        db["adhoc_recipients"].insert_many(docs)
-
-    return {"imported": len(docs), "skipped_blank": skipped_blank}
+    return rows, skipped_blank
 
 
 def demo():
-    """Self-check: import logic against an in-memory mongomock database and
-    a tiny in-memory workbook, no real file or real database needed."""
-    import mongomock
-    import db as db_module
-
+    """Self-check: parsing logic against a tiny in-memory workbook, no real
+    file needed."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Numbers"
@@ -1012,33 +1022,32 @@ def demo():
     ws.append([1, None, "919876543210", "919876543210", "WhatsApp broadcast list"])
     ws.append([2, None, "0091 98123 45678", "009198123 45678", "WhatsApp broadcast list"])  # exercises the 00-prefix strip
     ws.append([3, None, None, None, "WhatsApp broadcast list"])  # blank row, must be skipped
-    wb.save("_demo_adhoc_import.xlsx")
 
-    original_db_path = db_module.DEFAULT_DB_PATH
-    db_module.DEFAULT_DB_PATH = mongomock.MongoClient()["demo"]
-    try:
-        result = import_adhoc_recipients("_demo_adhoc_import.xlsx", "demo_notice")
-        assert result == {"imported": 2, "skipped_blank": 1}, result
-        stored = list(db_module.DEFAULT_DB_PATH["adhoc_recipients"].find({"notice_id": "demo_notice"}))
-        ids = {d["_id"] for d in stored}
-        assert ids == {"919876543210", "9198123 45678".replace(" ", "")}, ids
-        print("demo() self-check passed:", result)
-    finally:
-        db_module.DEFAULT_DB_PATH = original_db_path
-        import os
-        os.remove("_demo_adhoc_import.xlsx")
+    rows, skipped_blank = parse_adhoc_recipients_workbook(wb)
+    assert skipped_blank == 1, skipped_blank
+    ids = {r["_id"] for r in rows}
+    assert ids == {"919876543210", "9198123 45678".replace(" ", "")}, ids
+    print("demo() self-check passed:", {"imported": len(rows), "skipped_blank": skipped_blank})
 
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         demo()
-    elif len(sys.argv) == 3:
+    elif len(sys.argv) in (3, 4):
+        from db import DEFAULT_DB_PATH, save_adhoc_recipients
+
         source, notice_id = sys.argv[1], sys.argv[2]
-        result = import_adhoc_recipients(source, notice_id)
-        print(f"Imported {result['imported']} recipients for notice_id={notice_id!r} "
-              f"(skipped {result['skipped_blank']} blank rows).")
+        mode = sys.argv[3] if len(sys.argv) == 4 else "replace"
+        wb = openpyxl.load_workbook(source, read_only=True, data_only=True)
+        try:
+            rows, skipped_blank = parse_adhoc_recipients_workbook(wb)
+        finally:
+            wb.close()
+        result = save_adhoc_recipients(DEFAULT_DB_PATH, notice_id, rows, mode)
+        print(f"{mode.title()}d {result['imported']} recipients for notice_id={notice_id!r} "
+              f"(skipped {skipped_blank} blank rows in the file, {result['skipped_duplicates']} already on file).")
     else:
-        print("Usage: python import_adhoc_recipients.py \"<path to xlsx>\" <notice_id>")
+        print("Usage: python import_adhoc_recipients.py \"<path to xlsx>\" <notice_id> [replace|merge]")
         print("       python import_adhoc_recipients.py   (no args runs the self-check demo)")
         sys.exit(1)
 ```
@@ -1048,24 +1057,307 @@ if __name__ == "__main__":
 Run: `cd dashboard-app/backend && python import_adhoc_recipients.py`
 Expected: prints `demo() self-check passed: {'imported': 2, 'skipped_blank': 1}` and exits 0.
 
-- [ ] **Step 3: Run the real import**
+- [ ] **Step 3: Add `save_adhoc_recipients` to `db.py`**
 
-Run: `cd dashboard-app/backend && python import_adhoc_recipients.py "C:\Users\dhruv\OneDrive\Desktop\Numbers_Only_Deduplicated.xlsx" independence_day_2026`
-Expected: prints `Imported 2692 recipients for notice_id='independence_day_2026' (skipped 0 blank rows).` — if the count differs from 2692, stop and check why before proceeding (e.g. confirm you're not accidentally re-running against a file with a different row count than the one inspected during design).
+Add to `dashboard-app/backend/db.py`, right after `get_adhoc_eligible_count` (from Task 1):
 
-- [ ] **Step 4: Verify directly against the real database**
+```python
+
+
+def save_adhoc_recipients(db: Database, notice_id: str, rows: list[dict], mode: str) -> dict:
+    """rows: list of {"_id": phone, "source": ...} dicts, e.g. from
+    import_adhoc_recipients.parse_adhoc_recipients_workbook().
+    mode="replace": clears this notice_id's existing recipients first, then
+    inserts every row.
+    mode="merge": inserts only phone numbers not already stored for this
+    notice_id; existing ones are left untouched."""
+    if mode not in ("replace", "merge"):
+        raise ValueError(f"Unknown mode: {mode!r}")
+    init_db(db)
+
+    if mode == "replace":
+        db["adhoc_recipients"].delete_many({"notice_id": notice_id})
+        docs = [{"_id": row["_id"], "notice_id": notice_id, "source": row.get("source")} for row in rows]
+        if docs:
+            db["adhoc_recipients"].insert_many(docs)
+        return {"imported": len(docs), "skipped_duplicates": 0}
+
+    existing_ids = set(db["adhoc_recipients"].distinct("_id", {"notice_id": notice_id}))
+    docs = []
+    skipped = 0
+    for row in rows:
+        if row["_id"] in existing_ids:
+            skipped += 1
+            continue
+        docs.append({"_id": row["_id"], "notice_id": notice_id, "source": row.get("source")})
+        existing_ids.add(row["_id"])
+    if docs:
+        db["adhoc_recipients"].insert_many(docs)
+    return {"imported": len(docs), "skipped_duplicates": skipped}
+```
+
+Note: an `adhoc_recipients` document's `_id` (the phone number) is only unique **per notice_id** in principle, but since `_id` must be globally unique per collection in MongoDB, two different notices can't both store the same phone number as their `_id` — the second `insert_many` would raise a duplicate-key error. This is an accepted limitation for now (YAGNI: there's only one ad-hoc notice, so no two notice_ids will ever contend for the same number today); if a second ad-hoc notice with overlapping recipients is ever needed, `_id` would need to become a compound key (e.g. `f"{notice_id}:{phone}"`) — not worth building ahead of an actual second use case.
+
+- [ ] **Step 4: Add `db.py` tests**
+
+Add to `dashboard-app/backend/test_db.py`, near the other adhoc tests from Task 1:
+
+```python
+def test_save_adhoc_recipients_replace_clears_existing_first(mongo_db):
+    init_db(mongo_db)
+    mongo_db["adhoc_recipients"].insert_many([
+        {"_id": "919800000000", "notice_id": "independence_day_2026", "source": "old"},
+    ])
+
+    result = save_adhoc_recipients(
+        mongo_db, "independence_day_2026",
+        [{"_id": "919876543210", "source": "new"}, {"_id": "919812345678", "source": "new"}],
+        "replace",
+    )
+
+    assert result == {"imported": 2, "skipped_duplicates": 0}
+    stored_ids = set(get_adhoc_recipients(mongo_db, "independence_day_2026"))
+    assert stored_ids == {"919876543210", "919812345678"}
+
+
+def test_save_adhoc_recipients_merge_skips_existing(mongo_db):
+    init_db(mongo_db)
+    mongo_db["adhoc_recipients"].insert_many([
+        {"_id": "919876543210", "notice_id": "independence_day_2026", "source": "old"},
+    ])
+
+    result = save_adhoc_recipients(
+        mongo_db, "independence_day_2026",
+        [{"_id": "919876543210", "source": "new"}, {"_id": "919812345678", "source": "new"}],
+        "merge",
+    )
+
+    assert result == {"imported": 1, "skipped_duplicates": 1}
+    stored_ids = set(get_adhoc_recipients(mongo_db, "independence_day_2026"))
+    assert stored_ids == {"919876543210", "919812345678"}
+
+
+def test_save_adhoc_recipients_rejects_unknown_mode(mongo_db):
+    import pytest
+    with pytest.raises(ValueError):
+        save_adhoc_recipients(mongo_db, "independence_day_2026", [], "bogus")
+```
+
+Add `save_adhoc_recipients` to the existing adhoc-related `from db import (...)` line added in Task 1.
+
+- [ ] **Step 5: Write `test_import_adhoc_recipients.py`**
+
+Create `dashboard-app/backend/test_import_adhoc_recipients.py`:
+
+```python
+"""Tests for import_adhoc_recipients.py's workbook parsing."""
+import openpyxl
+import pytest
+
+from import_adhoc_recipients import parse_adhoc_recipients_workbook
+
+
+def _workbook(sheet_title, headers, rows):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet_title
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    return wb
+
+
+def test_parses_digits_only_column():
+    wb = _workbook("Numbers", ["S.No", "Phone Number", "Digits Only", "Source"], [
+        [1, "919876543210", "919876543210", "WhatsApp broadcast list"],
+    ])
+    rows, skipped_blank = parse_adhoc_recipients_workbook(wb)
+    assert rows == [{"_id": "919876543210", "source": "WhatsApp broadcast list"}]
+    assert skipped_blank == 0
+
+
+def test_skips_blank_rows():
+    wb = _workbook("Numbers", ["Digits Only", "Source"], [
+        ["919876543210", "src"], [None, "src"], ["", "src"],
+    ])
+    rows, skipped_blank = parse_adhoc_recipients_workbook(wb)
+    assert len(rows) == 1
+    assert skipped_blank == 2
+
+
+def test_dedupes_within_the_file():
+    wb = _workbook("Numbers", ["Digits Only"], [["919876543210"], ["919876543210"]])
+    rows, _ = parse_adhoc_recipients_workbook(wb)
+    assert len(rows) == 1
+
+
+def test_strips_00_international_prefix():
+    wb = _workbook("Numbers", ["Digits Only"], [["0091 98123 45678"]])
+    rows, _ = parse_adhoc_recipients_workbook(wb)
+    assert rows[0]["_id"] == "9198123" + "45678"
+
+
+def test_raises_for_missing_numbers_sheet():
+    wb = _workbook("Wrong Sheet Name", ["Digits Only"], [["919876543210"]])
+    with pytest.raises(ValueError, match="Numbers"):
+        parse_adhoc_recipients_workbook(wb)
+
+
+def test_raises_for_missing_digits_only_column():
+    wb = _workbook("Numbers", ["Phone Number"], [["919876543210"]])
+    with pytest.raises(ValueError, match="Digits Only"):
+        parse_adhoc_recipients_workbook(wb)
+```
+
+- [ ] **Step 6: Add the upload endpoint to `main.py`**
+
+Add the import at the top:
+
+```python
+from import_adhoc_recipients import parse_adhoc_recipients_workbook  # noqa: E402
+```
+
+Also add `save_adhoc_recipients` to the existing `from db import (...)` block (the one already getting `get_adhoc_recipient_count, get_adhoc_eligible_count` from Task 5).
+
+Add the endpoint anywhere in the `/api/adhoc-notices/...` group (e.g. right after `adhoc_notice_count`, before `send_adhoc_notice_whatsapp_endpoint`):
+
+```python
+@app.post("/api/adhoc-notices/{notice_id}/upload-recipients")
+async def upload_adhoc_recipients(notice_id: str, file: UploadFile = File(...), mode: str = Form(...)):
+    if get_adhoc_notice_module(notice_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown adhoc notice_id: {notice_id}")
+    if mode not in ("replace", "merge"):
+        raise HTTPException(status_code=400, detail=f"Unknown mode: {mode!r}")
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
+
+    contents = await file.read()
+    tmp_path = BACKEND_DIR / "_adhoc_upload_tmp.xlsx"
+    tmp_path.write_bytes(contents)
+    try:
+        wb = openpyxl.load_workbook(tmp_path, read_only=True, data_only=True)
+        try:
+            rows, skipped_blank = parse_adhoc_recipients_workbook(wb)
+        finally:
+            wb.close()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    result = save_adhoc_recipients(DEFAULT_DB_PATH, notice_id, rows, mode)
+    return {"status": "ok", "skipped_blank_in_file": skipped_blank, **result}
+```
+
+(Matches the existing `/api/upload-clients` endpoint's temp-file-then-parse-then-cleanup shape — `BACKEND_DIR`, `openpyxl`, `HTTPException`, `UploadFile`/`File`/`Form` are all already imported in `main.py`.)
+
+- [ ] **Step 7: Add `main.py` tests**
+
+Add to `dashboard-app/backend/test_main.py`:
+
+```python
+def test_upload_adhoc_recipients_unknown_notice_returns_404(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    upload_path = tmp_path / "numbers.xlsx"
+    _write_xlsx_sheet(upload_path, "Numbers", ["Digits Only"], [["919876543210"]])
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/adhoc-notices/does_not_exist/upload-recipients",
+            files={"file": ("numbers.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"mode": "replace"},
+        )
+    assert response.status_code == 404
+
+
+def test_upload_adhoc_recipients_rejects_unknown_mode(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    upload_path = tmp_path / "numbers.xlsx"
+    _write_xlsx_sheet(upload_path, "Numbers", ["Digits Only"], [["919876543210"]])
+    with open(upload_path, "rb") as f:
+        response = client.post(
+            "/api/adhoc-notices/independence_day_2026/upload-recipients",
+            files={"file": ("numbers.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"mode": "bogus"},
+        )
+    assert response.status_code == 400
+
+
+def test_upload_adhoc_recipients_replace_then_merge(tmp_path, monkeypatch, mongo_db):
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    first_path = tmp_path / "first.xlsx"
+    _write_xlsx_sheet(first_path, "Numbers", ["Digits Only"], [["919876543210"]])
+    with open(first_path, "rb") as f:
+        response = client.post(
+            "/api/adhoc-notices/independence_day_2026/upload-recipients",
+            files={"file": ("first.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"mode": "replace"},
+        )
+    assert response.status_code == 200
+    assert response.json()["imported"] == 1
+
+    second_path = tmp_path / "second.xlsx"
+    _write_xlsx_sheet(second_path, "Numbers", ["Digits Only"], [["919876543210"], ["919812345678"]])
+    with open(second_path, "rb") as f:
+        response = client.post(
+            "/api/adhoc-notices/independence_day_2026/upload-recipients",
+            files={"file": ("second.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"mode": "merge"},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["imported"] == 1
+    assert body["skipped_duplicates"] == 1
+
+    assert mongo_db["adhoc_recipients"].count_documents({"notice_id": "independence_day_2026"}) == 2
+```
+
+These reuse a small helper, `_write_xlsx_sheet(path, sheet_title, headers, rows)`, that doesn't exist yet in `test_main.py` — check first whether `test_main.py`'s existing `_write_xlsx` helper (used by the roster upload tests) can be reused directly instead of adding a new one: it currently hardcodes the roster's `HEADERS` and doesn't let the caller pick a sheet title, so it isn't directly reusable here. Add a small local helper near the top of `test_main.py`, next to the existing `_write_xlsx`:
+
+```python
+def _write_xlsx_sheet(path, sheet_title, headers, rows):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet_title
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    wb.save(path)
+```
+
+- [ ] **Step 8: Run the tests**
+
+Run: `cd dashboard-app/backend && python -m pytest test_import_adhoc_recipients.py test_db.py test_main.py -q -k "adhoc"`
+Expected: all pass.
+
+Run: `cd dashboard-app/backend && python -m pytest -q`
+Expected: all pass (full suite, no regressions).
+
+- [ ] **Step 9: Run the real import for the first time**
+
+The UI (Task 7) will handle re-uploads going forward, but the very first load can go through the same endpoint via a quick script, or through the UI once Task 7 is done and the local dev server is running with `Numbers_Only_Deduplicated.xlsx` selected. Either is fine — there's no need to use the CLI script specifically now that the endpoint exists, though it still works identically if preferred:
+
+Run: `cd dashboard-app/backend && python import_adhoc_recipients.py "C:\Users\dhruv\OneDrive\Desktop\Numbers_Only_Deduplicated.xlsx" independence_day_2026 replace`
+Expected: prints `Replaced 2692 recipients for notice_id='independence_day_2026' (skipped 0 blank rows in the file, 0 already on file).` — if the count differs from 2692, stop and check why before proceeding.
+
+- [ ] **Step 10: Verify directly against the real database**
 
 Run: `cd dashboard-app/backend && python3 -c "from db import DEFAULT_DB_PATH; print(DEFAULT_DB_PATH['adhoc_recipients'].count_documents({'notice_id': 'independence_day_2026'}))"`
 Expected: `2692`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add dashboard-app/backend/import_adhoc_recipients.py
-git commit -m "feat: add one-time import script for the Independence Day phone list"
-```
+git add dashboard-app/backend/import_adhoc_recipients.py dashboard-app/backend/test_import_adhoc_recipients.py \
+  dashboard-app/backend/db.py dashboard-app/backend/test_db.py \
+  dashboard-app/backend/main.py dashboard-app/backend/test_main.py
+git commit -m "feat: add a reusable phone-list upload endpoint (replace/merge) for ad-hoc notices
 
-(This commits the script, not the imported data itself — the data lives only in MongoDB, same as every other client record in this app.)
+Replaces the original one-time-script-only design -- the CLI script is
+kept for scripted/offline use, but the normal path is now an upload
+endpoint (and, in the next task, a UI on the Excel Sync page), so a list
+like this can be reloaded without needing an engineer to run a script by
+hand each time."
+```
 
 ---
 
