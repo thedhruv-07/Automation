@@ -415,7 +415,7 @@ def test_get_stats_eligible_not_emailed_today_excludes_already_emailed(mongo_db)
 from db import get_eligible_clients, get_eligible_count
 from db import (
     is_notice_already_sent, record_notice_sent, get_broadcast_clients, get_notice_eligible_count,
-    load_notice_sent_log,
+    load_notice_sent_log, get_adhoc_recipients, get_adhoc_recipient_count, get_adhoc_eligible_count,
 )
 
 
@@ -588,6 +588,43 @@ def test_load_notice_sent_log_returns_every_recorded_entry(mongo_db):
     assert by_client["CLT001"]["channel"] == "whatsapp"
     assert by_client["CLT001"]["message_id"] == "wamid.ABC"
     assert by_client["CLT002"]["channel"] == "email"
+
+
+def test_get_adhoc_recipients_returns_phone_numbers_for_the_notice(mongo_db):
+    init_db(mongo_db)
+    mongo_db["adhoc_recipients"].insert_many([
+        {"_id": "919876543210", "notice_id": "independence_day_2026", "source": "test"},
+        {"_id": "919812345678", "notice_id": "independence_day_2026", "source": "test"},
+        {"_id": "919800000000", "notice_id": "some_other_adhoc_notice", "source": "test"},
+    ])
+
+    result = get_adhoc_recipients(mongo_db, "independence_day_2026")
+
+    assert set(result) == {"919876543210", "919812345678"}
+
+
+def test_get_adhoc_recipient_count(mongo_db):
+    init_db(mongo_db)
+    mongo_db["adhoc_recipients"].insert_many([
+        {"_id": "919876543210", "notice_id": "independence_day_2026", "source": "test"},
+        {"_id": "919812345678", "notice_id": "independence_day_2026", "source": "test"},
+    ])
+
+    assert get_adhoc_recipient_count(mongo_db, "independence_day_2026") == 2
+    assert get_adhoc_recipient_count(mongo_db, "does_not_exist") == 0
+
+
+def test_get_adhoc_eligible_count_excludes_already_sent(mongo_db):
+    init_db(mongo_db)
+    mongo_db["adhoc_recipients"].insert_many([
+        {"_id": "919876543210", "notice_id": "independence_day_2026", "source": "test"},
+        {"_id": "919812345678", "notice_id": "independence_day_2026", "source": "test"},
+    ])
+    record_notice_sent(mongo_db, "919876543210", "independence_day_2026", "whatsapp", "wamid.ABC", "2026-08-11T10:00:00")
+
+    assert get_adhoc_eligible_count(mongo_db, "independence_day_2026", "whatsapp") == 1
+    # a different channel isn't affected by the whatsapp send above
+    assert get_adhoc_eligible_count(mongo_db, "independence_day_2026", "email") == 2
 
 
 def test_get_broadcast_clients_returns_every_status(mongo_db):

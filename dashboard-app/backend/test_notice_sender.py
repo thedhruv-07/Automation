@@ -2,7 +2,7 @@
 from unittest.mock import Mock, patch
 
 from db import upsert_clients, record_notice_sent
-from notice_sender import send_notice_whatsapp, send_notice_email
+from notice_sender import send_notice_whatsapp, send_notice_email, send_adhoc_whatsapp_notice
 
 CRS_ROW = ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
            "OSHA", "CRS", "OSHA-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")
@@ -272,3 +272,95 @@ def test_send_notice_whatsapp_raises_for_unknown_notice_id(tmp_path, mongo_db):
     import pytest
     with pytest.raises(ValueError):
         send_notice_whatsapp(db_path, "does_not_exist", "tok", "pid")
+
+
+def _seed_adhoc_recipients(db, notice_id, phones):
+    db["adhoc_recipients"].insert_many([
+        {"_id": phone, "notice_id": notice_id, "source": "test"} for phone in phones
+    ])
+
+
+def test_send_adhoc_whatsapp_notice_skips_when_no_template_configured(monkeypatch, mongo_db):
+    monkeypatch.delenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME", raising=False)
+    monkeypatch.delenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG", raising=False)
+    _seed_adhoc_recipients(mongo_db, "independence_day_2026", ["919876543210"])
+    send_fn = Mock()
+
+    results = send_adhoc_whatsapp_notice(mongo_db, "independence_day_2026", "tok", "pid", send_fn=send_fn)
+
+    assert results[0]["action"] == "skipped_no_template"
+    send_fn.assert_not_called()
+
+
+def test_send_adhoc_whatsapp_notice_sends_and_records_permanently(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME", "independence_day_2026_offer")
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG", "en")
+    _seed_adhoc_recipients(mongo_db, "independence_day_2026", ["919876543210"])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    results = send_adhoc_whatsapp_notice(mongo_db, "independence_day_2026", "tok", "pid", send_fn=send_fn)
+
+    assert results[0]["action"] == "sent"
+    assert results[0]["phone"] == "919876543210"
+    from db import is_notice_already_sent
+    assert is_notice_already_sent(mongo_db, "919876543210", "independence_day_2026", "whatsapp") is True
+
+
+def test_send_adhoc_whatsapp_notice_skips_phone_already_sent_to(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME", "independence_day_2026_offer")
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG", "en")
+    _seed_adhoc_recipients(mongo_db, "independence_day_2026", ["919876543210"])
+    record_notice_sent(mongo_db, "919876543210", "independence_day_2026", "whatsapp", "wamid.OLD", "2026-08-01T10:00:00")
+    send_fn = Mock()
+
+    results = send_adhoc_whatsapp_notice(mongo_db, "independence_day_2026", "tok", "pid", send_fn=send_fn)
+
+    assert results[0]["action"] == "skipped_duplicate"
+    send_fn.assert_not_called()
+
+
+def test_send_adhoc_whatsapp_notice_builds_payload_with_no_personalization(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME", "independence_day_2026_offer")
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG", "en")
+    _seed_adhoc_recipients(mongo_db, "independence_day_2026", ["919876543210"])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    send_adhoc_whatsapp_notice(mongo_db, "independence_day_2026", "tok", "pid", send_fn=send_fn)
+
+    payload = send_fn.call_args[0][0]
+    assert payload["template"]["name"] == "independence_day_2026_offer"
+    assert "components" not in payload["template"]
+
+
+def test_send_adhoc_whatsapp_notice_respects_limit(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME", "independence_day_2026_offer")
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG", "en")
+    _seed_adhoc_recipients(mongo_db, "independence_day_2026", ["919876543210", "919812345678", "919800000000"])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    results = send_adhoc_whatsapp_notice(mongo_db, "independence_day_2026", "tok", "pid", send_fn=send_fn, limit=1)
+
+    assert len(results) == 1
+    assert send_fn.call_count == 1
+    from db import is_notice_already_sent
+    remaining_untouched = sum(
+        1 for phone in ["919812345678", "919800000000"]
+        if is_notice_already_sent(mongo_db, phone, "independence_day_2026", "whatsapp") is False
+    )
+    assert remaining_untouched == 2
+
+
+def test_send_adhoc_whatsapp_notice_test_number_does_not_persist_dedup(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME", "independence_day_2026_offer")
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG", "en")
+    _seed_adhoc_recipients(mongo_db, "independence_day_2026", ["919876543210"])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.TEST"}))
+
+    results = send_adhoc_whatsapp_notice(
+        mongo_db, "independence_day_2026", "tok", "pid", send_fn=send_fn, test_number="919999999999",
+    )
+
+    assert results[0]["action"] == "sent"
+    assert results[0]["to"] == "919999999999"
+    from db import is_notice_already_sent
+    assert is_notice_already_sent(mongo_db, "919876543210", "independence_day_2026", "whatsapp") is False

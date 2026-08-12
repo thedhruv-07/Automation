@@ -24,7 +24,7 @@ from db import (  # noqa: E402
     upsert_clients, find_client_by_id, load_sent_log, save_sent_log,
     is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
     get_eligible_count, get_notice_eligible_count, get_broadcast_clients_page,
-    load_notice_sent_log, find_clients_by_ids,
+    load_notice_sent_log, find_clients_by_ids, get_adhoc_recipient_count, get_adhoc_eligible_count,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, filter_alertable, normalize_phone,
@@ -38,8 +38,8 @@ from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
 from import_formats import IMPORT_FORMATS, FORMAT_DISPLAY_NAMES  # noqa: E402
 from wasabi import archive_upload  # noqa: E402
 from scheme_templates import get_email_content  # noqa: E402
-from notices import list_notices, get_notice_module  # noqa: E402
-from notice_sender import send_notice_whatsapp, send_notice_email  # noqa: E402
+from notices import list_notices, get_notice_module, list_adhoc_notices, get_adhoc_notice_module  # noqa: E402
+from notice_sender import send_notice_whatsapp, send_notice_email, send_adhoc_whatsapp_notice  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -794,6 +794,97 @@ def send_notice_email_endpoint(
 @app.get("/api/notices/{notice_id}/send-email/status/{job_id}")
 def send_notice_email_status(notice_id: str, job_id: str):
     job = _send_notice_email_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    return job
+
+
+_send_adhoc_notice_jobs: dict[str, dict] = {}
+
+
+def _run_send_adhoc_whatsapp_job(job_id, notice_id, lock_key, token, phone_number_id, test_number, limit, pace_seconds):
+    def progress(result, total):
+        job = _send_adhoc_notice_jobs[job_id]
+        job["total"] = total
+        if result["action"] == "sent":
+            job["sent"] += 1
+        elif result["action"] == "skipped_duplicate":
+            job["skipped"] += 1
+        elif result["action"] == "skipped_no_template":
+            job["skipped_no_template"] += 1
+        elif result["action"] == "failed":
+            job["failed"] += 1
+            print(f"⚠ send failed for {result['phone']} ({result.get('to')}): {result.get('error')}")
+
+    try:
+        send_adhoc_whatsapp_notice(
+            DEFAULT_DB_PATH, notice_id, token, phone_number_id,
+            dry_run=False, test_number=test_number, on_progress=progress,
+            limit=limit, pace_seconds=pace_seconds,
+        )
+    except Exception as exc:
+        _send_adhoc_notice_jobs[job_id]["error"] = str(exc)
+    finally:
+        _send_adhoc_notice_jobs[job_id]["done"] = True
+        with _notice_send_lock:
+            _notice_sends_in_progress.discard(lock_key)
+
+
+@app.get("/api/adhoc-notices")
+def adhoc_notices_list():
+    return list_adhoc_notices()
+
+
+@app.get("/api/adhoc-notices/{notice_id}/count")
+def adhoc_notice_count(notice_id: str):
+    if get_adhoc_notice_module(notice_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown adhoc notice_id: {notice_id}")
+    return {
+        "total": get_adhoc_recipient_count(DEFAULT_DB_PATH, notice_id),
+        "not_yet_sent": get_adhoc_eligible_count(DEFAULT_DB_PATH, notice_id, "whatsapp"),
+    }
+
+
+@app.post("/api/adhoc-notices/{notice_id}/send-whatsapp")
+def send_adhoc_notice_whatsapp_endpoint(notice_id: str):
+    if get_adhoc_notice_module(notice_id) is None:
+        raise HTTPException(status_code=404, detail=f"Unknown adhoc notice_id: {notice_id}")
+
+    lock_key = f"adhoc:{notice_id}:whatsapp"
+    with _notice_send_lock:
+        if lock_key in _notice_sends_in_progress:
+            raise HTTPException(status_code=409, detail="A send for this notice is already in progress")
+        _notice_sends_in_progress.add(lock_key)
+
+    try:
+        token = os.environ["WHATSAPP_TOKEN"]
+        phone_number_id = os.environ["PHONE_NUMBER_ID"]
+        test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
+
+        job_id = str(uuid.uuid4())
+        _send_adhoc_notice_jobs[job_id] = {
+            "total": 0, "sent": 0, "skipped": 0, "skipped_no_template": 0, "failed": 0,
+            "done": False, "error": None,
+        }
+        thread = threading.Thread(
+            target=_run_send_adhoc_whatsapp_job,
+            args=(
+                job_id, notice_id, lock_key, token, phone_number_id, test_number,
+                WHATSAPP_NOTICE_DAILY_LIMIT, WHATSAPP_SEND_PACE_SECONDS,
+            ),
+            daemon=True,
+        )
+        thread.start()
+        return {"job_id": job_id}
+    except Exception:
+        with _notice_send_lock:
+            _notice_sends_in_progress.discard(lock_key)
+        raise HTTPException(status_code=500, detail="Server is not configured to send WhatsApp messages")
+
+
+@app.get("/api/adhoc-notices/{notice_id}/send-whatsapp/status/{job_id}")
+def send_adhoc_notice_whatsapp_status(notice_id: str, job_id: str):
+    job = _send_adhoc_notice_jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job

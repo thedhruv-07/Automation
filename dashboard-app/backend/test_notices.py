@@ -1,6 +1,7 @@
 """Tests for notices.py's notice registry."""
 import notice_meity_series_guidelines_2026
-from notices import get_notice_module, list_notices
+import notice_independence_day_2026
+from notices import get_notice_module, list_notices, list_adhoc_notices, get_adhoc_notice_module
 
 
 def test_list_notices_includes_meity_series_guidelines_2026():
@@ -17,3 +18,17 @@ def test_get_notice_module_returns_the_content_module():
 
 def test_get_notice_module_returns_none_for_unknown_id():
     assert get_notice_module("does_not_exist") is None
+
+
+def test_list_adhoc_notices_includes_independence_day_2026():
+    notices = list_adhoc_notices()
+    ids = {n["id"] for n in notices}
+    assert "independence_day_2026" in ids
+
+
+def test_get_adhoc_notice_module_returns_the_content_module():
+    assert get_adhoc_notice_module("independence_day_2026") is notice_independence_day_2026
+
+
+def test_get_adhoc_notice_module_returns_none_for_unknown_id():
+    assert get_adhoc_notice_module("does_not_exist") is None

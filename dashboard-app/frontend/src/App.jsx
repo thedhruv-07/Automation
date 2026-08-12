@@ -21,6 +21,7 @@ import {
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients,
+  listAdhocNotices, getAdhocNoticeCount, sendAdhocNotice, getAdhocNoticeSendStatus,
 } from "./api";
 
 const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPIRED"]);
@@ -486,6 +487,10 @@ export default function App() {
               getNoticeSendStatus={getNoticeSendStatus}
               getNoticePreview={getNoticePreview}
               getNoticeClients={getNoticeClients}
+              listAdhocNotices={listAdhocNotices}
+              getAdhocNoticeCount={getAdhocNoticeCount}
+              sendAdhocNotice={sendAdhocNotice}
+              getAdhocNoticeSendStatus={getAdhocNoticeSendStatus}
               schemeOptions={schemeOptions}
               certOptions={certOptions}
             />

@@ -8,9 +8,9 @@ import base64
 import time
 from datetime import datetime
 
-from db import get_broadcast_clients, is_notice_already_sent, record_notice_sent
+from db import get_broadcast_clients, get_adhoc_recipients, is_notice_already_sent, record_notice_sent
 from email_alerts import post_email_via_brevo, LOGO_PATH, LOGO_CID
-from notices import get_notice_module
+from notices import get_notice_module, get_adhoc_notice_module
 from whatsapp_renewal_alerts import normalize_phone, send_message
 
 
@@ -102,6 +102,85 @@ def send_notice_whatsapp(
         if on_progress:
             try:
                 on_progress(result, len(records))
+            except Exception as exc:
+                print(f"⚠ on_progress callback raised {exc!r}; continuing send batch.")
+
+    return results
+
+
+def send_adhoc_whatsapp_notice(
+    db_path, notice_id: str, token: str, phone_number_id: str,
+    dry_run: bool = False, test_number: str | None = None, send_fn=send_message,
+    on_progress=None, limit: int | None = None, pace_seconds: float = 0.0,
+) -> list[dict]:
+    """Sends a fully static (no personalization) WhatsApp template to every
+    phone number imported for this notice_id via adhoc_recipients. Unlike
+    send_notice_whatsapp, there's no roster client behind these numbers --
+    just a bare phone number, no name/company to build a payload around --
+    so this doesn't call get_broadcast_clients or module.build_whatsapp_payload(rec, ...)
+    the way the roster-based sender does.
+
+    limit caps real sends per call -- once hit, remaining recipients are
+    left completely untouched (not attempted). pace_seconds sleeps between
+    each real send attempt. Both exist because Meta's own template_analytics
+    API confirmed unpaced bursts get silently throttled (a genuine
+    message_id returned synchronously, but never actually counted as sent)
+    well before this account's nominal 2,000/24h messaging-tier ceiling --
+    see send_notice_whatsapp's docstring for the full finding."""
+    module = get_adhoc_notice_module(notice_id)
+    if module is None:
+        raise ValueError(f"Unknown adhoc notice_id: {notice_id!r}")
+
+    template = module.get_whatsapp_template()
+    phone_numbers = get_adhoc_recipients(db_path, notice_id)
+    results = []
+    sent_count = 0
+
+    for phone in phone_numbers:
+        if limit is not None and sent_count >= limit:
+            break
+
+        to_phone = normalize_phone(test_number) if test_number else phone
+
+        if not test_number and is_notice_already_sent(db_path, phone, notice_id, "whatsapp"):
+            result = {"phone": phone, "action": "skipped_duplicate", "to": to_phone}
+        elif template is None:
+            result = {"phone": phone, "action": "skipped_no_template", "to": to_phone}
+        else:
+            template_name, template_lang = template
+            payload = module.build_whatsapp_payload(to_phone, template_name, template_lang)
+            if dry_run:
+                result = {"phone": phone, "action": "dry_run", "to": to_phone, "payload": payload}
+            else:
+                try:
+                    ok, info = send_fn(payload, token, phone_number_id)
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
+                    if ok:
+                        sent_count += 1
+                        if not test_number:
+                            record_notice_sent(
+                                db_path, phone, notice_id, "whatsapp",
+                                info.get("message_id"), datetime.now().isoformat(),
+                            )
+                        result = {
+                            "phone": phone, "action": "sent",
+                            "to": to_phone, "message_id": info.get("message_id"),
+                        }
+                    else:
+                        result = {
+                            "phone": phone, "action": "failed",
+                            "to": to_phone, "error": info.get("error"),
+                        }
+                except Exception as exc:
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
+                    result = {"phone": phone, "action": "failed", "to": to_phone, "error": str(exc)}
+
+        results.append(result)
+        if on_progress:
+            try:
+                on_progress(result, len(phone_numbers))
             except Exception as exc:
                 print(f"⚠ on_progress callback raised {exc!r}; continuing send batch.")
 
