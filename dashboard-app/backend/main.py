@@ -92,6 +92,16 @@ CERT_STATUS_THRESHOLDS = {
     "urgent_days": 30,
 }
 
+# Meta's 2,000/24h messaging-tier figure is a legal ceiling, not a
+# demonstrated-safe rate -- confirmed via Meta's own template_analytics API
+# that unpaced bursts get silently throttled (a genuine message_id returned
+# synchronously, but the message never actually counted as sent) long before
+# that ceiling. Both figures are env-overridable without a redeploy in case
+# the account's real sustainable rate turns out to be different once this
+# is observed over a few real runs.
+WHATSAPP_NOTICE_DAILY_LIMIT = int(os.environ.get("WHATSAPP_NOTICE_DAILY_LIMIT", "200"))
+WHATSAPP_SEND_PACE_SECONDS = float(os.environ.get("WHATSAPP_SEND_PACE_SECONDS", "1.5"))
+
 
 def _resolve_allowed_origins() -> list[str]:
     origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -648,6 +658,7 @@ def _run_send_notice_whatsapp_job(
             DEFAULT_DB_PATH, notice_id, token, phone_number_id,
             dry_run=False, test_number=test_number, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before, search=search, scheme=scheme,
+            limit=WHATSAPP_NOTICE_DAILY_LIMIT, pace_seconds=WHATSAPP_SEND_PACE_SECONDS,
         )
     except Exception as exc:
         _send_notice_jobs[job_id]["error"] = str(exc)

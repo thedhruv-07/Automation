@@ -75,6 +75,44 @@ def test_send_notice_whatsapp_test_number_does_not_persist_dedup(tmp_path, monke
     assert is_notice_already_sent(db_path, "CLT001", "meity_series_guidelines_2026", "whatsapp") is False
 
 
+def test_send_notice_whatsapp_respects_limit(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026_tpl")
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
+    db_path = mongo_db
+    row_b = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+             "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE")
+    upsert_clients(db_path, [CRS_ROW, row_b], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    results = send_notice_whatsapp(
+        db_path, "meity_series_guidelines_2026", "tok", "pid", send_fn=send_fn, scheme="CRS", limit=1,
+    )
+
+    assert len(results) == 1
+    assert send_fn.call_count == 1
+    from db import is_notice_already_sent
+    assert is_notice_already_sent(db_path, "CLT002", "meity_series_guidelines_2026", "whatsapp") is False
+
+
+def test_send_notice_whatsapp_paces_between_sends(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026_tpl")
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
+    db_path = mongo_db
+    row_b = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+             "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE")
+    upsert_clients(db_path, [CRS_ROW, row_b], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    import time
+    with patch("notice_sender.time.sleep") as mock_sleep:
+        send_notice_whatsapp(
+            db_path, "meity_series_guidelines_2026", "tok", "pid", send_fn=send_fn, scheme="CRS", pace_seconds=1.5,
+        )
+
+    assert mock_sleep.call_count == 2
+    mock_sleep.assert_called_with(1.5)
+
+
 def test_send_notice_email_skips_when_no_email_on_file(tmp_path, mongo_db):
     db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW_NO_EMAIL], mode="replace")

@@ -5,6 +5,7 @@ email_alerts.run_email_alerts()'s shape, but targets get_broadcast_clients()
 and dedups against notice_sent_log (permanent, not per-day) instead of
 sent_log/email_sent_log."""
 import base64
+import time
 from datetime import datetime
 
 from db import get_broadcast_clients, get_adhoc_recipients, is_notice_already_sent, record_notice_sent
@@ -18,6 +19,7 @@ def send_notice_whatsapp(
     dry_run: bool = False, test_number: str | None = None, send_fn=send_message,
     on_progress=None, status: str | None = None, cert_type: str | None = None,
     expiry_before: str | None = None, search: str | None = None, scheme: str | None = None,
+    limit: int | None = None, pace_seconds: float = 0.0,
 ) -> list[dict]:
     module = get_notice_module(notice_id)
     if module is None:
@@ -29,8 +31,12 @@ def send_notice_whatsapp(
         search=search, scheme=scheme,
     )
     results = []
+    sent_count = 0
 
     for rec in records:
+        if limit is not None and sent_count >= limit:
+            break
+
         to_phone = normalize_phone(test_number) if test_number else normalize_phone(rec["phone"])
 
         if not test_number and is_notice_already_sent(db_path, rec["client_id"], notice_id, "whatsapp"):
@@ -54,7 +60,10 @@ def send_notice_whatsapp(
             else:
                 try:
                     ok, info = send_fn(payload, token, phone_number_id)
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
                     if ok:
+                        sent_count += 1
                         if not test_number:
                             record_notice_sent(
                                 db_path, rec["client_id"], notice_id, "whatsapp",
@@ -70,6 +79,8 @@ def send_notice_whatsapp(
                             "to": to_phone, "error": info.get("error"),
                         }
                 except Exception as exc:
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
                     result = {
                         "client_id": rec["client_id"], "name": rec["name"], "action": "failed",
                         "to": to_phone, "error": str(exc),
