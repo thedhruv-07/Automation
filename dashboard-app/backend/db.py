@@ -510,3 +510,28 @@ def load_notice_sent_log(db: Database) -> list[dict]:
         }
         for doc in db["notice_sent_log"].find()
     ]
+
+
+def get_adhoc_recipients(db: Database, notice_id: str) -> list[str]:
+    """Every phone number imported for this ad-hoc notice_id -- see
+    adhoc_recipients, populated once by import_adhoc_recipients.py, not by
+    any app code path. Unlike the roster-based get_broadcast_clients, there
+    are no per-recipient fields (name/company/etc.) at all, just the number
+    itself."""
+    init_db(db)
+    return [doc["_id"] for doc in db["adhoc_recipients"].find({"notice_id": notice_id}, {"_id": 1})]
+
+
+def get_adhoc_recipient_count(db: Database, notice_id: str) -> int:
+    init_db(db)
+    return db["adhoc_recipients"].count_documents({"notice_id": notice_id})
+
+
+def get_adhoc_eligible_count(db: Database, notice_id: str, channel: str) -> int:
+    """Recipients who haven't been sent this notice+channel yet -- mirrors
+    get_notice_eligible_count's purpose for the roster-based notices, but
+    against adhoc_recipients instead of the client roster."""
+    init_db(db)
+    total = get_adhoc_recipient_count(db, notice_id)
+    already_sent = db["notice_sent_log"].count_documents({"notice_id": notice_id, "channel": channel})
+    return max(0, total - already_sent)
