@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a new, WhatsApp-only "ad-hoc" notice type that broadcasts to a one-time imported list of 2,692 raw phone numbers (no roster/client record behind them), completely separate from the existing roster-filtered Notices feature.
+**Goal:** Build a new, WhatsApp-only "ad-hoc" notice type that broadcasts to a one-time imported list of 2,692 raw phone numbers (no roster/client record behind them), completely separate from the existing roster-filtered Notices feature. Also fixes a real, confirmed problem found while scoping this: WhatsApp's Graph API returns a genuine success response (a real message_id) for far more sends than it actually counts as sent in its own analytics — confirmed directly via Meta's `template_analytics` API showing 244 real sent messages against 3,436 our system recorded as "sent" for the existing MeitY notice, a ~93% gap with no synchronous failure signal our code could have caught.
 
-**Architecture:** A new `adhoc_recipients` MongoDB collection holds the imported phone numbers, keyed by notice_id. A new `notice_independence_day_2026.py` content module holds only WhatsApp template wiring (no email, no personalization). A new `send_adhoc_whatsapp_notice()` in `notice_sender.py` loops the raw phone list (not `get_broadcast_clients()`), reusing the existing `is_notice_already_sent`/`record_notice_sent` dedup functions with the phone number standing in for `client_id`. New `main.py` endpoints (list/count/send/status) mirror the existing notice-send job-polling pattern. A new minimal frontend section (no filters — nothing to filter by) renders inside the existing Notices page.
+**Architecture:** A new `adhoc_recipients` MongoDB collection holds the imported phone numbers, keyed by notice_id. A new `notice_independence_day_2026.py` content module holds only WhatsApp template wiring (no email, no personalization). A new `send_adhoc_whatsapp_notice()` in `notice_sender.py` loops the raw phone list (not `get_broadcast_clients()`), reusing the existing `is_notice_already_sent`/`record_notice_sent` dedup functions with the phone number standing in for `client_id`. New `main.py` endpoints (list/count/send/status) mirror the existing notice-send job-polling pattern. A new minimal frontend section (no filters — nothing to filter by) renders inside the existing Notices page. Both the new ad-hoc sender and the pre-existing roster-based `send_notice_whatsapp` get a pacing delay between individual sends and a conservative real-world daily cap (not the 2,000/day messaging-tier ceiling, which is a legal upper bound, not the actually-sustainable rate this account has just demonstrated) — the likely cause of the silent-drop problem is bursty, unpaced sending triggering Meta's quality/abuse throttling well before that ceiling.
 
 **Tech Stack:** FastAPI, MongoDB, WhatsApp Cloud API, React, pytest/mongomock, Vitest.
 
@@ -292,7 +292,214 @@ git commit -m "feat: add Independence Day notice content module and adhoc notice
 
 ---
 
-### Task 3: `notice_sender.py` — ad-hoc WhatsApp send orchestration
+### Task 3: Fix WhatsApp send pacing and the real daily limit on the existing roster-based notice sender
+
+**Files:**
+- Modify: `dashboard-app/backend/notice_sender.py`
+- Modify: `dashboard-app/backend/main.py`
+- Modify: `dashboard-app/backend/test_notice_sender.py`
+
+**Why this is here, not just in the new ad-hoc code:** the existing `send_notice_whatsapp()` (the MeitY notice) has no send-to-send pacing and no daily cap at all — it just loops every eligible client as fast as `requests.post` allows. Confirmed via Meta's own `template_analytics` API: this sent 3,436 requests that all returned a real `message_id` (a genuine synchronous success from Meta's API), but only 244 were actually counted as sent by Meta's own analytics — a ~93% silent loss with no failure our code could see. The likely cause is that bursty, unpaced sending trips Meta's quality/abuse throttling well before the account's nominal 2,000/day messaging-tier ceiling. Fixing only the new ad-hoc sender and leaving this one broken would just let the same problem recur the next time the MeitY notice is resumed.
+
+- [ ] **Step 1: Add a shared pacing delay to `send_notice_whatsapp`**
+
+In `dashboard-app/backend/notice_sender.py`, add `time` to the imports:
+
+```python
+import base64
+import time
+from datetime import datetime
+```
+
+Change the `send_notice_whatsapp` signature and add a pacing sleep right after each real (non-dry-run, non-duplicate-skip, non-no-template) send attempt — whether it succeeded or failed, since either way a real HTTP request just went to Meta and pacing is about not bursting requests, not about outcome:
+
+```python
+def send_notice_whatsapp(
+    db_path, notice_id: str, token: str, phone_number_id: str,
+    dry_run: bool = False, test_number: str | None = None, send_fn=send_message,
+    on_progress=None, status: str | None = None, cert_type: str | None = None,
+    expiry_before: str | None = None, search: str | None = None, scheme: str | None = None,
+    limit: int | None = None, pace_seconds: float = 0.0,
+) -> list[dict]:
+```
+
+(`limit` is also new here — this function had no cap at all before. Same convention as `send_notice_email`'s existing `limit`: once hit, remaining eligible records are left completely untouched.)
+
+Inside the `for rec in records:` loop, add the limit check at the top (mirroring `send_notice_email`'s existing pattern) and the pacing sleep after a real send attempt. The full updated loop body:
+
+```python
+    results = []
+    sent_count = 0
+
+    for rec in records:
+        if limit is not None and sent_count >= limit:
+            break
+
+        to_phone = normalize_phone(test_number) if test_number else normalize_phone(rec["phone"])
+
+        if not test_number and is_notice_already_sent(db_path, rec["client_id"], notice_id, "whatsapp"):
+            result = {
+                "client_id": rec["client_id"], "name": rec["name"],
+                "action": "skipped_duplicate", "to": to_phone,
+            }
+        elif template is None:
+            result = {
+                "client_id": rec["client_id"], "name": rec["name"],
+                "action": "skipped_no_template", "to": to_phone,
+            }
+        else:
+            template_name, template_lang = template
+            payload = module.build_whatsapp_payload(rec, to_phone, template_name, template_lang)
+            if dry_run:
+                result = {
+                    "client_id": rec["client_id"], "name": rec["name"],
+                    "action": "dry_run", "to": to_phone, "payload": payload,
+                }
+            else:
+                try:
+                    ok, info = send_fn(payload, token, phone_number_id)
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
+                    if ok:
+                        sent_count += 1
+                        if not test_number:
+                            record_notice_sent(
+                                db_path, rec["client_id"], notice_id, "whatsapp",
+                                info.get("message_id"), datetime.now().isoformat(),
+                            )
+                        result = {
+                            "client_id": rec["client_id"], "name": rec["name"], "action": "sent",
+                            "to": to_phone, "message_id": info.get("message_id"),
+                        }
+                    else:
+                        result = {
+                            "client_id": rec["client_id"], "name": rec["name"], "action": "failed",
+                            "to": to_phone, "error": info.get("error"),
+                        }
+                except Exception as exc:
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
+                    result = {
+                        "client_id": rec["client_id"], "name": rec["name"], "action": "failed",
+                        "to": to_phone, "error": str(exc),
+                    }
+
+        results.append(result)
+        if on_progress:
+            try:
+                on_progress(result, len(records))
+            except Exception as exc:
+                print(f"⚠ on_progress callback raised {exc!r}; continuing send batch.")
+
+    return results
+```
+
+This replaces the function's existing body from `records = get_broadcast_clients(...)` onward through its `return results` — the `records = get_broadcast_clients(...)` line itself and everything above it in the function (the `module = get_notice_module(...)` / `template = module.get_whatsapp_template()` setup) stay unchanged.
+
+- [ ] **Step 2: Wire `limit` and `pace_seconds` into `main.py`'s existing job runner**
+
+In `dashboard-app/backend/main.py`, find `_run_send_notice_whatsapp_job` and its call to `send_notice_whatsapp`:
+
+```python
+    try:
+        send_notice_whatsapp(
+            DEFAULT_DB_PATH, notice_id, token, phone_number_id,
+            dry_run=False, test_number=test_number, on_progress=progress,
+            status=status, cert_type=cert_type, expiry_before=expiry_before, search=search, scheme=scheme,
+        )
+```
+
+Change it to:
+
+```python
+    try:
+        send_notice_whatsapp(
+            DEFAULT_DB_PATH, notice_id, token, phone_number_id,
+            dry_run=False, test_number=test_number, on_progress=progress,
+            status=status, cert_type=cert_type, expiry_before=expiry_before, search=search, scheme=scheme,
+            limit=WHATSAPP_NOTICE_DAILY_LIMIT, pace_seconds=WHATSAPP_SEND_PACE_SECONDS,
+        )
+```
+
+Add the two new module-level constants near the top of `main.py`, right after the existing `CERT_STATUS_THRESHOLDS` dict (or any similarly-placed constants block):
+
+```python
+# Meta's 2,000/24h messaging-tier figure is a legal ceiling, not a
+# demonstrated-safe rate -- confirmed via Meta's own template_analytics API
+# that unpaced bursts get silently throttled (a genuine message_id returned
+# synchronously, but the message never actually counted as sent) long before
+# that ceiling. Both figures are env-overridable without a redeploy in case
+# the account's real sustainable rate turns out to be different once this
+# is observed over a few real runs.
+WHATSAPP_NOTICE_DAILY_LIMIT = int(os.environ.get("WHATSAPP_NOTICE_DAILY_LIMIT", "200"))
+WHATSAPP_SEND_PACE_SECONDS = float(os.environ.get("WHATSAPP_SEND_PACE_SECONDS", "1.5"))
+```
+
+- [ ] **Step 3: Update tests**
+
+In `dashboard-app/backend/test_notice_sender.py`, the existing `test_send_notice_whatsapp_sends_and_records_permanently` and similar tests call `send_notice_whatsapp` without `limit`/`pace_seconds` — both now default to `None`/`0.0` respectively, so **no existing test needs to change**. Add two new tests, near the existing WhatsApp notice tests:
+
+```python
+def test_send_notice_whatsapp_respects_limit(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026_tpl")
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
+    db_path = mongo_db
+    row_b = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+             "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE")
+    upsert_clients(db_path, [CRS_ROW, row_b], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    results = send_notice_whatsapp(
+        db_path, "meity_series_guidelines_2026", "tok", "pid", send_fn=send_fn, scheme="CRS", limit=1,
+    )
+
+    assert len(results) == 1
+    assert send_fn.call_count == 1
+    from db import is_notice_already_sent
+    assert is_notice_already_sent(db_path, "CLT002", "meity_series_guidelines_2026", "whatsapp") is False
+
+
+def test_send_notice_whatsapp_paces_between_sends(monkeypatch, mongo_db):
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_NAME", "meity_series_guidelines_2026_tpl")
+    monkeypatch.setenv("WHATSAPP_NOTICE_MEITY_SERIES_GUIDELINES_2026_LANG", "en")
+    db_path = mongo_db
+    row_b = ("CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+             "OSHA", "CRS", "OSHA-1", "01-01-2025", "01-01-2027", "https://x", "ACTIVE")
+    upsert_clients(db_path, [CRS_ROW, row_b], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    import time
+    with patch("notice_sender.time.sleep") as mock_sleep:
+        send_notice_whatsapp(
+            db_path, "meity_series_guidelines_2026", "tok", "pid", send_fn=send_fn, scheme="CRS", pace_seconds=1.5,
+        )
+
+    assert mock_sleep.call_count == 2
+    mock_sleep.assert_called_with(1.5)
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cd dashboard-app/backend && python -m pytest test_notice_sender.py test_main.py -q`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add dashboard-app/backend/notice_sender.py dashboard-app/backend/main.py dashboard-app/backend/test_notice_sender.py
+git commit -m "fix: pace WhatsApp notice sends and cap at a real sustainable daily rate
+
+Meta's own template_analytics API confirms unpaced bursts get silently
+throttled -- a real message_id returned synchronously, but the message
+never actually counted as sent (3,436 recorded vs 244 real, for the
+existing MeitY notice). Adds a pacing delay between individual sends and
+a conservative daily cap, both env-overridable, to send_notice_whatsapp --
+the same fix the new ad-hoc sender gets from the start in this branch."
+```
+
+---
+
+### Task 4: `notice_sender.py` — ad-hoc WhatsApp send orchestration
 
 **Files:**
 - Modify: `dashboard-app/backend/notice_sender.py`
@@ -328,7 +535,7 @@ Add to the end of `dashboard-app/backend/notice_sender.py`:
 def send_adhoc_whatsapp_notice(
     db_path, notice_id: str, token: str, phone_number_id: str,
     dry_run: bool = False, test_number: str | None = None, send_fn=send_message,
-    on_progress=None, limit: int | None = None,
+    on_progress=None, limit: int | None = None, pace_seconds: float = 0.0,
 ) -> list[dict]:
     """Sends a fully static (no personalization) WhatsApp template to every
     phone number imported for this notice_id via adhoc_recipients. Unlike
@@ -337,10 +544,13 @@ def send_adhoc_whatsapp_notice(
     so this doesn't call get_broadcast_clients or module.build_whatsapp_payload(rec, ...)
     the way the roster-based sender does.
 
-    limit caps real sends per call (the WhatsApp Business Account's actual
-    messaging-tier limit) -- once hit, remaining recipients are left
-    completely untouched (not attempted), same convention as
-    send_notice_email's limit."""
+    limit caps real sends per call -- once hit, remaining recipients are
+    left completely untouched (not attempted). pace_seconds sleeps between
+    each real send attempt. Both exist because Meta's own template_analytics
+    API confirmed unpaced bursts get silently throttled (a genuine
+    message_id returned synchronously, but never actually counted as sent)
+    well before this account's nominal 2,000/24h messaging-tier ceiling --
+    see send_notice_whatsapp's docstring for the full finding."""
     module = get_adhoc_notice_module(notice_id)
     if module is None:
         raise ValueError(f"Unknown adhoc notice_id: {notice_id!r}")
@@ -368,6 +578,8 @@ def send_adhoc_whatsapp_notice(
             else:
                 try:
                     ok, info = send_fn(payload, token, phone_number_id)
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
                     if ok:
                         sent_count += 1
                         if not test_number:
@@ -385,6 +597,8 @@ def send_adhoc_whatsapp_notice(
                             "to": to_phone, "error": info.get("error"),
                         }
                 except Exception as exc:
+                    if pace_seconds:
+                        time.sleep(pace_seconds)
                     result = {"phone": phone, "action": "failed", "to": to_phone, "error": str(exc)}
 
         results.append(result)
@@ -522,7 +736,7 @@ git commit -m "feat: add send_adhoc_whatsapp_notice for phone-list-only broadcas
 
 ---
 
-### Task 4: `main.py` — endpoints
+### Task 5: `main.py` — endpoints
 
 **Files:**
 - Modify: `dashboard-app/backend/main.py`
@@ -568,7 +782,7 @@ Add to `dashboard-app/backend/main.py`, immediately after `send_notice_email_sta
 _send_adhoc_notice_jobs: dict[str, dict] = {}
 
 
-def _run_send_adhoc_whatsapp_job(job_id, notice_id, lock_key, token, phone_number_id, test_number, limit):
+def _run_send_adhoc_whatsapp_job(job_id, notice_id, lock_key, token, phone_number_id, test_number, limit, pace_seconds):
     def progress(result, total):
         job = _send_adhoc_notice_jobs[job_id]
         job["total"] = total
@@ -585,7 +799,8 @@ def _run_send_adhoc_whatsapp_job(job_id, notice_id, lock_key, token, phone_numbe
     try:
         send_adhoc_whatsapp_notice(
             DEFAULT_DB_PATH, notice_id, token, phone_number_id,
-            dry_run=False, test_number=test_number, on_progress=progress, limit=limit,
+            dry_run=False, test_number=test_number, on_progress=progress,
+            limit=limit, pace_seconds=pace_seconds,
         )
     except Exception as exc:
         _send_adhoc_notice_jobs[job_id]["error"] = str(exc)
@@ -625,7 +840,6 @@ def send_adhoc_notice_whatsapp_endpoint(notice_id: str):
         token = os.environ["WHATSAPP_TOKEN"]
         phone_number_id = os.environ["PHONE_NUMBER_ID"]
         test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
-        limit = int(os.environ.get("WHATSAPP_ADHOC_DAILY_LIMIT", "2000"))
 
         job_id = str(uuid.uuid4())
         _send_adhoc_notice_jobs[job_id] = {
@@ -634,7 +848,10 @@ def send_adhoc_notice_whatsapp_endpoint(notice_id: str):
         }
         thread = threading.Thread(
             target=_run_send_adhoc_whatsapp_job,
-            args=(job_id, notice_id, lock_key, token, phone_number_id, test_number, limit),
+            args=(
+                job_id, notice_id, lock_key, token, phone_number_id, test_number,
+                WHATSAPP_NOTICE_DAILY_LIMIT, WHATSAPP_SEND_PACE_SECONDS,
+            ),
             daemon=True,
         )
         thread.start()
@@ -653,7 +870,7 @@ def send_adhoc_notice_whatsapp_status(notice_id: str, job_id: str):
     return job
 ```
 
-The `WHATSAPP_ADHOC_DAILY_LIMIT` env var defaults to `2000` (the WhatsApp Business Account's confirmed real messaging-tier limit, checked earlier this project) but is overridable without a code change if the account's tier changes later — same reasoning as `BREVO_DAILY_LIMIT`, just configurable since WhatsApp tiers vary per-account and can go up over time.
+Reuses `WHATSAPP_NOTICE_DAILY_LIMIT`/`WHATSAPP_SEND_PACE_SECONDS` (added to `main.py` in Task 3, Step 2) rather than a separate ad-hoc-specific limit — it's the same WhatsApp Business Account and the same demonstrated throttling behavior regardless of which notice is sending, so one shared, env-overridable pair of constants is more honest than inventing a second number with no real basis.
 
 - [ ] **Step 3: Add tests**
 
@@ -716,7 +933,7 @@ git commit -m "feat: add /api/adhoc-notices endpoints for phone-list broadcasts"
 
 ---
 
-### Task 5: One-time data import script
+### Task 6: One-time data import script
 
 **Files:**
 - Create: `dashboard-app/backend/import_adhoc_recipients.py`
@@ -852,7 +1069,7 @@ git commit -m "feat: add one-time import script for the Independence Day phone l
 
 ---
 
-### Task 6: Frontend — minimal send UI
+### Task 7: Frontend — minimal send UI
 
 **Files:**
 - Modify: `dashboard-app/frontend/src/api.js`
@@ -1264,7 +1481,7 @@ git commit -m "feat: add minimal Ad-Hoc WhatsApp Broadcast UI to the Notices pag
 
 ---
 
-### Task 7: Final verification
+### Task 8: Final verification
 
 **Files:** none modified — verification only.
 
@@ -1280,10 +1497,15 @@ Expected: all pass.
 
 - [ ] **Step 3: Manual smoke test against local dev**
 
-With both local dev servers running and the real import (Task 5) already done against the real database:
-1. Open the Notices page — confirm a new "Ad-Hoc WhatsApp Broadcasts" section appears below the existing MeitY notice UI, showing "Independence Day Special Offer 2026" with a real recipient count (should read close to "2692 of 2692 haven't received this yet" if this is the first time).
-2. Click "Send via WhatsApp" — confirm the modal shows the real count and notice label.
-3. **Do not click "Confirm Send All" yet** — the template isn't approved by Meta at this point (per the design spec), so clicking it should be safe (everything reports `skipped_no_template`), but there's no reason to burn a real send cycle testing this before the template exists. Close the modal instead.
-4. Once Meta approves the template and `WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME`/`_LANG` are set in both local `.env` and Render's environment, re-run this smoke test and this time confirm a real send using `DASHBOARD_TEST_NUMBER` (set it first if not already set) before ever sending to the real 2,692-number list.
+The template is already approved (confirmed directly via Meta's Graph API: `independence_day_2026_offer`, `status: APPROVED`, `category: MARKETING`, id `4474587969457169`) — so unlike a typical first run, real sends are possible as soon as the env vars are set. Be deliberate about that.
 
-Report back: pass/fail on each, and the exact recipient count shown for the Independence Day notice.
+With both local dev servers running and the real import (Task 6) already done against the real database:
+1. Open the Notices page — confirm a new "Ad-Hoc WhatsApp Broadcasts" section appears below the existing MeitY notice UI, showing "Independence Day Special Offer 2026" with a real recipient count (should read close to "2692 of 2692 haven't received this yet" if this is the first time).
+2. Set `WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME=independence_day_2026_offer` and `WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG=en` in local `.env` (matching the approved template exactly).
+3. Set `DASHBOARD_TEST_NUMBER` in local `.env` to a real number you control, if not already set — this redirects every send to that number instead of the real list, same safeguard used throughout this project.
+4. Restart the local backend so the new env vars take effect, then click "Send via WhatsApp" → confirm the modal shows the real count and notice label → confirm the send. Verify the test number actually receives the message.
+5. Check the job's final counts in the modal — confirm `sent` is 1 (capped correctly at whatever's really eligible for a single test) and nothing looks like the earlier silent-drop pattern.
+6. **Do not remove `DASHBOARD_TEST_NUMBER` and send to the real 2,692-number list from local dev.** Real sends to the full list should happen deliberately, from the live deployment, once you're ready — not as a side effect of this smoke test.
+7. Set the same env vars on Render (without `DASHBOARD_TEST_NUMBER`, or with it removed once ready for a real send) when actually launching the real broadcast.
+
+Report back: pass/fail on each step, the exact recipient count shown, and confirmation the test-number message actually arrived.
