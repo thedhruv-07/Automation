@@ -802,7 +802,7 @@ def send_notice_email_status(notice_id: str, job_id: str):
 _send_adhoc_notice_jobs: dict[str, dict] = {}
 
 
-def _run_send_adhoc_whatsapp_job(job_id, notice_id, lock_key, token, phone_number_id, test_number, limit):
+def _run_send_adhoc_whatsapp_job(job_id, notice_id, lock_key, token, phone_number_id, test_number, limit, pace_seconds):
     def progress(result, total):
         job = _send_adhoc_notice_jobs[job_id]
         job["total"] = total
@@ -819,7 +819,8 @@ def _run_send_adhoc_whatsapp_job(job_id, notice_id, lock_key, token, phone_numbe
     try:
         send_adhoc_whatsapp_notice(
             DEFAULT_DB_PATH, notice_id, token, phone_number_id,
-            dry_run=False, test_number=test_number, on_progress=progress, limit=limit,
+            dry_run=False, test_number=test_number, on_progress=progress,
+            limit=limit, pace_seconds=pace_seconds,
         )
     except Exception as exc:
         _send_adhoc_notice_jobs[job_id]["error"] = str(exc)
@@ -859,7 +860,6 @@ def send_adhoc_notice_whatsapp_endpoint(notice_id: str):
         token = os.environ["WHATSAPP_TOKEN"]
         phone_number_id = os.environ["PHONE_NUMBER_ID"]
         test_number = os.environ.get("DASHBOARD_TEST_NUMBER") or None
-        limit = int(os.environ.get("WHATSAPP_ADHOC_DAILY_LIMIT", "2000"))
 
         job_id = str(uuid.uuid4())
         _send_adhoc_notice_jobs[job_id] = {
@@ -868,7 +868,10 @@ def send_adhoc_notice_whatsapp_endpoint(notice_id: str):
         }
         thread = threading.Thread(
             target=_run_send_adhoc_whatsapp_job,
-            args=(job_id, notice_id, lock_key, token, phone_number_id, test_number, limit),
+            args=(
+                job_id, notice_id, lock_key, token, phone_number_id, test_number,
+                WHATSAPP_NOTICE_DAILY_LIMIT, WHATSAPP_SEND_PACE_SECONDS,
+            ),
             daemon=True,
         )
         thread.start()
