@@ -322,6 +322,7 @@ def test_send_adhoc_whatsapp_notice_skips_phone_already_sent_to(monkeypatch, mon
 def test_send_adhoc_whatsapp_notice_builds_payload_with_no_personalization(monkeypatch, mongo_db):
     monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME", "independence_day_2026_offer")
     monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG", "en")
+    monkeypatch.delenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_VIDEO_ID", raising=False)
     _seed_adhoc_recipients(mongo_db, "independence_day_2026", ["919876543210"])
     send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
 
@@ -330,6 +331,25 @@ def test_send_adhoc_whatsapp_notice_builds_payload_with_no_personalization(monke
     payload = send_fn.call_args[0][0]
     assert payload["template"]["name"] == "independence_day_2026_offer"
     assert "components" not in payload["template"]
+
+
+def test_send_adhoc_whatsapp_notice_includes_video_header_when_configured(monkeypatch, mongo_db):
+    """The approved template's header is type VIDEO -- a real send fails
+    with Meta error #132012 without this component (discovered by testing
+    a real send), even though the BODY itself has zero variables."""
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_NAME", "independence_day_2026_offer")
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_LANG", "en")
+    monkeypatch.setenv("WHATSAPP_ADHOC_INDEPENDENCE_DAY_2026_VIDEO_ID", "4580242518890493")
+    _seed_adhoc_recipients(mongo_db, "independence_day_2026", ["919876543210"])
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    send_adhoc_whatsapp_notice(mongo_db, "independence_day_2026", "tok", "pid", send_fn=send_fn)
+
+    payload = send_fn.call_args[0][0]
+    assert payload["template"]["components"] == [{
+        "type": "header",
+        "parameters": [{"type": "video", "video": {"id": "4580242518890493"}}],
+    }]
 
 
 def test_send_adhoc_whatsapp_notice_respects_limit(monkeypatch, mongo_db):
