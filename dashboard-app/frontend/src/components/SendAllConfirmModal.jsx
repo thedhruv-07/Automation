@@ -115,6 +115,16 @@ export default function SendAllConfirmModal({
                 Send failed: {job.error}
               </div>
             )}
+            {job.done && job.failed > 0 && (
+              <div
+                role="alert"
+                className="text-sm text-ink-primary bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-2 mb-3"
+              >
+                ⚠ {job.failed} message{job.failed === 1 ? "" : "s"} failed to send. This can happen
+                when WhatsApp holds or blocks delivery (e.g. low account quality) rather than a
+                code error — check WhatsApp Business Manager for details before retrying.
+              </div>
+            )}
             {job.done ? (
               <div className="flex justify-end">
                 <button

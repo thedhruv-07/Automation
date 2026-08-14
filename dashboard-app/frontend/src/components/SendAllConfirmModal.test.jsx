@@ -98,6 +98,47 @@ describe("SendAllConfirmModal", () => {
     expect(screen.queryByText(/failed:/i)).not.toBeInTheDocument();
   });
 
+  it("shows a prominent alert when the job finishes with per-recipient failures", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 6, skipped: 0, failed: 4, done: true }}
+      />
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/4 messages failed to send/i);
+  });
+
+  it("does not show the failure alert while the job is still in progress", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 2, skipped: 0, failed: 4, done: false }}
+      />
+    );
+    expect(screen.queryByText(/messages failed to send/i)).not.toBeInTheDocument();
+  });
+
+  it("does not show the failure alert when the job finishes with zero failures", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 10, skipped: 0, failed: 0, done: true }}
+      />
+    );
+    expect(screen.queryByText(/failed to send/i)).not.toBeInTheDocument();
+  });
+
+  it("uses singular phrasing when exactly one message fails", () => {
+    render(
+      <SendAllConfirmModal
+        open={true} eligibleCount={10} onConfirm={() => {}} onCancel={() => {}}
+        job={{ total: 10, sent: 9, skipped: 0, failed: 1, done: true }}
+      />
+    );
+    expect(screen.getByText(/1 message failed to send/i)).toBeInTheDocument();
+  });
+
   it("keeps Tab/Shift+Tab from leaving the dialog while a job is in progress (no interactive elements)", () => {
     render(
       <SendAllConfirmModal
