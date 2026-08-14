@@ -180,15 +180,46 @@ from whatsapp_renewal_alerts import send_message
 
 def test_send_message_success():
     mock_response = Mock(status_code=200)
-    mock_response.json.return_value = {"messages": [{"id": "wamid.ABC"}]}
+    mock_response.json.return_value = {"messages": [{"id": "wamid.ABC", "message_status": "accepted"}]}
     with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response) as mock_post:
         ok, info = send_message({"to": "919876543210"}, "tok", "pid123")
 
     assert ok is True
-    assert info == {"message_id": "wamid.ABC"}
+    assert info == {"message_id": "wamid.ABC", "message_status": "accepted"}
     mock_post.assert_called_once()
     called_url = mock_post.call_args.args[0]
     assert called_url == "https://graph.facebook.com/v23.0/pid123/messages"
+
+
+def test_send_message_missing_message_status_defaults_to_accepted():
+    """Older/other API responses may omit message_status entirely -- treat
+    that the same as "accepted" rather than failing closed on a field that
+    isn't guaranteed to always be present."""
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {"messages": [{"id": "wamid.ABC"}]}
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        ok, info = send_message({"to": "919876543210"}, "tok", "pid123")
+
+    assert ok is True
+    assert info == {"message_id": "wamid.ABC", "message_status": "accepted"}
+
+
+def test_send_message_held_for_quality_assessment_is_not_treated_as_sent():
+    """Meta can return a real message_id (HTTP 200, synchronously accepted)
+    for a message it's actually holding pending its own quality assessment --
+    not a delivery guarantee. Discovered 2026-08-14: our own recorded "sent"
+    count for the Independence Day campaign was ~2x Meta's real
+    template-analytics sent count, even after the pacing/limit fix -- this
+    status was the piece we were blindly treating as unconditional success."""
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {"messages": [{"id": "wamid.HELD", "message_status": "held_for_quality_assessment"}]}
+    with patch("whatsapp_renewal_alerts.requests.post", return_value=mock_response):
+        ok, info = send_message({"to": "919876543210"}, "tok", "pid123")
+
+    assert ok is False
+    assert info["message_id"] == "wamid.HELD"
+    assert info["message_status"] == "held_for_quality_assessment"
+    assert "held" in info["error"].lower()
 
 
 def test_send_message_api_error():

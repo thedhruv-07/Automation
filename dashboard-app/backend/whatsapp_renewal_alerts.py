@@ -102,9 +102,24 @@ def send_message(payload: dict, token: str, phone_number_id: str, timeout: int =
     if response.status_code == 200:
         try:
             data = response.json()
-            return True, {"message_id": data["messages"][0]["id"]}
+            message = data["messages"][0]
+            message_id = message["id"]
         except (ValueError, KeyError, IndexError):
             return False, {"error": "Invalid response structure from API"}
+        # Meta can synchronously accept the HTTP call (a real message_id, a
+        # 200) for a message it's actually holding pending its own quality
+        # assessment -- not a delivery guarantee. Discovered 2026-08-14: our
+        # own recorded "sent" count for a campaign was ~2x Meta's real
+        # template-analytics sent count, even after pacing/a daily limit --
+        # we were treating any message_id as unconditional success. Absence
+        # of this field (older API responses) is treated as "accepted".
+        message_status = message.get("message_status", "accepted")
+        if message_status != "accepted":
+            return False, {
+                "error": f"message held (status={message_status!r}), not confirmed sent",
+                "message_id": message_id, "message_status": message_status,
+            }
+        return True, {"message_id": message_id, "message_status": message_status}
 
     try:
         error_message = response.json()["error"]["message"]
