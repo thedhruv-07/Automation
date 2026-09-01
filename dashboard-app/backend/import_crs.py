@@ -5,8 +5,18 @@ Source workbook has one sheet per Indian Standard (e.g. "IS 13252") plus a
 "BIS_CRS_Master" sheet that duplicates every per-standard sheet's rows
 combined -- the Master sheet is skipped during import to avoid double-
 counting every client. There's no expiry/validity date column in this
-source format; a CRS registration is valid for a fixed 2 years from its
-Grant Date, so Expiry Date is computed here rather than read. License No.
+source format, and no column distinguishing an initial registration from a
+renewal either -- Grant Date is all we get. A first-time CRS registration
+is valid 2 years; a renewal can be granted for 2-5 years, and this data
+can't tell the two apart. ponytail: Expiry Date is computed as Grant Date
++ 5 years everywhere (the maximum real term) rather than the true term per
+row, a deliberate choice to avoid the worse failure mode -- understating a
+renewed license's real expiry would mean it goes quiet on urgent/critical
+alerts while still genuinely valid, whereas overstating it (this choice)
+only risks a stale registration slipping past its real 2-year expiry
+un-nagged for up to 3 extra years. Upgrade path: if the source ever gains
+a term-length or "valid upto" column, read it instead of assuming 5.
+License No.
 is used for both Client ID and Certification ID, since it's the natural
 unique key in this dataset (mirrors import_bis_isi_data.py's use of its own
 licence number). A given license number is listed once per Product Category
@@ -114,7 +124,7 @@ def import_crs_workbook(wb, out_ws, today=None):
             if grant_dt is None:
                 stats["rows_skipped_missing_key"] += 1
                 continue
-            expiry_dt = add_years(grant_dt, 2)
+            expiry_dt = add_years(grant_dt, 5)
 
             license_no_clean = str(license_no).strip()
             license_cert_pair = (license_no_clean, cert_name)

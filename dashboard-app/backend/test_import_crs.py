@@ -77,7 +77,7 @@ def test_import_crs_workbook_converts_rows_and_computes_expiry():
     assert row[6] == "CRS"                                         # scheme
     assert row[7] == "R-7019869"                                   # cert_id
     assert row[8] == "15-01-2024"                                  # issue_date (Grant Date)
-    assert row[9] == "15-01-2026"                                  # expiry_date (Grant Date + 2y)
+    assert row[9] == "15-01-2029"                                  # expiry_date (Grant Date + 5y)
     assert row[10] is None                                         # renewal_link
     assert row[11] in {"CRITICAL", "URGENT", "DUE SOON", "ACTIVE", "EXPIRED"}
 
@@ -224,4 +224,6 @@ def test_import_crs_workbook_handles_feb_29_grant_date_in_non_leap_target_year()
 
     import_crs_workbook(wb, collector)
 
-    assert collector.rows[0][9] == "28-02-2026"
+    # 2024-02-29 + 5y lands on 2029, also not a leap year -- same Feb 28
+    # fallback, still exercised at the new +5y term.
+    assert collector.rows[0][9] == "28-02-2029"
