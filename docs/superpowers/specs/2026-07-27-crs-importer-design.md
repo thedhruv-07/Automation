@@ -28,8 +28,15 @@ Raw CRS workbook structure (per the source screenshot):
   Name`, `Country`, `Indian Standard`, `Product Name`, `Product Category`,
   `Grant Date`, `Status`, `E-mail`, `Phone No.`
 
-There is no expiry/validity date column. CRS registrations are valid for a
-fixed **2 years from Grant Date** — expiry is computed, not read.
+There is no expiry/validity date column, and no column distinguishing an
+initial registration from a renewal either. **Updated 2026-08-14**: a
+first-time CRS registration is valid 2 years, but a renewal can be granted
+for 2–5 years (confirmed against BIS's actual rules, not assumed) — since
+the source data can't tell which a given row is, expiry is computed as
+**Grant Date + 5 years** (the maximum real term) everywhere, a deliberate
+overstatement for first-time registrations accepted in exchange for never
+under-flagging a renewed license's real expiry. See `import_crs.py`'s
+module docstring for the full reasoning.
 
 ## 2. Detection — `looks_like_crs_workbook(wb)`
 
@@ -58,7 +65,7 @@ For each data row in a per-standard sheet, columns map to roster fields as:
 | `cert_name` | Indian Standard | Not combined with Product Category, per decision |
 | `scheme` | — | Hardcoded `"CRS"` |
 | `issue_date` | Grant Date | |
-| `expiry_date` | Grant Date + 2 years | Computed via a local `add_years()` helper |
+| `expiry_date` | Grant Date + 5 years (updated 2026-08-14, was +2) | Computed via a local `add_years()` helper |
 | `renewal_link` | — | `None`, no source equivalent, same as ISI |
 | `status` | — | Recomputed via `compute_status()`, not the source Status column (which just says "Register"/"Registered" — a different meaning, same reasoning ISI's own source Status column already documents) |
 
@@ -119,7 +126,7 @@ sheets-used/sheets-empty/rows-written/rows-skipped summary.
   false-positive on an unrelated workbook.
 - `import_crs_workbook`:
   - Converts a well-formed per-standard sheet's rows correctly, including
-    `scheme == "CRS"` and computed expiry = Grant Date + 2 years.
+    `scheme == "CRS"` and computed expiry = Grant Date + 5 years.
   - Skips the `"BIS_CRS_Master"` sheet entirely (proven by seeding Master and
     a per-standard sheet with the *same* license numbers and asserting each
     client appears exactly once in the output, not twice).
