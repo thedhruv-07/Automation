@@ -317,15 +317,21 @@ def export_clients_rows(
 def get_eligible_clients(
     db: Database, status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
-    scheme: str | None = None,
+    scheme: str | None = None, sort_by_expiry: bool = False,
 ) -> list[dict]:
     """Alert-eligible (status in ALERT_STATUSES) client records, optionally
     further narrowed by the same filters get_clients_page's table view
-    supports. Sorted by _seq (insertion order) so callers that depend on
-    result order see the same order read_clients() always gave them."""
+    supports. Sorted by _seq (insertion order) by default, so callers that
+    depend on result order see the same order read_clients() always gave
+    them (run()/run_email_alerts() do -- see whatsapp_renewal_alerts.py's
+    order-sensitive tests). Pass sort_by_expiry=True to instead sort by the
+    already-indexed expiry_date_iso ascending (soonest-expiring first) --
+    used by the dashboard's bulk-send so the most urgent clients are
+    attempted first if a daily send limit cuts a run short."""
     extra_query = _client_filters_query(status, cert_type, expiry_before, search, scheme)
     query = _and_query({"status": {"$in": list(ALERT_STATUSES)}}, extra_query)
-    cursor = db["clients"].find(query).sort("_seq", 1)
+    order_field = "expiry_date_iso" if sort_by_expiry else "_seq"
+    cursor = db["clients"].find(query).sort(order_field, 1)
     return [_doc_to_dict(doc) for doc in cursor]
 
 

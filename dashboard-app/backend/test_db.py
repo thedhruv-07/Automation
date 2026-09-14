@@ -433,6 +433,14 @@ def test_get_eligible_clients_preserves_insertion_order(mongo_db):
     assert [r["client_id"] for r in rows] == ["CLT001", "CLT002", "CLT003", "CLT005"]
 
 
+def test_get_eligible_clients_sort_by_expiry_orders_soonest_first(mongo_db):
+    """CLT005 (12-01-2026) expires soonest despite being inserted last --
+    sort_by_expiry=True must reorder by real date, not insertion order."""
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, sort_by_expiry=True)
+    assert [r["client_id"] for r in rows] == ["CLT005", "CLT001", "CLT002", "CLT003"]
+
+
 def test_get_eligible_clients_filters_by_cert_type(mongo_db):
     _seeded_db(mongo_db)
     rows = get_eligible_clients(mongo_db, cert_type=["ISO 9001"])

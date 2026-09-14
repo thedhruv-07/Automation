@@ -516,7 +516,7 @@ def _run_send_all_email_job(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before,
-            search=search, scheme=scheme, limit=BREVO_DAILY_LIMIT,
+            search=search, scheme=scheme, limit=BREVO_DAILY_LIMIT, sort_by_expiry=True,
         )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
