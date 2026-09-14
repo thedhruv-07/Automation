@@ -105,6 +105,23 @@ def test_get_clients_filters_by_status_param(tmp_path, monkeypatch, mongo_db):
     assert data[0]["client_id"] == "CLT002"
 
 
+def test_get_clients_filters_by_expiry_month_param(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/clients", params={"expiry_month": "2026-10", "page_size": 50})
+    data = response.json()["rows"]
+    assert len(data) == 1
+    assert data[0]["client_id"] == "CLT004"
+
+
 def test_get_stats_returns_counts_and_cert_types(tmp_path, monkeypatch, mongo_db):
     db_path = mongo_db
     _write_db(db_path, [
@@ -201,6 +218,24 @@ def test_eligible_count_excludes_already_sent_today(tmp_path, monkeypatch, mongo
 
     response = client.get("/api/eligible-count")
     assert response.json() == {"whatsapp": 0, "email": 1}
+
+
+def test_eligible_count_filters_by_expiry_month_and_ignores_alert_status(tmp_path, monkeypatch, mongo_db):
+    """A month filter counts every client expiring that month regardless of
+    status (ACTIVE included), matching what send-all-emails will actually
+    send -- see get_eligible_clients' ignore_alert_status."""
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/eligible-count", params={"expiry_month": "2026-10"})
+    assert response.json() == {"whatsapp": 1, "email": 1}
 
 
 def test_get_clients_filters_by_scheme_param(tmp_path, monkeypatch, mongo_db):
@@ -378,6 +413,45 @@ def test_send_all_emails_respects_cert_type_filter(tmp_path, monkeypatch, mongo_
     })()
     with patch("email_alerts.requests.post", return_value=mock_response):
         start_response = client.post("/api/send-all-emails", params={"cert_type": "OSHA"})
+        assert start_response.status_code == 200
+        job_id = start_response.json()["job_id"]
+
+        import time
+        status_response = None
+        for _ in range(50):
+            status_response = client.get(f"/api/send-all-emails/status/{job_id}")
+            if status_response.json()["done"]:
+                break
+            time.sleep(0.05)
+
+    final = status_response.json()
+    assert final["done"] is True
+    assert final["total"] == 1
+    assert final["sent"] == 1
+
+
+def test_send_all_emails_with_expiry_month_ignores_status(tmp_path, monkeypatch, mongo_db):
+    """CLT004 is ACTIVE (never normally alert-eligible) but expires in the
+    requested month -- an expiry_month send must reach it anyway."""
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setenv("BREVO_API_KEY", "test-key")
+    monkeypatch.setenv("EMAIL_SENDER", "sender@x.com")
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+
+    mock_response = type("Resp", (), {
+        "status_code": 200,
+        "json": lambda self: {"messageId": "brevo-1"},
+    })()
+    with patch("email_alerts.requests.post", return_value=mock_response):
+        start_response = client.post("/api/send-all-emails", params={"expiry_month": "2026-10"})
         assert start_response.status_code == 200
         job_id = start_response.json()["job_id"]
 

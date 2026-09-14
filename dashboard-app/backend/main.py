@@ -141,12 +141,14 @@ def get_clients(
     page_size: int = Query(default=50, ge=1, le=500),
     status: str = "ALL", cert_type: list[str] = Query([]), scheme: str = "ALL",
     expiry_before: str = "", search: str = "", sort_key: str = "", sort_dir: str = "asc",
+    expiry_month: str = "",
 ):
     today = _today_str()
     rows, total = get_clients_page(
         DEFAULT_DB_PATH, page=page, page_size=page_size,
         status=status, cert_type=cert_type, scheme=scheme, expiry_before=expiry_before or None,
         search=search or None, sort_key=sort_key or None, sort_dir=sort_dir.lower(),
+        expiry_month=expiry_month or None,
     )
     result = []
     for rec in rows:
@@ -166,18 +168,26 @@ def stats():
 @app.get("/api/eligible-count")
 def eligible_count(
     status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "",
+    expiry_month: str = "",
 ):
     today = _today_str()
+    # A month filter means "send to everyone expiring that month regardless
+    # of status" (see get_eligible_clients' ignore_alert_status) -- so the
+    # count previewed here has to ignore alert-status too, or it won't match
+    # what send-all-emails actually sends.
+    ignore_alert_status = bool(expiry_month)
     return {
         "whatsapp": get_eligible_count(
             DEFAULT_DB_PATH, today, "whatsapp",
             status=status or None, cert_type=cert_type, expiry_before=expiry_before or None,
             search=search or None, scheme=scheme or None,
+            expiry_month=expiry_month or None, ignore_alert_status=ignore_alert_status,
         ),
         "email": get_eligible_count(
             DEFAULT_DB_PATH, today, "email",
             status=status or None, cert_type=cert_type, expiry_before=expiry_before or None,
             search=search or None, scheme=scheme or None,
+            expiry_month=expiry_month or None, ignore_alert_status=ignore_alert_status,
         ),
     }
 
@@ -194,12 +204,14 @@ def _csv_escape(value) -> str:
 @app.get("/api/clients/export")
 def export_clients(
     status: str = "ALL", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "ALL",
+    expiry_month: str = "",
 ):
     def generate():
         yield ",".join(_csv_escape(h) for h in REQUIRED_HEADERS) + "\n"
         for rec in export_clients_rows(
             DEFAULT_DB_PATH, status=status, cert_type=cert_type, scheme=scheme,
             expiry_before=expiry_before or None, search=search or None,
+            expiry_month=expiry_month or None,
         ):
             values = [
                 rec["client_id"], rec["name"], rec["company"], rec["email"], rec["phone"],
@@ -513,6 +525,7 @@ _send_all_email_jobs: dict[str, dict] = {}
 def _run_send_all_email_job(
     job_id, brevo_api_key, email_sender, test_email,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
+    expiry_month=None, ignore_alert_status=False,
 ):
     def progress(result, total):
         job = _send_all_email_jobs[job_id]
@@ -533,6 +546,7 @@ def _run_send_all_email_job(
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before,
             search=search, scheme=scheme, limit=_remaining_email_quota_today(), sort_by_expiry=True,
+            expiry_month=expiry_month, ignore_alert_status=ignore_alert_status,
         )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
@@ -546,6 +560,7 @@ def _run_send_all_email_job(
 @app.post("/api/send-all-emails")
 def send_all_emails(
     status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "",
+    expiry_month: str = "",
 ):
     global _email_bulk_in_progress
     with _email_send_lock:
@@ -573,6 +588,7 @@ def send_all_emails(
             args=(
                 job_id, brevo_api_key, email_sender, test_email,
                 status or None, cert_type, expiry_before or None, search or None, scheme or None,
+                expiry_month or None, bool(expiry_month),
             ),
             daemon=True,
         )

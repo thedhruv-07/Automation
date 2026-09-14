@@ -180,12 +180,15 @@ def upsert_clients(db: Database, rows: list[tuple], mode: str) -> dict:
 def _client_filters_query(
     status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
-    scheme: str | None = None,
+    scheme: str | None = None, expiry_month: str | None = None,
 ) -> dict:
     """Builds the MongoDB filter dict shared by get_clients_page,
     export_clients_rows, get_eligible_clients, get_broadcast_clients, and
     the eligible-count functions -- so "currently filtered view" always
-    means the same thing everywhere it's used."""
+    means the same thing everywhere it's used. expiry_month ("YYYY-MM") is
+    independent of expiry_before -- it's a month-only filter used to send/view
+    clients expiring in a specific month regardless of their current
+    urgency status (see get_eligible_clients' ignore_alert_status)."""
     query: dict = {}
     if status and status != "ALL":
         query["status"] = status
@@ -199,6 +202,8 @@ def _client_filters_query(
         query["scheme"] = scheme
     if expiry_before:
         query["expiry_date_iso"] = {"$lte": expiry_before}
+    if expiry_month:
+        query["expiry_date_iso"] = {"$regex": f"^{expiry_month}"}
     if search:
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
@@ -224,9 +229,9 @@ def get_clients_page(
     db: Database, page: int = 1, page_size: int = 50, status: str | None = None,
     cert_type: list[str] | None = None, expiry_before: str | None = None,
     search: str | None = None, sort_key: str | None = None, sort_dir: str = "asc",
-    scheme: str | None = None,
+    scheme: str | None = None, expiry_month: str | None = None,
 ) -> tuple[list[dict], int]:
-    query = _client_filters_query(status, cert_type, expiry_before, search, scheme)
+    query = _client_filters_query(status, cert_type, expiry_before, search, scheme, expiry_month)
     total = db["clients"].count_documents(query)
 
     if sort_key in ("expiry_date", "days_left"):
@@ -249,6 +254,7 @@ def _reminder_cutoff_date(today: str) -> str:
 
 def _count_eligible_excluding_recent(
     db: Database, log_collection: str, today: str, extra_query: dict | None = None,
+    ignore_alert_status: bool = False,
 ) -> int:
     """Counts clients in ALERT_STATUSES (optionally further narrowed by
     extra_query) whose most recent log_collection entry for their own
@@ -256,7 +262,10 @@ def _count_eligible_excluding_recent(
     mirrors send_one_alert/send_one_email_alert's own dedup check exactly,
     including that a status change (no prior entry under the new status)
     always counts as eligible regardless of how recently the client was
-    contacted under a previous status."""
+    contacted under a previous status. ignore_alert_status=True drops the
+    ALERT_STATUSES restriction, matching get_eligible_clients' same-named
+    param, so the "will send to N clients" preview count stays accurate for
+    the month-filter "send regardless of status" feature."""
     cutoff = _reminder_cutoff_date(today)
     recent_pairs = {
         (doc["client_id"], doc["status"])
@@ -264,7 +273,10 @@ def _count_eligible_excluding_recent(
             {"sent_date": {"$gt": cutoff}}, {"client_id": 1, "status": 1},
         )
     }
-    query = _and_query({"status": {"$in": list(ALERT_STATUSES)}}, extra_query or {})
+    if ignore_alert_status:
+        query = extra_query or {}
+    else:
+        query = _and_query({"status": {"$in": list(ALERT_STATUSES)}}, extra_query or {})
     count = 0
     for doc in db["clients"].find(query, {"client_id": 1, "status": 1}):
         if (doc["client_id"], doc["status"]) not in recent_pairs:
@@ -306,10 +318,10 @@ def get_stats(db: Database, today: str) -> dict:
 def export_clients_rows(
     db: Database, status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
-    scheme: str | None = None,
+    scheme: str | None = None, expiry_month: str | None = None,
 ):
     """Yields a dict per matching client, no pagination -- for CSV export."""
-    query = _client_filters_query(status, cert_type, expiry_before, search, scheme)
+    query = _client_filters_query(status, cert_type, expiry_before, search, scheme, expiry_month)
     for doc in db["clients"].find(query):
         yield _doc_to_dict(doc)
 
@@ -318,6 +330,7 @@ def get_eligible_clients(
     db: Database, status: str | None = None, cert_type: list[str] | None = None,
     expiry_before: str | None = None, search: str | None = None,
     scheme: str | None = None, sort_by_expiry: bool = False,
+    expiry_month: str | None = None, ignore_alert_status: bool = False,
 ) -> list[dict]:
     """Alert-eligible (status in ALERT_STATUSES) client records, optionally
     further narrowed by the same filters get_clients_page's table view
@@ -327,9 +340,15 @@ def get_eligible_clients(
     order-sensitive tests). Pass sort_by_expiry=True to instead sort by the
     already-indexed expiry_date_iso ascending (soonest-expiring first) --
     used by the dashboard's bulk-send so the most urgent clients are
-    attempted first if a daily send limit cuts a run short."""
-    extra_query = _client_filters_query(status, cert_type, expiry_before, search, scheme)
-    query = _and_query({"status": {"$in": list(ALERT_STATUSES)}}, extra_query)
+    attempted first if a daily send limit cuts a run short. Pass
+    ignore_alert_status=True to drop the ALERT_STATUSES restriction entirely
+    (e.g. include ACTIVE) -- used by the month-filter "email everyone
+    expiring this month regardless of status" send feature."""
+    extra_query = _client_filters_query(status, cert_type, expiry_before, search, scheme, expiry_month)
+    if ignore_alert_status:
+        query = extra_query
+    else:
+        query = _and_query({"status": {"$in": list(ALERT_STATUSES)}}, extra_query)
     order_field = "expiry_date_iso" if sort_by_expiry else "_seq"
     cursor = db["clients"].find(query).sort(order_field, 1)
     return [_doc_to_dict(doc) for doc in cursor]
@@ -385,17 +404,19 @@ def get_eligible_count(
     db: Database, today: str, channel: str, status: str | None = None,
     cert_type: list[str] | None = None, expiry_before: str | None = None,
     search: str | None = None, scheme: str | None = None,
+    expiry_month: str | None = None, ignore_alert_status: bool = False,
 ) -> int:
     """Counts alert-eligible clients not yet sent via the given channel
     ('whatsapp' -> sent_log, 'email' -> email_sent_log) within the last
     REMINDER_INTERVAL_DAYS, optionally narrowed by status/cert_type/
-    expiry_before/search/scheme."""
+    expiry_before/search/scheme/expiry_month. ignore_alert_status=True
+    matches get_eligible_clients -- see its docstring."""
     if channel not in ("whatsapp", "email"):
         raise ValueError(f"Unknown channel: {channel!r}")
     log_collection = "sent_log" if channel == "whatsapp" else "email_sent_log"
     init_db(db)
-    extra_query = _client_filters_query(status, cert_type, expiry_before, search, scheme)
-    return _count_eligible_excluding_recent(db, log_collection, today, extra_query)
+    extra_query = _client_filters_query(status, cert_type, expiry_before, search, scheme, expiry_month)
+    return _count_eligible_excluding_recent(db, log_collection, today, extra_query, ignore_alert_status)
 
 
 def get_notice_eligible_count(

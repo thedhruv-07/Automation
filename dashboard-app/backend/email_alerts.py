@@ -204,6 +204,8 @@ def run_email_alerts(
     scheme: str | None = None,
     limit: int | None = None,
     sort_by_expiry: bool = False,
+    expiry_month: str | None = None,
+    ignore_alert_status: bool = False,
 ) -> list[dict]:
     """limit caps how many actual sends (action == "sent") this call makes --
     e.g. Brevo's 300/day cap. Once hit, remaining eligible records are left
@@ -212,11 +214,14 @@ def run_email_alerts(
     sent ones. sort_by_expiry=True processes soonest-expiring clients first,
     so if limit cuts a run short, the most urgent ones were already attempted
     -- see get_eligible_clients for why this defaults to False (insertion
-    order is depended on elsewhere)."""
+    order is depended on elsewhere). expiry_month/ignore_alert_status let a
+    caller send to every client expiring in a specific month regardless of
+    their current urgency status -- see get_eligible_clients."""
     today = today or datetime.now().strftime("%Y-%m-%d")
     records = get_eligible_clients(
         db_path, status=status, cert_type=cert_type, expiry_before=expiry_before,
         search=search, scheme=scheme, sort_by_expiry=sort_by_expiry,
+        expiry_month=expiry_month, ignore_alert_status=ignore_alert_status,
     )
     sent_log = load_email_sent_log(db_path)
     persist_log = not dry_run and not test_email

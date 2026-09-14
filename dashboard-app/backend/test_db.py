@@ -527,6 +527,48 @@ def test_get_eligible_count_includes_sent_after_reminder_interval_elapses(mongo_
     assert get_eligible_count(mongo_db, today="2026-07-21", channel="whatsapp") == 4
 
 
+def test_get_clients_page_filters_by_expiry_month(mongo_db):
+    _seeded_db(mongo_db)
+    rows, total = get_clients_page(mongo_db, page=1, page_size=50, expiry_month="2026-08")
+    assert total == 1
+    assert rows[0]["client_id"] == "CLT002"
+
+
+def test_get_eligible_clients_filters_by_expiry_month(mongo_db):
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, expiry_month="2026-07")
+    assert {r["client_id"] for r in rows} == {"CLT001"}
+
+
+def test_get_eligible_clients_expiry_month_excludes_active_by_default(mongo_db):
+    """CLT004 (15-10-2026) is ACTIVE -- month-filtering alone must not
+    override the normal alert-eligibility restriction."""
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, expiry_month="2026-10")
+    assert rows == []
+
+
+def test_get_eligible_clients_ignore_alert_status_includes_active(mongo_db):
+    """The month-based "send regardless of status" feature: ignore_alert_status=True
+    must return CLT004 even though ACTIVE is never normally alert-eligible."""
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, expiry_month="2026-10", ignore_alert_status=True)
+    assert {r["client_id"] for r in rows} == {"CLT004"}
+
+
+def test_get_eligible_clients_ignore_alert_status_without_month_returns_everyone(mongo_db):
+    _seeded_db(mongo_db)
+    rows = get_eligible_clients(mongo_db, ignore_alert_status=True)
+    assert {r["client_id"] for r in rows} == {"CLT001", "CLT002", "CLT003", "CLT004", "CLT005"}
+
+
+def test_get_eligible_count_filters_by_expiry_month(mongo_db):
+    _seeded_db(mongo_db)
+    assert get_eligible_count(
+        mongo_db, today="2026-07-21", channel="whatsapp", expiry_month="2026-07",
+    ) == 1
+
+
 def test_get_eligible_count_email_channel_is_independent_of_whatsapp(mongo_db):
     _seeded_db(mongo_db)
     record_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "wamid.ABC", "1", "2026-07-21T10:00:00")
