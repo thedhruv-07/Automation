@@ -204,4 +204,17 @@ describe("ClientTable", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", "No email on file");
   });
+
+  it("shows an Emailed badge instead of Send Email once emailed today", () => {
+    const emailedClient = { ...oneClient, email_sent_today: true };
+    render(
+      <ClientTable
+        page={pageOf([emailedClient])} loading={false} sortKey={null} sortAsc={true}
+        onSort={() => {}} onPageChange={() => {}} onSendClick={() => {}}
+        onSendSelected={() => {}} onPreviewEmail={() => {}} onSendEmailClick={() => {}}
+      />
+    );
+    expect(screen.getByText("✅ Emailed")).toBeInTheDocument();
+    expect(screen.queryByText("Send Email")).not.toBeInTheDocument();
+  });
 });

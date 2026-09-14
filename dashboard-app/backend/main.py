@@ -145,9 +145,11 @@ def get_clients(
     for rec in rows:
         if rec["status"] in ALERT_STATUSES:
             alert_sent_today = is_already_sent(DEFAULT_DB_PATH, rec["client_id"], rec["status"], today)
+            email_sent_today = is_email_already_sent(DEFAULT_DB_PATH, rec["client_id"], rec["status"], today)
         else:
             alert_sent_today = None
-        result.append({**rec, "alert_sent_today": alert_sent_today})
+            email_sent_today = None
+        result.append({**rec, "alert_sent_today": alert_sent_today, "email_sent_today": email_sent_today})
     return {"rows": result, "total": total, "page": page, "page_size": page_size}
 
 

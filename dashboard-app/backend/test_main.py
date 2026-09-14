@@ -88,6 +88,34 @@ def test_get_clients_merges_alert_sent_today(tmp_path, monkeypatch, mongo_db):
     assert active["alert_sent_today"] is None
 
 
+def test_get_clients_merges_email_sent_today(tmp_path, monkeypatch, mongo_db):
+    from db import record_email_sent
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"],
+        ["CLT004", "Sneha Kapoor", "EduTech", "s@x.com", "919765432109",
+         "ISO 27001", "ISI", "ISO27-1", "01-01-2025", "15-10-2026", "https://x", "ACTIVE"],
+    ])
+    record_email_sent(
+        db_path, "CLT001", "CRITICAL", "2026-07-18", "brevo-msg-1", "r@x.com", "2026-07-18T10:00:00",
+    )
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+
+    response = client.get("/api/clients", params={"page_size": 50})
+    data = response.json()["rows"]
+
+    emailed = next(r for r in data if r["client_id"] == "CLT001")
+    assert emailed["email_sent_today"] is True
+    not_emailed = next(r for r in data if r["client_id"] == "CLT002")
+    assert not_emailed["email_sent_today"] is False
+    active = next(r for r in data if r["client_id"] == "CLT004")
+    assert active["email_sent_today"] is None
+
+
 def test_get_clients_filters_by_status_param(tmp_path, monkeypatch, mongo_db):
     db_path = mongo_db
     _write_db(db_path, [

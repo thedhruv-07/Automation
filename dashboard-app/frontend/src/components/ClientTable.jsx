@@ -183,15 +183,21 @@ export default function ClientTable({
                       </button>
                     )}
                     {ALERT_ELIGIBLE.has(c.status) && (
-                      <button
-                        type="button"
-                        onClick={() => onSendEmailClick(c)}
-                        disabled={!c.email || !c.email.includes("@")}
-                        title={!c.email || !c.email.includes("@") ? "No email on file" : undefined}
-                        className="px-3 py-1 rounded-full text-xs font-semibold border border-accent text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                      >
-                        Send Email
-                      </button>
+                      c.email_sent_today ? (
+                        <span className="px-3 py-1 rounded-full text-xs font-semibold border border-line bg-surface text-ink-primary">
+                          ✅ Emailed
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onSendEmailClick(c)}
+                          disabled={!c.email || !c.email.includes("@")}
+                          title={!c.email || !c.email.includes("@") ? "No email on file" : undefined}
+                          className="px-3 py-1 rounded-full text-xs font-semibold border border-accent text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        >
+                          Send Email
+                        </button>
+                      )
                     )}
                     {c.email && (
                       <button
