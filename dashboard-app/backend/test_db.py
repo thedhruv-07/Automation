@@ -365,7 +365,10 @@ def test_save_sent_log_then_load_sent_log_round_trips_exactly(mongo_db):
     assert loaded == original
 
 
-from db import record_email_sent, is_email_already_sent, load_email_sent_log, save_email_sent_log
+from db import (
+    record_email_sent, is_email_already_sent, load_email_sent_log, save_email_sent_log,
+    count_emails_sent_today,
+)
 
 
 def test_is_email_already_sent_false_then_true_after_record_email_sent(mongo_db):
@@ -400,6 +403,28 @@ def test_save_email_sent_log_then_load_email_sent_log_round_trips_exactly(mongo_
     save_email_sent_log(mongo_db, original)
     loaded = load_email_sent_log(mongo_db)
     assert loaded == original
+
+
+def test_count_emails_sent_today_counts_renewal_alerts(mongo_db):
+    record_email_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "brevo-msg-1", "r@x.com", "2026-07-21T10:00:00")
+    record_email_sent(mongo_db, "CLT002", "URGENT", "2026-07-21", "brevo-msg-2", "p@x.com", "2026-07-21T10:05:00")
+    record_email_sent(mongo_db, "CLT003", "URGENT", "2026-07-20", "brevo-msg-3", "a@x.com", "2026-07-20T10:00:00")
+    assert count_emails_sent_today(mongo_db, "2026-07-21") == 2
+
+
+def test_count_emails_sent_today_also_counts_notice_broadcast_emails(mongo_db):
+    """Renewal alerts and one-time notice broadcasts both spend the SAME
+    Brevo account's daily quota -- a true daily count has to include both,
+    not just whichever feature is asking."""
+    record_email_sent(mongo_db, "CLT001", "CRITICAL", "2026-07-21", "brevo-msg-1", "r@x.com", "2026-07-21T10:00:00")
+    record_notice_sent(mongo_db, "CLT002", "meity_series_guidelines_2026", "email", "brevo-msg-2", "2026-07-21T11:00:00")
+    # a different channel (whatsapp) on the same day must not be counted as an email send
+    record_notice_sent(mongo_db, "CLT003", "meity_series_guidelines_2026", "whatsapp", "wamid.ABC", "2026-07-21T12:00:00")
+    assert count_emails_sent_today(mongo_db, "2026-07-21") == 2
+
+
+def test_count_emails_sent_today_returns_zero_when_nothing_sent(mongo_db):
+    assert count_emails_sent_today(mongo_db, "2026-07-21") == 0
 
 
 def test_get_stats_eligible_not_emailed_today_excludes_already_emailed(mongo_db):

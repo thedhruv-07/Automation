@@ -460,6 +460,21 @@ def record_email_sent(db: Database, client_id, status, sent_date, message_id, em
     )
 
 
+def count_emails_sent_today(db: Database, today: str) -> int:
+    """True count of emails actually sent via Brevo today, across every
+    feature that sends them -- the daily per-client renewal-alert log
+    (email_sent_log) and the one-time notice-broadcast log (notice_sent_log,
+    channel="email") both draw against the SAME Brevo account's single
+    300/day quota, so a real daily cap has to count both regardless of
+    which feature sent them, not just whichever one is asking."""
+    init_db(db)
+    renewal_count = db["email_sent_log"].count_documents({"sent_date": today})
+    notice_count = db["notice_sent_log"].count_documents({
+        "channel": "email", "sent_at": {"$regex": f"^{today}"},
+    })
+    return renewal_count + notice_count
+
+
 def is_email_already_sent(db: Database, client_id, status, sent_date) -> bool:
     init_db(db)
     return db["email_sent_log"].find_one(

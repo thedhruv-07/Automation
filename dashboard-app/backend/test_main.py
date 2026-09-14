@@ -1678,6 +1678,21 @@ def test_send_email_duplicate_returns_409(tmp_path, monkeypatch, mongo_db):
     assert response.status_code == 409
 
 
+def test_send_email_blocked_once_daily_brevo_limit_reached(tmp_path, monkeypatch, mongo_db):
+    """The single-send button must respect the SAME account-wide daily quota
+    the bulk sends do -- otherwise it's an unlimited side door around the
+    300/day cap."""
+    db_path = _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
+    monkeypatch.setattr(main_module, "BREVO_DAILY_LIMIT", 1)
+    from db import record_email_sent
+    record_email_sent(db_path, "SOMEONE-ELSE", "CRITICAL", "2026-07-18", "brevo-x", "x@x.com", "2026-07-18T09:00:00")
+
+    response = client.post("/api/send-email/CLT001")
+
+    assert response.status_code == 429
+    assert "daily" in response.json()["detail"].lower()
+
+
 def test_send_all_emails_starts_job_and_reports_progress(tmp_path, monkeypatch, mongo_db):
     _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
     mock_response = type("Resp", (), {

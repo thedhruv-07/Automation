@@ -25,6 +25,7 @@ from db import (  # noqa: E402
     is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
     get_eligible_count, get_notice_eligible_count, get_broadcast_clients_page,
     load_notice_sent_log, find_clients_by_ids, get_adhoc_recipient_count, get_adhoc_eligible_count,
+    count_emails_sent_today,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, filter_alertable, normalize_phone,
@@ -56,6 +57,16 @@ def _logo_data_uri() -> str:
 
 def _today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
+
+
+def _remaining_email_quota_today() -> int:
+    """BREVO_DAILY_LIMIT is a single account-wide cap shared by every
+    feature that sends email (daily renewal alerts, one-time notice
+    broadcasts, the single-client Send Email button) -- so the limit
+    passed into any one of them has to account for what the others already
+    sent today, not just reset to the full 300 on every call."""
+    already_sent = count_emails_sent_today(DEFAULT_DB_PATH, _today_str())
+    return max(0, BREVO_DAILY_LIMIT - already_sent)
 
 
 def _parse_expiry(value) -> datetime:
@@ -450,6 +461,11 @@ def send_email(client_id: str):
             status_code=400,
             detail="This client has no valid email on file",
         )
+    if _remaining_email_quota_today() <= 0:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily Brevo email limit ({BREVO_DAILY_LIMIT}) already reached for today; try again tomorrow",
+        )
 
     sent_log = load_email_sent_log(DEFAULT_DB_PATH)
 
@@ -516,7 +532,7 @@ def _run_send_all_email_job(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before,
-            search=search, scheme=scheme, limit=BREVO_DAILY_LIMIT, sort_by_expiry=True,
+            search=search, scheme=scheme, limit=_remaining_email_quota_today(), sort_by_expiry=True,
         )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
@@ -741,7 +757,7 @@ def _run_send_notice_email_job(
             DEFAULT_DB_PATH, notice_id, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before, search=search, scheme=scheme,
-            limit=BREVO_DAILY_LIMIT,
+            limit=_remaining_email_quota_today(),
         )
     except Exception as exc:
         _send_notice_email_jobs[job_id]["error"] = str(exc)

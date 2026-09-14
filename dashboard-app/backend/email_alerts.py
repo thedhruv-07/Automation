@@ -14,7 +14,10 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-from db import DEFAULT_DB_PATH, get_eligible_clients, load_email_sent_log, save_email_sent_log
+from db import (
+    DEFAULT_DB_PATH, get_eligible_clients, load_email_sent_log, save_email_sent_log,
+    count_emails_sent_today,
+)
 from email_template import build_email_html
 from scheme_templates import get_email_content
 from whatsapp_renewal_alerts import dedup_key
@@ -265,8 +268,9 @@ def main(argv=None) -> int:
         print("❌ BREVO_API_KEY and EMAIL_SENDER must be set in .env.")
         return 1
 
+    remaining = max(0, BREVO_DAILY_LIMIT - count_emails_sent_today(DEFAULT_DB_PATH, datetime.now().strftime("%Y-%m-%d")))
     results = run_email_alerts(
-        DEFAULT_DB_PATH, api_key, sender, "Absolute Veritas", limit=BREVO_DAILY_LIMIT,
+        DEFAULT_DB_PATH, api_key, sender, "Absolute Veritas", limit=remaining,
     )
     sent = sum(1 for r in results if r["action"] == "sent")
     skipped = sum(1 for r in results if r["action"] == "skipped_duplicate")
