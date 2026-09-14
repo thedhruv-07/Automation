@@ -8,6 +8,7 @@ export async function getClients(params = {}) {
   for (const c of params.certType || []) query.append("cert_type", c);
   if (params.scheme && params.scheme !== "ALL") query.set("scheme", params.scheme);
   if (params.expiryBefore) query.set("expiry_before", params.expiryBefore);
+  if (params.expiryMonth) query.set("expiry_month", params.expiryMonth);
   if (params.search) query.set("search", params.search);
   if (params.sortKey) query.set("sort_key", params.sortKey);
   if (params.sortDir) query.set("sort_dir", params.sortDir);
@@ -105,7 +106,9 @@ export async function sendEmailAlert(clientId) {
 }
 
 export async function sendAllEmailAlerts(params = {}) {
-  const qs = scopeQueryString(params);
+  const query = new URLSearchParams(scopeQueryString(params));
+  if (params.expiryMonth) query.set("expiry_month", params.expiryMonth);
+  const qs = query.toString();
   const res = await fetch(`${API_BASE}${qs ? `/api/send-all-emails?${qs}` : "/api/send-all-emails"}`, {
     method: "POST", credentials: "include", headers: {},
   });
@@ -125,7 +128,9 @@ export async function getSendAllEmailsStatus(jobId) {
 }
 
 export async function getEligibleCount(params = {}) {
-  const qs = scopeQueryString(params);
+  const query = new URLSearchParams(scopeQueryString(params));
+  if (params.expiryMonth) query.set("expiry_month", params.expiryMonth);
+  const qs = query.toString();
   const res = await fetch(`${API_BASE}${qs ? `/api/eligible-count?${qs}` : "/api/eligible-count"}`, {
     credentials: "include", headers: {},
   });
@@ -133,12 +138,13 @@ export async function getEligibleCount(params = {}) {
   return res.json();
 }
 
-export function clientsExportUrl({ status, certType, expiryBefore, search, scheme } = {}) {
+export function clientsExportUrl({ status, certType, expiryBefore, expiryMonth, search, scheme } = {}) {
   const query = new URLSearchParams();
   if (status && status !== "ALL") query.set("status", status);
   for (const c of certType || []) query.append("cert_type", c);
   if (scheme && scheme !== "ALL") query.set("scheme", scheme);
   if (expiryBefore) query.set("expiry_before", expiryBefore);
+  if (expiryMonth) query.set("expiry_month", expiryMonth);
   if (search) query.set("search", search);
   const qs = query.toString();
   return `${API_BASE}${qs ? `/api/clients/export?${qs}` : "/api/clients/export"}`;

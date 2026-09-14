@@ -62,6 +62,7 @@ export default function App() {
   );
   const [scheme, setScheme] = useState(storedClientFilters?.scheme || "ALL");
   const [expiryBefore, setExpiryBefore] = useState(storedClientFilters?.expiryBefore || "");
+  const [expiryMonth, setExpiryMonth] = useState(storedClientFilters?.expiryMonth || "");
   const [pageNum, setPageNum] = useState(1);
   const [sortKey, setSortKey] = useState(null);
   const [sortAsc, setSortAsc] = useState(true);
@@ -85,9 +86,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(
       CLIENT_FILTERS_STORAGE_KEY,
-      JSON.stringify({ activeStatus, certType, scheme, expiryBefore }),
+      JSON.stringify({ activeStatus, certType, scheme, expiryBefore, expiryMonth }),
     );
-  }, [activeStatus, certType, scheme, expiryBefore]);
+  }, [activeStatus, certType, scheme, expiryBefore, expiryMonth]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchTerm), SEARCH_DEBOUNCE_MS);
@@ -96,12 +97,12 @@ export default function App() {
 
   useEffect(() => {
     setPageNum(1);
-  }, [activeStatus, debouncedSearch, certType, scheme, expiryBefore, sortKey, sortAsc]);
+  }, [activeStatus, debouncedSearch, certType, scheme, expiryBefore, expiryMonth, sortKey, sortAsc]);
 
   const queryParams = useMemo(() => ({
     page: pageNum, pageSize: PAGE_SIZE, status: activeStatus, certType, scheme,
-    expiryBefore, search: debouncedSearch, sortKey, sortDir: sortAsc ? "asc" : "desc",
-  }), [pageNum, activeStatus, certType, scheme, expiryBefore, debouncedSearch, sortKey, sortAsc]);
+    expiryBefore, expiryMonth, search: debouncedSearch, sortKey, sortDir: sortAsc ? "asc" : "desc",
+  }), [pageNum, activeStatus, certType, scheme, expiryBefore, expiryMonth, debouncedSearch, sortKey, sortAsc]);
 
   const requestIdRef = useRef(0);
 
@@ -140,13 +141,17 @@ export default function App() {
   useEffect(() => {
     if (!bulkModalOpen && !emailBulkModalOpen) return;
     const requestId = ++eligibleCountRequestIdRef.current;
-    getEligibleCount({ status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch })
+    const base = { status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch };
+    // expiryMonth only applies to the email modal's preview -- /api/send-all
+    // (WhatsApp) has no month-filter support, so including it here would
+    // show a count that send-all can't actually honor.
+    getEligibleCount(emailBulkModalOpen ? { ...base, expiryMonth } : base)
       .then((data) => {
         if (requestId !== eligibleCountRequestIdRef.current) return; // a newer request has since been issued — ignore this stale response
         setFilteredEligibleCount(data);
       })
       .catch(() => {});
-  }, [bulkModalOpen, emailBulkModalOpen, activeStatus, certType, scheme, expiryBefore, debouncedSearch]);
+  }, [bulkModalOpen, emailBulkModalOpen, activeStatus, certType, scheme, expiryBefore, expiryMonth, debouncedSearch]);
 
   const certOptions = stats?.cert_types || [];
   const schemeOptions = stats?.schemes || [];
@@ -161,6 +166,7 @@ export default function App() {
     setCertType([]);
     setScheme("ALL");
     setExpiryBefore("");
+    setExpiryMonth("");
   }
 
   function handleSort(key) {
@@ -254,7 +260,7 @@ export default function App() {
   async function handleConfirmSendAllEmails(sendScope) {
     try {
       const filters = sendScope === "filtered"
-        ? { status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch }
+        ? { status: activeStatus, certType, scheme, expiryBefore, expiryMonth, search: debouncedSearch }
         : {};
       const { job_id: jobId } = await sendAllEmailAlerts(filters);
       setSendAllEmailJob({ total: 0, sent: 0, skipped: 0, skipped_no_email: 0, failed: 0, done: false });
@@ -450,6 +456,8 @@ export default function App() {
                 onSchemeChange={setScheme}
                 expiryBefore={expiryBefore}
                 onExpiryBeforeChange={setExpiryBefore}
+                expiryMonth={expiryMonth}
+                onExpiryMonthChange={setExpiryMonth}
                 onClearAll={handleClearAllFilters}
               />
               <ClientTable
@@ -463,7 +471,7 @@ export default function App() {
                 onSendSelected={bulkSelectedSending ? () => {} : setPendingSelected}
                 onPreviewEmail={setPreviewClientId}
                 onSendEmailClick={setPendingEmailClient}
-                exportFilters={{ status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch }}
+                exportFilters={{ status: activeStatus, certType, scheme, expiryBefore, expiryMonth, search: debouncedSearch }}
               />
             </>
           )}
@@ -528,6 +536,7 @@ open={bulkModalOpen}
         job={sendAllEmailJob}
         onConfirm={handleConfirmSendAllEmails}
         onCancel={sendAllEmailJob ? handleCloseSendAllEmailsModal : () => setEmailBulkModalOpen(false)}
+        filteredScopeNote={expiryMonth ? "Includes every status (active, expired, etc.) — the month filter ignores current renewal status." : null}
       />
       <SendSelectedConfirmModal
         clients={pendingSelected}

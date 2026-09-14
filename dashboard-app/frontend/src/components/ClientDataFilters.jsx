@@ -10,9 +10,11 @@ const DURATION_PRESETS = [
 export default function ClientDataFilters({
   certOptions, certType, onCertTypeChange,
   schemeOptions = [], scheme = "ALL", onSchemeChange = () => {},
-  expiryBefore, onExpiryBeforeChange, onClearAll,
+  expiryBefore, onExpiryBeforeChange,
+  expiryMonth = "", onExpiryMonthChange = () => {},
+  onClearAll,
 }) {
-  const hasFilters = certType.length > 0 || scheme !== "ALL" || expiryBefore !== "";
+  const hasFilters = certType.length > 0 || scheme !== "ALL" || expiryBefore !== "" || expiryMonth !== "";
 
   return (
     <div className="bg-surface border border-line rounded-xl p-4 flex flex-wrap gap-4 items-center">
@@ -44,6 +46,17 @@ export default function ClientDataFilters({
           value={expiryBefore}
           onChange={(e) => onExpiryBeforeChange(e.target.value)}
           aria-label="Filter by expiry before date"
+          className="bg-surface-page border border-line rounded-lg px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+        />
+      </label>
+      <label className="flex items-center gap-2 text-sm text-ink-secondary">
+        Expiry month
+        <input
+          type="month"
+          value={expiryMonth}
+          onChange={(e) => onExpiryMonthChange(e.target.value)}
+          aria-label="Filter by expiry month and year"
+          title="Shows/sends to clients expiring in this month and year, regardless of status"
           className="bg-surface-page border border-line rounded-lg px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
         />
       </label>

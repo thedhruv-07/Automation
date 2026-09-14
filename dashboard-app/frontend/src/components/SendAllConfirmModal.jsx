@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 export default function SendAllConfirmModal({
   open, eligibleCount, filteredCount = 0, channel = "whatsapp", onConfirm, onCancel, job = null,
-  noticeLabel = null, singleScope = false,
+  noticeLabel = null, singleScope = false, filteredScopeNote = null,
 }) {
   const [confirming, setConfirming] = useState(false);
   const [scope, setScope] = useState("all");
@@ -178,6 +178,9 @@ export default function SendAllConfirmModal({
                   />
                   Currently filtered view (<strong>{filteredCount}</strong>)
                 </label>
+                {filteredScopeNote && scope === "filtered" && (
+                  <p className="text-xs text-ink-secondary pl-6">{filteredScopeNote}</p>
+                )}
               </div>
             )}
             <div className="flex justify-end gap-3">
