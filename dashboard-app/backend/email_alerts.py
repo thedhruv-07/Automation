@@ -25,9 +25,20 @@ from whatsapp_renewal_alerts import dedup_key
 SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
-LOGO_CID = "company-logo.png"
 
 BREVO_DAILY_LIMIT = 300
+
+
+def logo_data_uri() -> str:
+    """Brevo's transactional email API does not support inline CID images
+    (its `attachment` field only produces real, visible/downloadable
+    attachments -- there's no Content-ID mapping back into the HTML body),
+    so a cid: src silently fails to render and leaves the logo as a stray
+    attachment instead. A data: URI embeds the image directly in the HTML,
+    which every mail client renders inline with no separate attachment."""
+    if not LOGO_PATH.exists():
+        return ""
+    return "data:image/png;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
 REMINDER_INTERVAL_DAYS = 20
 
 EMAIL_DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y")
@@ -92,12 +103,10 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
         "expiry_formatted": expiry_dt.strftime("%d %B %Y"),
     }
 
-    logo_exists = LOGO_PATH.exists()
-    logo_src = f"cid:{LOGO_CID}" if logo_exists else ""
     subject_template, intro_text = get_email_content(rec["scheme"])
     html = build_email_html(
         template_rec, org_name=org_name, org_website="", org_contact="",
-        org_email="cs@absoluteveritas.com", logo_src=logo_src, intro_text=intro_text,
+        org_email="cs@absoluteveritas.com", logo_src=logo_data_uri(), intro_text=intro_text,
     )
     subject = subject_template.format(cert_name=rec["cert_name"], company=rec["company"])
 
@@ -107,13 +116,6 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
         "subject": subject,
         "htmlContent": html,
     }
-    # Brevo's API doc doesn't guarantee an empty `attachment: []` is accepted,
-    # so the key is only included when there's an actual attachment to send --
-    # avoids relying on unverified behavior for the common case (no logo file
-    # present, e.g. in dev/test environments).
-    if logo_exists:
-        logo_b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
-        payload["attachment"] = [{"name": LOGO_CID, "content": logo_b64}]
     return post_email_via_brevo(payload, brevo_api_key)
 
 

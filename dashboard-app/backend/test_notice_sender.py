@@ -223,7 +223,28 @@ def test_send_notice_email_uses_the_notice_module_content(tmp_path, mongo_db):
     assert "is-62368-safety-rules-in-india" in payload["htmlContent"]
 
 
-def test_send_notice_email_includes_logo_attachment_when_present(tmp_path, mongo_db):
+def test_send_notice_email_never_sends_a_separate_logo_attachment(tmp_path, mongo_db):
+    """Brevo's transactional API doesn't support inline CID images, so the
+    logo must never be sent via `attachment` -- see email_alerts.logo_data_uri."""
+    db_path = mongo_db
+    upsert_clients(db_path, [CRS_ROW], mode="replace")
+    logo_path = tmp_path / "company-logo.png"
+    logo_path.write_bytes(b"fake-png-bytes")
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-1"}
+
+    with patch("email_alerts.LOGO_PATH", logo_path), \
+         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_notice_email(
+            db_path, "meity_series_guidelines_2026", "api-key", "sender@x.com", "Absolute Veritas",
+            scheme="CRS",
+        )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert "attachment" not in payload
+
+
+def test_send_notice_email_embeds_logo_as_data_uri_when_present(tmp_path, mongo_db):
     import base64
     db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
@@ -233,7 +254,7 @@ def test_send_notice_email_includes_logo_attachment_when_present(tmp_path, mongo
     mock_response = Mock(status_code=201)
     mock_response.json.return_value = {"messageId": "brevo-1"}
 
-    with patch("notice_sender.LOGO_PATH", logo_path), \
+    with patch("email_alerts.LOGO_PATH", logo_path), \
          patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
         send_notice_email(
             db_path, "meity_series_guidelines_2026", "api-key", "sender@x.com", "Absolute Veritas",
@@ -241,20 +262,18 @@ def test_send_notice_email_includes_logo_attachment_when_present(tmp_path, mongo
         )
 
     payload = mock_post.call_args.kwargs["json"]
-    assert payload["attachment"] == [
-        {"name": "company-logo.png", "content": base64.b64encode(logo_bytes).decode("ascii")}
-    ]
-    assert 'src="cid:company-logo.png"' in payload["htmlContent"]
+    expected_uri = "data:image/png;base64," + base64.b64encode(logo_bytes).decode("ascii")
+    assert f'src="{expected_uri}"' in payload["htmlContent"]
 
 
-def test_send_notice_email_omits_logo_attachment_when_missing(tmp_path, mongo_db):
+def test_send_notice_email_omits_logo_image_when_missing(tmp_path, mongo_db):
     db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     missing_logo = tmp_path / "no-such-logo.png"
     mock_response = Mock(status_code=201)
     mock_response.json.return_value = {"messageId": "brevo-1"}
 
-    with patch("notice_sender.LOGO_PATH", missing_logo), \
+    with patch("email_alerts.LOGO_PATH", missing_logo), \
          patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
         send_notice_email(
             db_path, "meity_series_guidelines_2026", "api-key", "sender@x.com", "Absolute Veritas",
@@ -263,6 +282,7 @@ def test_send_notice_email_omits_logo_attachment_when_missing(tmp_path, mongo_db
 
     payload = mock_post.call_args.kwargs["json"]
     assert "attachment" not in payload
+    assert "data:image/png;base64" not in payload["htmlContent"]
 
 
 def test_send_notice_whatsapp_raises_for_unknown_notice_id(tmp_path, mongo_db):

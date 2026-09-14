@@ -304,13 +304,18 @@ def test_send_email_via_brevo_success_status_with_malformed_body_still_reports_s
     assert info == {"message_id": None}
 
 
-def test_send_email_via_brevo_omits_attachment_when_logo_missing(tmp_path):
+def test_send_email_via_brevo_never_sends_a_separate_logo_attachment(tmp_path):
+    """Brevo's transactional API doesn't support inline CID images -- its
+    `attachment` field only produces a real, visible/downloadable attachment
+    with no rendering in the body -- so the logo must never be sent via
+    `attachment` at all, regardless of whether the logo file exists."""
     record = _record_dict(ROW_WITH_EMAIL)
-    missing_logo = tmp_path / "no-such-logo.png"
+    logo_path = tmp_path / "company-logo.png"
+    logo_path.write_bytes(b"fake-png-bytes")
     mock_response = Mock(status_code=200)
     mock_response.json.return_value = {"messageId": "brevo-1"}
 
-    with patch("email_alerts.LOGO_PATH", missing_logo), \
+    with patch("email_alerts.LOGO_PATH", logo_path), \
          patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 
@@ -318,7 +323,7 @@ def test_send_email_via_brevo_omits_attachment_when_logo_missing(tmp_path):
     assert "attachment" not in payload
 
 
-def test_send_email_via_brevo_includes_attachment_when_logo_present(tmp_path):
+def test_send_email_via_brevo_embeds_logo_as_data_uri_when_present(tmp_path):
     record = _record_dict(ROW_WITH_EMAIL)
     logo_path = tmp_path / "company-logo.png"
     logo_bytes = b"fake-png-bytes"
@@ -331,9 +336,22 @@ def test_send_email_via_brevo_includes_attachment_when_logo_present(tmp_path):
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 
     payload = mock_post.call_args.kwargs["json"]
-    assert payload["attachment"] == [
-        {"name": "company-logo.png", "content": base64.b64encode(logo_bytes).decode("ascii")}
-    ]
+    expected_uri = "data:image/png;base64," + base64.b64encode(logo_bytes).decode("ascii")
+    assert f'src="{expected_uri}"' in payload["htmlContent"]
+
+
+def test_send_email_via_brevo_omits_logo_image_when_missing(tmp_path):
+    record = _record_dict(ROW_WITH_EMAIL)
+    missing_logo = tmp_path / "no-such-logo.png"
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {"messageId": "brevo-1"}
+
+    with patch("email_alerts.LOGO_PATH", missing_logo), \
+         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert "data:image/png;base64" not in payload["htmlContent"]
 
 
 def test_run_email_alerts_calls_on_progress_for_each_record(tmp_path, mongo_db):

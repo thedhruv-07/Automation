@@ -4,7 +4,6 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).parent
 REPO_ROOT = BACKEND_DIR.parent.parent
 
-import base64
 import io
 import os
 import threading
@@ -33,6 +32,7 @@ from whatsapp_renewal_alerts import (  # noqa: E402
 )
 from email_alerts import (  # noqa: E402
     send_email_via_brevo, send_one_email_alert, run_email_alerts, BREVO_DAILY_LIMIT,
+    logo_data_uri as _logo_data_uri,
 )
 from email_template import build_email_html  # noqa: E402
 from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
@@ -45,15 +45,6 @@ from notice_sender import send_notice_whatsapp, send_notice_email, send_adhoc_wh
 load_dotenv(REPO_ROOT / ".env")
 
 EMAIL_DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y")
-
-LOGO_PATH = REPO_ROOT / "dashboard-app" / "frontend" / "public" / "company-logo.png"
-
-
-def _logo_data_uri() -> str:
-    if not LOGO_PATH.exists():
-        return ""
-    return "data:image/png;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
-
 
 def _today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
