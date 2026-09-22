@@ -81,8 +81,8 @@ def build_email_html(
     contact_html = signature_html or "\n      ".join(contact_lines)
 
     detail_rows_html = "\n        ".join(
-        f'<tr><td style="border:1px solid {LINE};padding:12px 18px;font-size:16px;color:{INK_SECONDARY};font-weight:700;vertical-align:top;">{row_label}</td>'
-        f'<td style="border:1px solid {LINE};padding:12px 18px;font-size:16px;">{row_value}</td></tr>'
+        f'<tr><td style="border:1px solid {LINE};padding:9px 16px;font-size:14px;color:{INK_SECONDARY};font-weight:700;vertical-align:top;">{row_label}</td>'
+        f'<td style="border:1px solid {LINE};padding:9px 16px;font-size:14px;">{row_value}</td></tr>'
         for row_label, row_value in detail_rows
     )
 
