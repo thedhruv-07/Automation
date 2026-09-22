@@ -17,7 +17,7 @@ from db import (
     DEFAULT_DB_PATH, get_eligible_clients, load_email_sent_log, save_email_sent_log,
     count_emails_sent_today,
 )
-from email_template import build_email_html
+from email_template import build_email_html, _tier
 from scheme_templates import get_email_content
 from whatsapp_renewal_alerts import dedup_key
 
@@ -66,10 +66,8 @@ def scheme_html_overrides(rec: dict, scheme: str) -> dict:
     and signature block, not a short string a non-developer would tweak."""
     if scheme.upper() != "ISI":
         return {}
-    current_validity = (
-        f'<span style="color:#d03b3b;">{rec["expiry_formatted"]}</span>'
-        if rec["days_left"] < 0 else rec["expiry_formatted"]
-    )
+    _label, tier_color, _message, _hero_label = _tier(rec["days_left"])
+    current_validity = f'<span style="color:{tier_color};">{rec["expiry_formatted"]}</span>'
     return {
         "detail_rows": [
             ("Company / Manufacturer", f"M/s {rec['company']}"),

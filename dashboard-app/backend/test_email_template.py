@@ -139,15 +139,15 @@ def test_detail_row_labels_are_bold():
     assert 'font-weight:700;vertical-align:top;">Certification</td>' in html
 
 
-def test_expiry_date_is_red_when_already_expired():
-    html = build_email_html(make_rec(-3))
-    assert '<strong style="color:#d03b3b;">24 July 2026</strong>' in html
-
-
-def test_expiry_date_is_default_color_when_not_expired():
-    html = build_email_html(make_rec(5))
-    assert '<strong style="color:#d03b3b;">24 July 2026</strong>' not in html
-    assert '<strong style="color:#0b0b0b;">24 July 2026</strong>' in html
+def test_expiry_date_color_matches_the_urgency_tier():
+    """The date's color always matches its urgency tier's color -- same red
+    as CRITICAL/EXPIRED, orange for URGENT, yellow for DUE SOON, green for
+    ACTIVE -- not a fixed color."""
+    assert '<strong style="color:#d03b3b;">24 July 2026</strong>' in build_email_html(make_rec(-3))  # EXPIRED
+    assert '<strong style="color:#d03b3b;">24 July 2026</strong>' in build_email_html(make_rec(5))  # CRITICAL
+    assert '<strong style="color:#ec835a;">24 July 2026</strong>' in build_email_html(make_rec(20))  # URGENT
+    assert '<strong style="color:#fab219;">24 July 2026</strong>' in build_email_html(make_rec(60))  # DUE SOON
+    assert '<strong style="color:#0ca30c;">24 July 2026</strong>' in build_email_html(make_rec(90))  # ACTIVE
 
 
 def test_cta_label_is_empty_by_default():
