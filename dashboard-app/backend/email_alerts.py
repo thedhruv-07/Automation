@@ -66,13 +66,17 @@ def scheme_html_overrides(rec: dict, scheme: str) -> dict:
     and signature block, not a short string a non-developer would tweak."""
     if scheme.upper() != "ISI":
         return {}
+    current_validity = (
+        f'<span style="color:#d03b3b;">{rec["expiry_formatted"]}</span>'
+        if rec["days_left"] < 0 else rec["expiry_formatted"]
+    )
     return {
         "detail_rows": [
             ("Company / Manufacturer", f"M/s {rec['company']}"),
             ("Certification", "ISI Certification"),
             ("Indian Standard", rec["cert_name"]),
             ("BIS Licence No.", rec["cert_id"]),
-            ("Current Validity", rec["expiry_formatted"]),
+            ("Current Validity", current_validity),
         ],
         "expiry_label": ISI_EXPIRY_LABEL,
         "cta_label": ISI_CTA_LABEL,

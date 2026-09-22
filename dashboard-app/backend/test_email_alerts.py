@@ -271,6 +271,20 @@ def test_send_email_via_brevo_isi_uses_bis_specific_layout():
     assert "Certificate ID</td>" not in html
 
 
+def test_send_email_via_brevo_isi_colors_current_validity_red_when_expired():
+    """ROW_WITH_EMAIL expires 24-07-2026, already in the past relative to
+    today -- the "Current Validity" row's date must be colored red."""
+    record = _record_dict(ROW_WITH_EMAIL)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    html = mock_post.call_args.kwargs["json"]["htmlContent"]
+    assert '<span style="color:#d03b3b;">24 July 2026</span>' in html
+
+
 def test_send_email_via_brevo_non_isi_scheme_keeps_generic_layout():
     crs_row = ("CLT004", "Deepa Rao", "FreshFoods", "d@x.com", "919000000001",
                "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")

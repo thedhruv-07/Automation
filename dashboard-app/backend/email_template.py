@@ -62,6 +62,7 @@ def build_email_html(
     and signature_html replaces the org_email/org_contact/org_website block
     entirely when given."""
     label, color, message, _hero_label = _tier(rec["days_left"])
+    expiry_date_color = STATUS_CRITICAL if rec["days_left"] < 0 else INK_PRIMARY
     if detail_rows is None:
         detail_rows = [("Certification", rec["cert_name"]), ("Certificate ID", rec["cert_id"])]
 
@@ -80,7 +81,7 @@ def build_email_html(
     contact_html = signature_html or "\n      ".join(contact_lines)
 
     detail_rows_html = "\n        ".join(
-        f'<tr><td style="border:1px solid {LINE};padding:6px 14px;color:{INK_SECONDARY};vertical-align:top;">{row_label}</td>'
+        f'<tr><td style="border:1px solid {LINE};padding:6px 14px;color:{INK_SECONDARY};font-weight:700;vertical-align:top;">{row_label}</td>'
         f'<td style="border:1px solid {LINE};padding:6px 14px;">{row_value}</td></tr>'
         for row_label, row_value in detail_rows
     )
@@ -99,7 +100,7 @@ def build_email_html(
     <p>{intro_text.format(company=f"M/s {rec['company']}")}</p>
 
     <p><strong style="color:{color};">{label}</strong> — {message}<br>
-    <span style="font-size:17px;">{expiry_label} <strong>{rec['expiry_formatted']}</strong></span></p>
+    <span style="font-size:17px;">{expiry_label} <strong style="color:{expiry_date_color};">{rec['expiry_formatted']}</strong></span></p>
 
     <table cellpadding="0" cellspacing="0" style="margin:12px 0;border-collapse:collapse;">
       {detail_rows_html}

@@ -134,6 +134,22 @@ def test_custom_expiry_label_overrides_default():
     assert ">Expiry date: <strong" not in html
 
 
+def test_detail_row_labels_are_bold():
+    html = build_email_html(make_rec(5))
+    assert 'font-weight:700;vertical-align:top;">Certification</td>' in html
+
+
+def test_expiry_date_is_red_when_already_expired():
+    html = build_email_html(make_rec(-3))
+    assert '<strong style="color:#d03b3b;">24 July 2026</strong>' in html
+
+
+def test_expiry_date_is_default_color_when_not_expired():
+    html = build_email_html(make_rec(5))
+    assert '<strong style="color:#d03b3b;">24 July 2026</strong>' not in html
+    assert '<strong style="color:#0b0b0b;">24 July 2026</strong>' in html
+
+
 def test_cta_label_is_empty_by_default():
     html = build_email_html(make_rec(5))
     assert "Proceed with Renewal" not in html
