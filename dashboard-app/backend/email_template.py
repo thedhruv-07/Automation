@@ -146,7 +146,7 @@ def build_email_html(
                   <tr><td align="center" style="padding:24px 20px;">
                     <div style="font-size:44px;line-height:1;font-weight:700;color:{color};">{hero_number}</div>
                     <div style="font-size:11px;font-weight:700;letter-spacing:1.4px;color:{INK_SECONDARY};margin-top:8px;text-transform:uppercase;">{hero_label}</div>
-                    <div style="font-size:13px;color:{INK_MUTED};margin-top:10px;">{expiry_label} <strong style="color:{INK_PRIMARY};">{rec['expiry_formatted']}</strong></div>
+                    <div style="font-size:15px;color:{INK_MUTED};margin-top:10px;">{expiry_label} <strong style="color:{INK_PRIMARY};">{rec['expiry_formatted']}</strong></div>
                   </td></tr>
                 </table>
 
