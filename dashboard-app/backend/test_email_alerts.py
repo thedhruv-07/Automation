@@ -238,7 +238,54 @@ def test_send_email_via_brevo_success():
     assert mock_post.call_args.args[0] == "https://api.brevo.com/v3/smtp/email"
     payload = mock_post.call_args.kwargs["json"]
     assert payload["to"] == [{"email": "r@x.com", "name": "Rahul Sharma"}]
-    assert payload["subject"] == "Renew ISO 9001 — TechCorp"
+    # ISI has its own dedicated subject/layout (see scheme_html_overrides) --
+    # this fixture's scheme is ISI, so it gets the BIS-specific subject, not
+    # the generic "Renew {cert_name} — {company}" template.
+    assert payload["subject"] == "BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
+
+
+def test_send_email_via_brevo_isi_uses_bis_specific_layout():
+    """ISI clients get the BIS-specific Certification Details table
+    (Company/Manufacturer, Certification, Indian Standard, BIS Licence No.,
+    Current Validity), the "Proceed with Renewal" CTA label, the "BIS
+    License Expiry date:" label, and the full signature block -- not the
+    generic 2-row table/plain contact line other schemes get."""
+    record = _record_dict(ROW_WITH_EMAIL)  # scheme="ISI", cert_name="ISO 9001", cert_id="ISO-1"
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    html = mock_post.call_args.kwargs["json"]["htmlContent"]
+    assert "Company / Manufacturer</td>" in html
+    assert "TechCorp" in html
+    assert "Indian Standard</td>" in html
+    assert "ISO 9001" in html
+    assert "BIS Licence No.</td>" in html
+    assert "ISO-1" in html
+    assert "ISI Certification" in html
+    assert "Proceed with Renewal" in html
+    assert "BIS License Expiry date:" in html
+    assert "Inspection, Testing &amp; Certifications" in html
+    assert "www.absoluteveritas.com" in html
+    assert "Certificate ID</td>" not in html
+
+
+def test_send_email_via_brevo_non_isi_scheme_keeps_generic_layout():
+    crs_row = ("CLT004", "Deepa Rao", "FreshFoods", "d@x.com", "919000000001",
+               "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
+    record = _record_dict(crs_row)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-2"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="d@x.com")
+
+    html = mock_post.call_args.kwargs["json"]["htmlContent"]
+    assert "Certificate ID</td>" in html
+    assert "Proceed with Renewal" not in html
+    assert "Inspection, Testing" not in html
 
 
 def test_send_email_via_brevo_uses_scheme_specific_subject_and_intro(monkeypatch):

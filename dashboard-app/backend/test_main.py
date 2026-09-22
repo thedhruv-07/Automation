@@ -624,7 +624,9 @@ def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch, mongo_db)
     response = client.get("/api/email-preview/CLT001")
     assert response.status_code == 200
     data = response.json()
-    assert data["subject"] == "Renew ISO 9001 — TechCorp"
+    # scheme is ISI -- gets the BIS-specific subject/layout (see
+    # email_alerts.scheme_html_overrides), matching what actually sends.
+    assert data["subject"] == "BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
     assert "Rahul Sharma" in data["html"]
     assert "Absolute Veritas" in data["html"]
     assert "24 July 2026" in data["html"]

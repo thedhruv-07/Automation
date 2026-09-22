@@ -27,6 +27,20 @@ REPO_ROOT = SCRIPT_DIR.parent.parent
 LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
 
 BREVO_DAILY_LIMIT = 300
+REMINDER_INTERVAL_DAYS = 20
+
+EMAIL_DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y")
+
+ISI_CTA_LABEL = "Proceed with Renewal"
+ISI_EXPIRY_LABEL = "BIS License Expiry date:"
+ISI_SIGNATURE_HTML = """
+    <p style="color:#1F497D;font-size:14px;font-weight:700;margin:0 0 2px;">Absolute Veritas</p>
+    <p style="color:#E36C0A;font-size:13px;font-weight:700;margin:0 0 10px;">Inspection, Testing &amp; Certifications</p>
+    <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Mobile/Whatsapp: +91-7303215033</p>
+    <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Tel: +91-129-4001010</p>
+    <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Email: cs@absoluteveritas.com</p>
+    <p style="color:#52514E;font-size:13px;margin:0;">Website: www.absoluteveritas.com</p>
+"""
 
 
 def logo_data_uri() -> str:
@@ -39,9 +53,29 @@ def logo_data_uri() -> str:
     if not LOGO_PATH.exists():
         return ""
     return "data:image/png;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
-REMINDER_INTERVAL_DAYS = 20
 
-EMAIL_DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y")
+
+def scheme_html_overrides(rec: dict, scheme: str) -> dict:
+    """Returns build_email_html() kwargs for the given scheme's dedicated
+    layout, or {} to keep the generic default layout. rec must already carry
+    expiry_formatted (see send_email_via_brevo/email_preview). ISI is the
+    only scheme with a dedicated layout so far -- ships in code (not env
+    vars, unlike subject/intro text) since it's a whole extra table row set
+    and signature block, not a short string a non-developer would tweak."""
+    if scheme.upper() != "ISI":
+        return {}
+    return {
+        "detail_rows": [
+            ("Company / Manufacturer", rec["company"]),
+            ("Certification", "ISI Certification"),
+            ("Indian Standard", rec["cert_name"]),
+            ("BIS Licence No.", rec["cert_id"]),
+            ("Current Validity", rec["expiry_formatted"]),
+        ],
+        "expiry_label": ISI_EXPIRY_LABEL,
+        "cta_label": ISI_CTA_LABEL,
+        "signature_html": ISI_SIGNATURE_HTML,
+    }
 
 
 def _parse_expiry(value) -> datetime:
@@ -107,8 +141,12 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
     html = build_email_html(
         template_rec, org_name=org_name, org_website="", org_contact="",
         org_email="cs@absoluteveritas.com", logo_src=logo_data_uri(), intro_text=intro_text,
+        **scheme_html_overrides(template_rec, rec["scheme"]),
     )
-    subject = subject_template.format(cert_name=rec["cert_name"], company=rec["company"])
+    subject = subject_template.format(
+        cert_name=rec["cert_name"], company=rec["company"],
+        cert_id=rec["cert_id"], expiry_date=template_rec["expiry_formatted"],
+    )
 
     payload = {
         "sender": {"name": org_name, "email": email_sender},

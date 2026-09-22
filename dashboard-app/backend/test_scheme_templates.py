@@ -76,13 +76,40 @@ def test_get_email_content_returns_scheme_specific_override_when_configured(monk
 
 
 def test_get_email_content_falls_back_to_generic_default_when_unconfigured(monkeypatch):
+    """FMCS (any scheme with no scheme-specific default -- unlike ISI, see
+    below) falls all the way through to the fully generic default."""
+    for var in ("EMAIL_SUBJECT_TEMPLATE_FMCS", "EMAIL_INTRO_TEXT_FMCS"):
+        monkeypatch.delenv(var, raising=False)
+
+    subject_template, intro_text = get_email_content("FMCS")
+
+    assert subject_template == DEFAULT_EMAIL_SUBJECT_TEMPLATE
+    assert intro_text == DEFAULT_INTRO_TEXT
+
+
+def test_get_email_content_isi_uses_bis_specific_default_when_unconfigured(monkeypatch):
+    """ISI has its own hardcoded default (see SCHEME_EMAIL_DEFAULTS) so a
+    fresh environment with no env vars set still sends the BIS-specific
+    wording, not the generic default -- no deploy-time config required."""
     for var in ("EMAIL_SUBJECT_TEMPLATE_ISI", "EMAIL_INTRO_TEXT_ISI"):
         monkeypatch.delenv(var, raising=False)
 
     subject_template, intro_text = get_email_content("ISI")
 
-    assert subject_template == DEFAULT_EMAIL_SUBJECT_TEMPLATE
-    assert intro_text == DEFAULT_INTRO_TEXT
+    assert subject_template != DEFAULT_EMAIL_SUBJECT_TEMPLATE
+    assert "BIS ISI Licence Renewal" in subject_template
+    assert intro_text != DEFAULT_INTRO_TEXT
+    assert "BIS ISI Licence" in intro_text
+
+
+def test_get_email_content_isi_env_override_still_takes_priority(monkeypatch):
+    monkeypatch.setenv("EMAIL_SUBJECT_TEMPLATE_ISI", "Custom ISI subject")
+    monkeypatch.delenv("EMAIL_INTRO_TEXT_ISI", raising=False)
+
+    subject_template, intro_text = get_email_content("ISI")
+
+    assert subject_template == "Custom ISI subject"
+    assert "BIS ISI Licence" in intro_text  # falls back to ISI's own default, not the generic one
 
 
 def test_get_email_content_falls_back_independently_per_field(monkeypatch):

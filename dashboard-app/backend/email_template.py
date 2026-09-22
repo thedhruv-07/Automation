@@ -49,9 +49,22 @@ def build_email_html(
     org_email: str = "cs@absoluteveritas.com",
     logo_src: str = "",
     intro_text: str = DEFAULT_INTRO_TEXT,
+    detail_rows: list[tuple[str, str]] | None = None,
+    expiry_label: str = "Expiry date:",
+    cta_label: str = "",
+    signature_html: str = "",
 ) -> str:
+    """detail_rows/expiry_label/cta_label/signature_html let a caller swap in
+    a scheme-specific layout (see email_alerts.send_email_via_brevo's ISI
+    branch) without this function needing to know about individual schemes
+    itself -- detail_rows defaults to the original 2-row Certification/
+    Certificate ID box, cta_label adds an optional heading above the button,
+    and signature_html replaces the org_email/org_contact/org_website block
+    entirely when given."""
     label, color, message, hero_label = _tier(rec["days_left"])
     hero_number = abs(rec["days_left"]) if rec["days_left"] != 0 else 0
+    if detail_rows is None:
+        detail_rows = [("Certification", rec["cert_name"]), ("Certificate ID", rec["cert_id"])]
 
     if logo_src:
         header_html = f"""
@@ -85,7 +98,20 @@ def build_email_html(
         contact_lines.append(
             f'<p style="margin:0;"><a href="{org_website}" style="color:{ACCENT};font-size:14px;">{org_website}</a></p>'
         )
-    contact_html = "\n            ".join(contact_lines)
+    contact_html = signature_html or "\n            ".join(contact_lines)
+
+    detail_rows_html = "\n                      ".join(
+        f"""<tr>
+                        <td style="color:{INK_SECONDARY};font-size:13px;width:40%;">{row_label}</td>
+                        <td style="color:{INK_PRIMARY};font-weight:700;font-size:14px;">{row_value}</td>
+                      </tr>"""
+        for row_label, row_value in detail_rows
+    )
+
+    cta_label_html = (
+        f'<p style="color:{INK_PRIMARY};font-size:14px;font-weight:700;margin:0 0 12px;text-align:center;">{cta_label}</p>'
+        if cta_label else ""
+    )
 
     return f"""<!DOCTYPE html>
 <html>
@@ -120,7 +146,7 @@ def build_email_html(
                   <tr><td align="center" style="padding:24px 20px;">
                     <div style="font-size:44px;line-height:1;font-weight:700;color:{color};">{hero_number}</div>
                     <div style="font-size:11px;font-weight:700;letter-spacing:1.4px;color:{INK_SECONDARY};margin-top:8px;text-transform:uppercase;">{hero_label}</div>
-                    <div style="font-size:13px;color:{INK_MUTED};margin-top:10px;">Expiry date: <strong style="color:{INK_PRIMARY};">{rec['expiry_formatted']}</strong></div>
+                    <div style="font-size:13px;color:{INK_MUTED};margin-top:10px;">{expiry_label} <strong style="color:{INK_PRIMARY};">{rec['expiry_formatted']}</strong></div>
                   </td></tr>
                 </table>
 
@@ -129,14 +155,7 @@ def build_email_html(
                   <tr><td style="padding:18px 20px;">
                     <div style="font-size:10px;font-weight:700;letter-spacing:1.2px;color:{INK_MUTED};text-transform:uppercase;margin-bottom:12px;">Certification Details</div>
                     <table width="100%" cellpadding="5" cellspacing="0">
-                      <tr>
-                        <td style="color:{INK_SECONDARY};font-size:13px;width:40%;">Certification</td>
-                        <td style="color:{INK_PRIMARY};font-weight:700;font-size:14px;">{rec['cert_name']}</td>
-                      </tr>
-                      <tr>
-                        <td style="color:{INK_SECONDARY};font-size:13px;">Certificate ID</td>
-                        <td style="color:{INK_PRIMARY};font-weight:700;font-size:14px;">{rec['cert_id']}</td>
-                      </tr>
+                      {detail_rows_html}
                     </table>
                   </td></tr>
                 </table>
@@ -144,6 +163,7 @@ def build_email_html(
                 <!-- CTA Button -->
                 <table width="100%" cellpadding="0" cellspacing="0">
                   <tr><td align="center" style="padding:4px 0 28px;">
+                    {cta_label_html}
                     <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer"
                        style="background:{ACCENT};color:#fff;padding:15px 42px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;box-shadow:0 4px 10px rgba(42,120,214,0.35);">
                       Book an Appointment

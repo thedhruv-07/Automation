@@ -101,4 +101,59 @@ def test_book_an_appointment_is_the_sole_cta_button():
     assert "Book an Appointment" in html
     assert f'href="{CALENDLY_URL}"' in html
     assert 'target="_blank"' in html
+
+
+def test_default_detail_rows_show_certification_and_certificate_id():
+    html = build_email_html(make_rec(5))
+    assert "Certification</td>" in html
+    assert "ISO 9001" in html
+    assert "Certificate ID</td>" in html
+    assert "ISO-1" in html
+
+
+def test_custom_detail_rows_override_the_default_two_rows():
+    html = build_email_html(
+        make_rec(5), detail_rows=[("Company / Manufacturer", "TechCorp"), ("Indian Standard", "IS 4250:2015")],
+    )
+    assert "Company / Manufacturer</td>" in html
+    assert "Indian Standard</td>" in html
+    assert "IS 4250:2015" in html
+    assert "Certificate ID</td>" not in html
+
+
+def test_default_expiry_label_is_unchanged():
+    html = build_email_html(make_rec(5))
+    assert "Expiry date: <strong" in html
+
+
+def test_custom_expiry_label_overrides_default():
+    html = build_email_html(make_rec(5), expiry_label="BIS License Expiry date:")
+    assert "BIS License Expiry date: <strong" in html
+    assert ">Expiry date: <strong" not in html
+
+
+def test_cta_label_is_empty_by_default():
+    html = build_email_html(make_rec(5))
+    assert "Proceed with Renewal" not in html
+
+
+def test_custom_cta_label_renders_above_the_button():
+    html = build_email_html(make_rec(5), cta_label="Proceed with Renewal")
+    assert "Proceed with Renewal" in html
+    assert html.index("Proceed with Renewal") < html.index("Book an Appointment")
+
+
+def test_default_contact_block_used_when_no_signature_html():
+    html = build_email_html(make_rec(5), org_website="https://example.com", org_contact="+1 555-0100")
+    assert "+1 555-0100" in html
+
+
+def test_signature_html_overrides_the_default_contact_block():
+    html = build_email_html(
+        make_rec(5), org_website="https://example.com", org_contact="+1 555-0100",
+        signature_html="<p>Absolute Veritas<br>Inspection, Testing &amp; Certifications</p>",
+    )
+    assert "Inspection, Testing &amp; Certifications" in html
+    assert "+1 555-0100" not in html
+    assert "https://example.com" not in html
     assert 'rel="noopener noreferrer"' in html

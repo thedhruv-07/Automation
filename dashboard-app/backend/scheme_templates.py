@@ -12,6 +12,26 @@ from email_template import DEFAULT_INTRO_TEXT
 
 DEFAULT_EMAIL_SUBJECT_TEMPLATE = "Renew {cert_name} — {company}"
 
+# Per-scheme hardcoded defaults (subject_template, intro_text), used when no
+# EMAIL_SUBJECT_TEMPLATE_<SCHEME>/EMAIL_INTRO_TEXT_<SCHEME> env var is set --
+# unlike the single generic default above, these ship in code (not an env
+# var someone has to remember to set on every environment) since they're a
+# deliberately designed, scheme-specific wording, not a per-deploy tweak.
+# subject_template also supports {cert_id}/{expiry_date} in addition to the
+# usual {cert_name}/{company} -- see send_email_via_brevo's .format() call.
+SCHEME_EMAIL_DEFAULTS = {
+    "ISI": (
+        "BIS ISI Licence Renewal — {company} — {cert_id} — Expiry {expiry_date}",
+        (
+            "This is a reminder regarding the upcoming renewal of the BIS ISI "
+            "Licence held by <strong>{company}</strong>. To maintain continuity "
+            "of the BIS licence and avoid any disruption related to its "
+            "validity, we recommend initiating/completing the renewal process "
+            "before the current licence expiry date."
+        ),
+    ),
+}
+
 
 def get_whatsapp_template(scheme: str) -> tuple[str, str] | None:
     """Returns (template_name, template_lang) for the given scheme, or None
@@ -55,9 +75,12 @@ def get_email_content(scheme: str) -> tuple[str, str]:
     independently: configuring only a scheme's subject still gets the
     default intro, and vice versa."""
     scheme_key = scheme.upper()
+    default_subject, default_intro = SCHEME_EMAIL_DEFAULTS.get(
+        scheme_key, (DEFAULT_EMAIL_SUBJECT_TEMPLATE, DEFAULT_INTRO_TEXT),
+    )
     subject_template = os.environ.get(f"EMAIL_SUBJECT_TEMPLATE_{scheme_key}")
     intro_text = os.environ.get(f"EMAIL_INTRO_TEXT_{scheme_key}")
     return (
-        subject_template or DEFAULT_EMAIL_SUBJECT_TEMPLATE,
-        intro_text or DEFAULT_INTRO_TEXT,
+        subject_template or default_subject,
+        intro_text or default_intro,
     )

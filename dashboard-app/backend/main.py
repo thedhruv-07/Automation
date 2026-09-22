@@ -32,7 +32,7 @@ from whatsapp_renewal_alerts import (  # noqa: E402
 )
 from email_alerts import (  # noqa: E402
     send_email_via_brevo, send_one_email_alert, run_email_alerts, BREVO_DAILY_LIMIT,
-    logo_data_uri as _logo_data_uri,
+    logo_data_uri as _logo_data_uri, scheme_html_overrides,
 )
 from email_template import build_email_html  # noqa: E402
 from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
@@ -241,8 +241,12 @@ def email_preview(client_id: str):
         org_email="cs@absoluteveritas.com",
         logo_src=_logo_data_uri(),
         intro_text=intro_text,
+        **scheme_html_overrides(rec, record["scheme"]),
     )
-    subject = subject_template.format(cert_name=record["cert_name"], company=record["company"])
+    subject = subject_template.format(
+        cert_name=record["cert_name"], company=record["company"],
+        cert_id=record["cert_id"], expiry_date=rec["expiry_formatted"],
+    )
     return {"subject": subject, "html": html}
 
 
