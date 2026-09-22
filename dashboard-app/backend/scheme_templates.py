@@ -21,7 +21,7 @@ DEFAULT_EMAIL_SUBJECT_TEMPLATE = "Renew {cert_name} — {company}"
 # usual {cert_name}/{company} -- see send_email_via_brevo's .format() call.
 SCHEME_EMAIL_DEFAULTS = {
     "ISI": (
-        "BIS ISI Licence Renewal — {company} — {cert_id} — Expiry {expiry_date}",
+        "Absolute Veritas — BIS ISI Licence Renewal — {company} — {cert_id} — Expiry {expiry_date}",
         (
             "This is a reminder regarding the upcoming renewal of the BIS ISI "
             "Licence held by <strong>{company}</strong>. To maintain continuity "

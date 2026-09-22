@@ -626,7 +626,7 @@ def test_email_preview_returns_subject_and_html(tmp_path, monkeypatch, mongo_db)
     data = response.json()
     # scheme is ISI -- gets the BIS-specific subject/layout (see
     # email_alerts.scheme_html_overrides), matching what actually sends.
-    assert data["subject"] == "BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
+    assert data["subject"] == "Absolute Veritas — BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
     assert "Rahul Sharma" in data["html"]
     assert "Absolute Veritas" in data["html"]
     assert "24 July 2026" in data["html"]
@@ -1880,8 +1880,8 @@ def test_company_logo_endpoint_serves_the_logo_file():
     assert response.headers["content-type"] == "image/png"
 
 
-def test_whatsapp_wechat_qr_endpoint_serves_the_qr_file():
-    response = client.get("/whatsapp-wechat-qr.png")
+def test_whatsapp_qr_endpoint_serves_the_qr_file():
+    response = client.get("/whatsapp-qr.png")
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
 

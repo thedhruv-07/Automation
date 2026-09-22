@@ -90,8 +90,8 @@ def build_email_html(
 
     qr_html = (
         f'<p>For quick response, you can use the barcode below to add us to '
-        f'<strong style="color:#E36C0A;">WHATSAPP</strong> or <strong style="color:#E36C0A;">WECHAT</strong>.</p>\n'
-        f'    <img src="{qr_src}" alt="WhatsApp and WeChat QR codes" width="320" style="display:block;border:0;margin:0 0 16px;">'
+        f'<strong style="color:#E36C0A;">WHATSAPP</strong>.</p>\n'
+        f'    <img src="{qr_src}" alt="WhatsApp QR code" width="160" style="display:block;border:0;margin:0 0 16px;">'
         if qr_src else ""
     )
 

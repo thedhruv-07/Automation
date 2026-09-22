@@ -24,7 +24,7 @@ from whatsapp_renewal_alerts import dedup_key
 SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
-QR_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "whatsapp-wechat-qr.png"
+QR_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "whatsapp-qr.png"
 BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://automation-q3hp.onrender.com")
 
 BREVO_DAILY_LIMIT = 300
@@ -60,10 +60,10 @@ def logo_url() -> str:
 
 def qr_url() -> str:
     """Same reasoning as logo_url() -- served from this backend's own
-    /whatsapp-wechat-qr.png route (see main.py) rather than embedded."""
+    /whatsapp-qr.png route (see main.py) rather than embedded."""
     if not QR_PATH.exists():
         return ""
-    return f"{BACKEND_PUBLIC_URL}/whatsapp-wechat-qr.png"
+    return f"{BACKEND_PUBLIC_URL}/whatsapp-qr.png"
 
 
 def scheme_html_overrides(rec: dict, scheme: str) -> dict:

@@ -137,9 +137,9 @@ def company_logo():
     return FileResponse(_LOGO_PATH, media_type="image/png")
 
 
-@app.get("/whatsapp-wechat-qr.png")
-def whatsapp_wechat_qr():
-    """Serves the WhatsApp/WeChat QR code image -- see email_alerts.qr_url()."""
+@app.get("/whatsapp-qr.png")
+def whatsapp_qr():
+    """Serves the WhatsApp QR code image -- see email_alerts.qr_url()."""
     if not _QR_PATH.exists():
         raise HTTPException(status_code=404, detail="QR image not found")
     return FileResponse(_QR_PATH, media_type="image/png")

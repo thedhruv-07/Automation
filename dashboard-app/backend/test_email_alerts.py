@@ -240,12 +240,12 @@ def test_send_email_via_brevo_success():
     # ISI has its own dedicated subject/layout (see scheme_html_overrides) --
     # this fixture's scheme is ISI, so it gets the BIS-specific subject, not
     # the generic "Renew {cert_name} — {company}" template.
-    assert payload["subject"] == "BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
+    assert payload["subject"] == "Absolute Veritas — BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
 
 
-def test_send_email_via_brevo_includes_whatsapp_wechat_qr_when_present(tmp_path):
+def test_send_email_via_brevo_includes_whatsapp_qr_when_present(tmp_path):
     record = _record_dict(ROW_WITH_EMAIL)
-    qr_path = tmp_path / "whatsapp-wechat-qr.png"
+    qr_path = tmp_path / "whatsapp-qr.png"
     qr_path.write_bytes(b"fake-png-bytes")
     mock_response = Mock(status_code=200)
     mock_response.json.return_value = {"messageId": "brevo-1"}
@@ -255,10 +255,10 @@ def test_send_email_via_brevo_includes_whatsapp_wechat_qr_when_present(tmp_path)
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 
     html = mock_post.call_args.kwargs["json"]["htmlContent"]
-    assert 'src="https://automation-q3hp.onrender.com/whatsapp-wechat-qr.png"' in html
+    assert 'src="https://automation-q3hp.onrender.com/whatsapp-qr.png"' in html
     assert "WHATSAPP" in html
-    assert "WECHAT" in html
-    assert html.index("Book an Appointment") < html.index("whatsapp-wechat-qr.png")
+    assert "WECHAT" not in html
+    assert html.index("Book an Appointment") < html.index("whatsapp-qr.png")
 
 
 def test_send_email_via_brevo_omits_qr_section_when_missing(tmp_path):
@@ -272,7 +272,7 @@ def test_send_email_via_brevo_omits_qr_section_when_missing(tmp_path):
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 
     html = mock_post.call_args.kwargs["json"]["htmlContent"]
-    assert "whatsapp-wechat-qr.png" not in html
+    assert "whatsapp-qr.png" not in html
     assert "WECHAT" not in html
 
 
