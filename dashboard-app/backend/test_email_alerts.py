@@ -369,11 +369,11 @@ def test_send_email_via_brevo_never_sends_a_separate_logo_attachment(tmp_path):
     assert "attachment" not in payload
 
 
-def test_send_email_via_brevo_uses_a_hosted_url_for_the_logo_when_present(tmp_path):
-    """Neither Brevo's cid:/attachment mechanism nor a data: URI renders
-    reliably across real mail clients (Brevo never maps cid: back into the
-    body at all; a data: URI is stripped by Gmail and was seen rendering
-    mis-sized in Outlook) -- see email_alerts.logo_url()."""
+def test_send_email_via_brevo_never_includes_a_logo_image(tmp_path):
+    """The email is plain text-style now (see build_email_html's rewrite) --
+    no logo image is sent regardless of whether the logo file exists,
+    matching feedback that renewal emails should read like plain email
+    text, not a designed graphic."""
     record = _record_dict(ROW_WITH_EMAIL)
     logo_path = tmp_path / "company-logo.png"
     logo_path.write_bytes(b"fake-png-bytes")
@@ -385,21 +385,8 @@ def test_send_email_via_brevo_uses_a_hosted_url_for_the_logo_when_present(tmp_pa
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 
     payload = mock_post.call_args.kwargs["json"]
-    assert 'src="https://automation-q3hp.onrender.com/company-logo.png"' in payload["htmlContent"]
-
-
-def test_send_email_via_brevo_omits_logo_image_when_missing(tmp_path):
-    record = _record_dict(ROW_WITH_EMAIL)
-    missing_logo = tmp_path / "no-such-logo.png"
-    mock_response = Mock(status_code=200)
-    mock_response.json.return_value = {"messageId": "brevo-1"}
-
-    with patch("email_alerts.LOGO_PATH", missing_logo), \
-         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
-        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
-
-    payload = mock_post.call_args.kwargs["json"]
     assert "company-logo.png" not in payload["htmlContent"]
+    assert "<img" not in payload["htmlContent"]
 
 
 def test_run_email_alerts_calls_on_progress_for_each_record(tmp_path, mongo_db):

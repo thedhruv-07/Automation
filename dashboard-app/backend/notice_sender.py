@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 
 from db import get_broadcast_clients, get_adhoc_recipients, is_notice_already_sent, record_notice_sent
-from email_alerts import post_email_via_brevo, logo_url
+from email_alerts import post_email_via_brevo
 from notices import get_notice_module, get_adhoc_notice_module
 from whatsapp_renewal_alerts import normalize_phone, send_message
 
@@ -237,7 +237,7 @@ def send_notice_email(
                 "action": "dry_run", "to": to_email,
             }
         else:
-            html = module.build_email_html(rec, org_name, logo_src=logo_url())
+            html = module.build_email_html(rec, org_name)
             payload = {
                 "sender": {"name": org_name, "email": email_sender},
                 "to": [{"email": to_email, "name": rec["name"]}],

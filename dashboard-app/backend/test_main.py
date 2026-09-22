@@ -1863,10 +1863,15 @@ def test_notice_preview_returns_subject_and_html():
     assert "Sample Company" in data["html"]
 
 
-def test_notice_preview_includes_the_company_logo():
+def test_notice_preview_has_no_logo_image():
+    """Plain text-style email now (see build_email_html's rewrite) -- no
+    logo image, per feedback that renewal/notice emails shouldn't look like
+    a designed graphic. /company-logo.png stays available as a route (see
+    test_company_logo_endpoint_serves_the_logo_file below) but nothing
+    currently links to it from an email."""
     response = client.get("/api/notices/meity_series_guidelines_2026/preview")
     assert response.status_code == 200
-    assert "https://automation-q3hp.onrender.com/company-logo.png" in response.json()["html"]
+    assert "<img" not in response.json()["html"]
 
 
 def test_company_logo_endpoint_serves_the_logo_file():

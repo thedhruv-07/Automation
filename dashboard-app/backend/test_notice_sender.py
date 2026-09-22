@@ -244,7 +244,7 @@ def test_send_notice_email_never_sends_a_separate_logo_attachment(tmp_path, mong
     assert "attachment" not in payload
 
 
-def test_send_notice_email_uses_a_hosted_url_for_the_logo_when_present(tmp_path, mongo_db):
+def test_send_notice_email_never_includes_a_logo_image(tmp_path, mongo_db):
     db_path = mongo_db
     upsert_clients(db_path, [CRS_ROW], mode="replace")
     logo_path = tmp_path / "company-logo.png"
@@ -260,7 +260,8 @@ def test_send_notice_email_uses_a_hosted_url_for_the_logo_when_present(tmp_path,
         )
 
     payload = mock_post.call_args.kwargs["json"]
-    assert 'src="https://automation-q3hp.onrender.com/company-logo.png"' in payload["htmlContent"]
+    assert "company-logo.png" not in payload["htmlContent"]
+    assert "<img" not in payload["htmlContent"]
 
 
 def test_send_notice_email_omits_logo_image_when_missing(tmp_path, mongo_db):

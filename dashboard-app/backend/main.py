@@ -32,7 +32,7 @@ from whatsapp_renewal_alerts import (  # noqa: E402
 )
 from email_alerts import (  # noqa: E402
     send_email_via_brevo, send_one_email_alert, run_email_alerts, BREVO_DAILY_LIMIT,
-    logo_url as _logo_url, scheme_html_overrides, LOGO_PATH as _LOGO_PATH,
+    scheme_html_overrides, LOGO_PATH as _LOGO_PATH,
 )
 from email_template import build_email_html  # noqa: E402
 from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
@@ -250,7 +250,6 @@ def email_preview(client_id: str):
         org_website="",
         org_contact="",
         org_email="cs@absoluteveritas.com",
-        logo_src=_logo_url(),
         intro_text=intro_text,
         **scheme_html_overrides(rec, record["scheme"]),
     )
@@ -631,7 +630,7 @@ def notice_preview(notice_id: str):
     if module is None:
         raise HTTPException(status_code=404, detail=f"Unknown notice_id: {notice_id}")
     placeholder = {"client_id": "SAMPLE", "name": "Sample Client", "company": "Sample Company"}
-    html = module.build_email_html(placeholder, "Absolute Veritas", logo_src=_logo_url())
+    html = module.build_email_html(placeholder, "Absolute Veritas")
     return {"subject": module.EMAIL_SUBJECT, "html": html}
 
 

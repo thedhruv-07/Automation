@@ -142,7 +142,7 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
     subject_template, intro_text = get_email_content(rec["scheme"])
     html = build_email_html(
         template_rec, org_name=org_name, org_website="", org_contact="",
-        org_email="cs@absoluteveritas.com", logo_src=logo_url(), intro_text=intro_text,
+        org_email="cs@absoluteveritas.com", intro_text=intro_text,
         **scheme_html_overrides(template_rec, rec["scheme"]),
     )
     subject = subject_template.format(
