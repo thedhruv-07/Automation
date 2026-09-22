@@ -80,8 +80,8 @@ def build_email_html(
     contact_html = signature_html or "\n      ".join(contact_lines)
 
     detail_rows_html = "\n        ".join(
-        f'<tr><td style="padding:2px 16px 2px 0;color:{INK_SECONDARY};vertical-align:top;">{row_label}</td>'
-        f'<td style="padding:2px 0;">{row_value}</td></tr>'
+        f'<tr><td style="border:1px solid {LINE};padding:6px 14px;color:{INK_SECONDARY};vertical-align:top;">{row_label}</td>'
+        f'<td style="border:1px solid {LINE};padding:6px 14px;">{row_value}</td></tr>'
         for row_label, row_value in detail_rows
     )
 
@@ -99,9 +99,9 @@ def build_email_html(
     <p>{intro_text.format(company=rec['company'])}</p>
 
     <p><strong style="color:{color};">{label}</strong> — {message}<br>
-    {expiry_label} <strong>{rec['expiry_formatted']}</strong></p>
+    <span style="font-size:17px;">{expiry_label} <strong>{rec['expiry_formatted']}</strong></span></p>
 
-    <table cellpadding="0" cellspacing="0" style="margin:12px 0;">
+    <table cellpadding="0" cellspacing="0" style="margin:12px 0;border-collapse:collapse;">
       {detail_rows_html}
     </table>
 
