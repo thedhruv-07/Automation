@@ -245,7 +245,7 @@ def test_send_email_via_brevo_success():
 
 def test_send_email_via_brevo_isi_uses_bis_specific_layout():
     """ISI clients get the BIS-specific Certification Details table
-    (Company/Manufacturer, Certification, Indian Standard, BIS Licence No.,
+    (Manufacturer, Product Certification, Indian Standard, BIS Licence No.,
     Current Validity), the "Proceed with Renewal" CTA label, the "BIS
     License Expiry date:" label, and the full signature block -- not the
     generic 2-row table/plain contact line other schemes get."""
@@ -257,13 +257,16 @@ def test_send_email_via_brevo_isi_uses_bis_specific_layout():
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 
     html = mock_post.call_args.kwargs["json"]["htmlContent"]
-    assert "Company / Manufacturer</td>" in html
+    assert "Manufacturer</td>" in html
+    assert "Company / Manufacturer" not in html
     assert "TechCorp" in html
+    assert "Product Certification</td>" in html
     assert "Indian Standard</td>" in html
     assert "ISO 9001" in html
     assert "BIS Licence No.</td>" in html
     assert "ISO-1" in html
     assert "ISI Certification" in html
+    assert "Upto <span" in html
     assert "Proceed with Renewal" in html
     assert "BIS License Expiry date:" in html
     assert "Inspection, Testing &amp; Certifications" in html

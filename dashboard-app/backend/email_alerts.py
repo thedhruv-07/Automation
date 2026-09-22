@@ -67,11 +67,11 @@ def scheme_html_overrides(rec: dict, scheme: str) -> dict:
     if scheme.upper() != "ISI":
         return {}
     _label, tier_color, _message, _hero_label = _tier(rec["days_left"])
-    current_validity = f'<span style="color:{tier_color};">{rec["expiry_formatted"]}</span>'
+    current_validity = f'Upto <span style="color:{tier_color};">{rec["expiry_formatted"]}</span>'
     return {
         "detail_rows": [
-            ("Company / Manufacturer", f"M/s {rec['company']}"),
-            ("Certification", "ISI Certification"),
+            ("Manufacturer", f"M/s {rec['company']}"),
+            ("Product Certification", "ISI Certification"),
             ("Indian Standard", rec["cert_name"]),
             ("BIS Licence No.", rec["cert_id"]),
             ("Current Validity", current_validity),
