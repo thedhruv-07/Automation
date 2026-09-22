@@ -66,10 +66,10 @@ def build_email_html(
     if detail_rows is None:
         detail_rows = [("Certification", rec["cert_name"]), ("Certificate ID", rec["cert_id"])]
 
-    if logo_src:
-        header_html = f'<img src="{logo_src}" alt="{org_name}" width="160" style="display:block;border:0;margin:0 0 16px;">'
-    else:
-        header_html = f'<p style="margin:0 0 4px;font-size:12px;color:{INK_MUTED};">&#10003; {org_name}</p>'
+    header_html = (
+        f'<img src="{logo_src}" alt="{org_name}" width="160" style="display:block;border:0;margin:0 0 16px;">'
+        if logo_src else ""
+    )
 
     contact_lines = []
     if org_email:

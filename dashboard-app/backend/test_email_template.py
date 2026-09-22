@@ -65,10 +65,10 @@ def test_includes_website_and_contact_when_provided():
     assert "+1 555-0100" in html
 
 
-def test_uses_checkmark_seal_header_when_no_logo_given():
+def test_no_header_content_when_no_logo_given():
     html = build_email_html(make_rec(5))
-    assert "&#10003;" in html
-    assert '<img src="cid:' not in html
+    assert "&#10003;" not in html
+    assert "<img" not in html
 
 
 def test_uses_logo_image_header_when_logo_src_given():
