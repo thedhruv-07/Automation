@@ -53,6 +53,7 @@ def build_email_html(
     expiry_label: str = "Expiry date:",
     cta_label: str = "",
     signature_html: str = "",
+    qr_src: str = "",
 ) -> str:
     """detail_rows/expiry_label/cta_label/signature_html let a caller swap in
     a scheme-specific layout (see email_alerts.send_email_via_brevo's ISI
@@ -87,6 +88,13 @@ def build_email_html(
 
     cta_label_html = f'<p style="margin:0 0 4px;font-weight:700;">{cta_label}</p>' if cta_label else ""
 
+    qr_html = (
+        f'<p>For quick response, you can use the barcode below to add us to '
+        f'<strong style="color:#E36C0A;">WHATSAPP</strong> or <strong style="color:#E36C0A;">WECHAT</strong>.</p>\n'
+        f'    <img src="{qr_src}" alt="WhatsApp and WeChat QR codes" width="320" style="display:block;border:0;margin:0 0 16px;">'
+        if qr_src else ""
+    )
+
     return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -109,6 +117,8 @@ def build_email_html(
       {cta_label_html}
       <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer" style="color:{ACCENT};">Book an Appointment</a>
     </p>
+
+    {qr_html}
 
     <p>If you need assistance or have questions about the renewal process, please don't hesitate to contact us.</p>
     {contact_html}

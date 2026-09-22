@@ -1880,6 +1880,12 @@ def test_company_logo_endpoint_serves_the_logo_file():
     assert response.headers["content-type"] == "image/png"
 
 
+def test_whatsapp_wechat_qr_endpoint_serves_the_qr_file():
+    response = client.get("/whatsapp-wechat-qr.png")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+
+
 def test_notice_preview_unknown_notice_returns_404():
     response = client.get("/api/notices/does_not_exist/preview")
     assert response.status_code == 404

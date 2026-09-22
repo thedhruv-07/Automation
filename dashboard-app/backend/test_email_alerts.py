@@ -243,6 +243,39 @@ def test_send_email_via_brevo_success():
     assert payload["subject"] == "BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
 
 
+def test_send_email_via_brevo_includes_whatsapp_wechat_qr_when_present(tmp_path):
+    record = _record_dict(ROW_WITH_EMAIL)
+    qr_path = tmp_path / "whatsapp-wechat-qr.png"
+    qr_path.write_bytes(b"fake-png-bytes")
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {"messageId": "brevo-1"}
+
+    with patch("email_alerts.QR_PATH", qr_path), \
+         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    html = mock_post.call_args.kwargs["json"]["htmlContent"]
+    assert 'src="https://automation-q3hp.onrender.com/whatsapp-wechat-qr.png"' in html
+    assert "WHATSAPP" in html
+    assert "WECHAT" in html
+    assert html.index("Book an Appointment") < html.index("whatsapp-wechat-qr.png")
+
+
+def test_send_email_via_brevo_omits_qr_section_when_missing(tmp_path):
+    record = _record_dict(ROW_WITH_EMAIL)
+    missing_qr = tmp_path / "no-such-qr.png"
+    mock_response = Mock(status_code=200)
+    mock_response.json.return_value = {"messageId": "brevo-1"}
+
+    with patch("email_alerts.QR_PATH", missing_qr), \
+         patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    html = mock_post.call_args.kwargs["json"]["htmlContent"]
+    assert "whatsapp-wechat-qr.png" not in html
+    assert "WECHAT" not in html
+
+
 def test_send_email_via_brevo_isi_uses_bis_specific_layout():
     """ISI clients get the BIS-specific Certification Details table
     (Manufacturer, Product Certification, Indian Standard, BIS Licence No.,
@@ -394,10 +427,12 @@ def test_send_email_via_brevo_never_includes_a_logo_image(tmp_path):
     record = _record_dict(ROW_WITH_EMAIL)
     logo_path = tmp_path / "company-logo.png"
     logo_path.write_bytes(b"fake-png-bytes")
+    missing_qr = tmp_path / "no-such-qr.png"
     mock_response = Mock(status_code=200)
     mock_response.json.return_value = {"messageId": "brevo-1"}
 
     with patch("email_alerts.LOGO_PATH", logo_path), \
+         patch("email_alerts.QR_PATH", missing_qr), \
          patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 

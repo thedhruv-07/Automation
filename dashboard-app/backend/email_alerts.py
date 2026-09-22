@@ -24,6 +24,7 @@ from whatsapp_renewal_alerts import dedup_key
 SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
+QR_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "whatsapp-wechat-qr.png"
 BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://automation-q3hp.onrender.com")
 
 BREVO_DAILY_LIMIT = 300
@@ -55,6 +56,14 @@ def logo_url() -> str:
     if not LOGO_PATH.exists():
         return ""
     return f"{BACKEND_PUBLIC_URL}/company-logo.png"
+
+
+def qr_url() -> str:
+    """Same reasoning as logo_url() -- served from this backend's own
+    /whatsapp-wechat-qr.png route (see main.py) rather than embedded."""
+    if not QR_PATH.exists():
+        return ""
+    return f"{BACKEND_PUBLIC_URL}/whatsapp-wechat-qr.png"
 
 
 def scheme_html_overrides(rec: dict, scheme: str) -> dict:
@@ -144,7 +153,7 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
     subject_template, intro_text = get_email_content(rec["scheme"])
     html = build_email_html(
         template_rec, org_name=org_name, org_website="", org_contact="",
-        org_email="cs@absoluteveritas.com", intro_text=intro_text,
+        org_email="cs@absoluteveritas.com", intro_text=intro_text, qr_src=qr_url(),
         **scheme_html_overrides(template_rec, rec["scheme"]),
     )
     subject = subject_template.format(

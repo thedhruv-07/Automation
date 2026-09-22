@@ -32,7 +32,7 @@ from whatsapp_renewal_alerts import (  # noqa: E402
 )
 from email_alerts import (  # noqa: E402
     send_email_via_brevo, send_one_email_alert, run_email_alerts, BREVO_DAILY_LIMIT,
-    scheme_html_overrides, LOGO_PATH as _LOGO_PATH,
+    scheme_html_overrides, LOGO_PATH as _LOGO_PATH, QR_PATH as _QR_PATH, qr_url as _qr_url,
 )
 from email_template import build_email_html  # noqa: E402
 from import_helpers import RowCollector, REQUIRED_HEADERS  # noqa: E402
@@ -135,6 +135,14 @@ def company_logo():
     if not _LOGO_PATH.exists():
         raise HTTPException(status_code=404, detail="Logo not found")
     return FileResponse(_LOGO_PATH, media_type="image/png")
+
+
+@app.get("/whatsapp-wechat-qr.png")
+def whatsapp_wechat_qr():
+    """Serves the WhatsApp/WeChat QR code image -- see email_alerts.qr_url()."""
+    if not _QR_PATH.exists():
+        raise HTTPException(status_code=404, detail="QR image not found")
+    return FileResponse(_QR_PATH, media_type="image/png")
 
 
 @app.get("/api/clients")
@@ -250,7 +258,7 @@ def email_preview(client_id: str):
         org_website="",
         org_contact="",
         org_email="cs@absoluteveritas.com",
-        intro_text=intro_text,
+        intro_text=intro_text, qr_src=_qr_url(),
         **scheme_html_overrides(rec, record["scheme"]),
     )
     subject = subject_template.format(
