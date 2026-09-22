@@ -301,7 +301,7 @@ def test_send_email_via_brevo_uses_scheme_specific_subject_and_intro(monkeypatch
 
     payload = mock_post.call_args.kwargs["json"]
     assert payload["subject"] == "Registration renewal: CRS-Cert"
-    assert "Your CRS registration for <strong>FreshFoods</strong> needs renewal." in payload["htmlContent"]
+    assert "Your CRS registration for <strong>M/s FreshFoods</strong> needs renewal." in payload["htmlContent"]
 
 
 def test_send_email_via_brevo_api_error():

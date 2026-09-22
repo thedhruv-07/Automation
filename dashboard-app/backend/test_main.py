@@ -647,7 +647,7 @@ def test_email_preview_uses_scheme_specific_content(tmp_path, monkeypatch, mongo
     assert response.status_code == 200
     data = response.json()
     assert data["subject"] == "Registration renewal: CRS-Cert"
-    assert "Your CRS registration for <strong>FreshFoods</strong> needs renewal." in data["html"]
+    assert "Your CRS registration for <strong>M/s FreshFoods</strong> needs renewal." in data["html"]
 
 
 def test_email_preview_unknown_client_returns_404(tmp_path, monkeypatch, mongo_db):

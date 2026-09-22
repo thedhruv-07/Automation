@@ -96,7 +96,7 @@ def build_email_html(
 
     <p>Dear {rec['name']},</p>
 
-    <p>{intro_text.format(company=rec['company'])}</p>
+    <p>{intro_text.format(company=f"M/s {rec['company']}")}</p>
 
     <p><strong style="color:{color};">{label}</strong> — {message}<br>
     <span style="font-size:17px;">{expiry_label} <strong>{rec['expiry_formatted']}</strong></span></p>

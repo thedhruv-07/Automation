@@ -68,7 +68,7 @@ def scheme_html_overrides(rec: dict, scheme: str) -> dict:
         return {}
     return {
         "detail_rows": [
-            ("Company / Manufacturer", rec["company"]),
+            ("Company / Manufacturer", f"M/s {rec['company']}"),
             ("Certification", "ISI Certification"),
             ("Indian Standard", rec["cert_name"]),
             ("BIS Licence No.", rec["cert_id"]),

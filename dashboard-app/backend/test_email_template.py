@@ -78,10 +78,12 @@ def test_uses_logo_image_header_when_logo_src_given():
 
 
 def test_default_intro_text_matches_original_wording():
+    """Company name always gets an "M/s" prefix in body text, as a mark of
+    respect (common convention in formal Indian business correspondence)."""
     html = build_email_html(make_rec(5))
     assert (
         "This is a notification regarding the certification held by "
-        "<strong>TechCorp</strong>. Please review the details below and "
+        "<strong>M/s TechCorp</strong>. Please review the details below and "
         "take action to ensure compliance continuity." in html
     )
 
@@ -90,7 +92,7 @@ def test_custom_intro_text_overrides_default():
     html = build_email_html(
         make_rec(5), intro_text="Custom notice for <strong>{company}</strong>.",
     )
-    assert "Custom notice for <strong>TechCorp</strong>." in html
+    assert "Custom notice for <strong>M/s TechCorp</strong>." in html
     assert "This is a notification regarding" not in html
 
 
