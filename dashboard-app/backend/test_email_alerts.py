@@ -1,5 +1,4 @@
 """Tests for email_alerts.py."""
-import base64
 from unittest.mock import Mock, patch
 
 import requests
@@ -370,11 +369,14 @@ def test_send_email_via_brevo_never_sends_a_separate_logo_attachment(tmp_path):
     assert "attachment" not in payload
 
 
-def test_send_email_via_brevo_embeds_logo_as_data_uri_when_present(tmp_path):
+def test_send_email_via_brevo_uses_a_hosted_url_for_the_logo_when_present(tmp_path):
+    """Neither Brevo's cid:/attachment mechanism nor a data: URI renders
+    reliably across real mail clients (Brevo never maps cid: back into the
+    body at all; a data: URI is stripped by Gmail and was seen rendering
+    mis-sized in Outlook) -- see email_alerts.logo_url()."""
     record = _record_dict(ROW_WITH_EMAIL)
     logo_path = tmp_path / "company-logo.png"
-    logo_bytes = b"fake-png-bytes"
-    logo_path.write_bytes(logo_bytes)
+    logo_path.write_bytes(b"fake-png-bytes")
     mock_response = Mock(status_code=200)
     mock_response.json.return_value = {"messageId": "brevo-1"}
 
@@ -383,8 +385,7 @@ def test_send_email_via_brevo_embeds_logo_as_data_uri_when_present(tmp_path):
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 
     payload = mock_post.call_args.kwargs["json"]
-    expected_uri = "data:image/png;base64," + base64.b64encode(logo_bytes).decode("ascii")
-    assert f'src="{expected_uri}"' in payload["htmlContent"]
+    assert 'src="https://automation-q3hp.onrender.com/company-logo.png"' in payload["htmlContent"]
 
 
 def test_send_email_via_brevo_omits_logo_image_when_missing(tmp_path):
@@ -398,7 +399,7 @@ def test_send_email_via_brevo_omits_logo_image_when_missing(tmp_path):
         send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
 
     payload = mock_post.call_args.kwargs["json"]
-    assert "data:image/png;base64" not in payload["htmlContent"]
+    assert "company-logo.png" not in payload["htmlContent"]
 
 
 def test_run_email_alerts_calls_on_progress_for_each_record(tmp_path, mongo_db):

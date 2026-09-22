@@ -1866,7 +1866,13 @@ def test_notice_preview_returns_subject_and_html():
 def test_notice_preview_includes_the_company_logo():
     response = client.get("/api/notices/meity_series_guidelines_2026/preview")
     assert response.status_code == 200
-    assert "data:image/png;base64," in response.json()["html"]
+    assert "https://automation-q3hp.onrender.com/company-logo.png" in response.json()["html"]
+
+
+def test_company_logo_endpoint_serves_the_logo_file():
+    response = client.get("/company-logo.png")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
 
 
 def test_notice_preview_unknown_notice_returns_404():

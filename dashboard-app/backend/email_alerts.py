@@ -5,7 +5,6 @@ send_message/send_one_alert/run structure so the two channels behave
 consistently, but tracks its own dedup log (email_sent_log, independent of
 WhatsApp's sent_log) so a client can receive both channels the same day
 without one blocking the other."""
-import base64
 import os
 import sys
 from datetime import datetime
@@ -25,6 +24,7 @@ from whatsapp_renewal_alerts import dedup_key
 SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 LOGO_PATH = SCRIPT_DIR.parent / "frontend" / "public" / "company-logo.png"
+BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://automation-q3hp.onrender.com")
 
 BREVO_DAILY_LIMIT = 300
 REMINDER_INTERVAL_DAYS = 20
@@ -43,16 +43,18 @@ ISI_SIGNATURE_HTML = """
 """
 
 
-def logo_data_uri() -> str:
-    """Brevo's transactional email API does not support inline CID images
-    (its `attachment` field only produces real, visible/downloadable
-    attachments -- there's no Content-ID mapping back into the HTML body),
-    so a cid: src silently fails to render and leaves the logo as a stray
-    attachment instead. A data: URI embeds the image directly in the HTML,
-    which every mail client renders inline with no separate attachment."""
+def logo_url() -> str:
+    """Neither of the two embedding tricks render reliably across real mail
+    clients: Brevo's transactional API doesn't support inline CID images at
+    all (its `attachment` field never maps back into the HTML body), and a
+    data: URI -- while it works in some clients -- is silently stripped by
+    Gmail and was seen rendering mis-sized/cropped in Outlook. A plain
+    https:// URL is the one approach every client supports, so the logo is
+    served from this backend's own /company-logo.png route (see main.py)
+    instead of being embedded in the email at all."""
     if not LOGO_PATH.exists():
         return ""
-    return "data:image/png;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+    return f"{BACKEND_PUBLIC_URL}/company-logo.png"
 
 
 def scheme_html_overrides(rec: dict, scheme: str) -> dict:
@@ -140,7 +142,7 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
     subject_template, intro_text = get_email_content(rec["scheme"])
     html = build_email_html(
         template_rec, org_name=org_name, org_website="", org_contact="",
-        org_email="cs@absoluteveritas.com", logo_src=logo_data_uri(), intro_text=intro_text,
+        org_email="cs@absoluteveritas.com", logo_src=logo_url(), intro_text=intro_text,
         **scheme_html_overrides(template_rec, rec["scheme"]),
     )
     subject = subject_template.format(
