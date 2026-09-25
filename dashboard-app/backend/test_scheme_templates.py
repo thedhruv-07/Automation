@@ -120,3 +120,22 @@ def test_get_email_content_falls_back_independently_per_field(monkeypatch):
 
     assert subject_template == "Registration renewal for {cert_name}"
     assert intro_text == DEFAULT_INTRO_TEXT
+
+
+from scheme_templates import get_followup_content
+
+
+def test_get_followup_content_isi_is_bis_specific_follow_up_wording():
+    subject_template, intro_text = get_followup_content("ISI")
+    assert subject_template.startswith("Follow-up: Absolute Veritas")
+    assert "BIS ISI Licence Renewal" in subject_template
+    assert "{cert_id}" in subject_template
+    assert "follow-up" in intro_text.lower()
+    assert "{company}" in intro_text
+
+
+def test_get_followup_content_other_schemes_get_a_generic_follow_up():
+    subject_template, intro_text = get_followup_content("CRS")
+    assert subject_template == "Follow-up: Renew {cert_name} — {company}"
+    assert "follow-up" in intro_text.lower()
+    assert "{company}" in intro_text

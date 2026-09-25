@@ -12,6 +12,7 @@ import WhatsAppSettingsView from "./components/WhatsAppSettingsView";
 import NoticesView from "./components/NoticesView";
 import SendConfirmModal from "./components/SendConfirmModal";
 import SendAllConfirmModal from "./components/SendAllConfirmModal";
+import SendFollowupsModal from "./components/SendFollowupsModal";
 import SendSelectedConfirmModal from "./components/SendSelectedConfirmModal";
 import EmailPreviewModal from "./components/EmailPreviewModal";
 import Toast from "./components/Toast";
@@ -20,7 +21,7 @@ import {
   mergeClientsFile, getMessageLog, getNoticeLog, getSettingsInfo, getEmailPreview,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
-  getNoticeClients,
+  getNoticeClients, getFollowupCount, sendFollowups, getSendFollowupsStatus,
   listAdhocNotices, getAdhocNoticeCount, sendAdhocNotice, getAdhocNoticeSendStatus,
 } from "./api";
 
@@ -77,6 +78,9 @@ export default function App() {
   const [pendingEmailClient, setPendingEmailClient] = useState(null);
   const [emailBulkModalOpen, setEmailBulkModalOpen] = useState(false);
   const [sendAllEmailJob, setSendAllEmailJob] = useState(null);
+  const [followupModalOpen, setFollowupModalOpen] = useState(false);
+  const [followupJob, setFollowupJob] = useState(null);
+  const [followupInfo, setFollowupInfo] = useState({ eligible: 0, separate_key: false, remaining_quota: 0 });
   const [filteredEligibleCount, setFilteredEligibleCount] = useState({ whatsapp: 0, email: 0 });
 
   useEffect(() => {
@@ -292,6 +296,59 @@ export default function App() {
     setEmailBulkModalOpen(false);
   }
 
+  const followupPollRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (followupPollRef.current) clearInterval(followupPollRef.current);
+    };
+  }, []);
+
+  async function loadFollowupInfo() {
+    try {
+      const info = await getFollowupCount();
+      if (info) setFollowupInfo(info);
+    } catch {
+      // the button just stays disabled if the count can't be loaded
+    }
+  }
+
+  useEffect(() => {
+    loadFollowupInfo();
+  }, []);
+
+  async function handleConfirmSendFollowups() {
+    try {
+      const { job_id: jobId } = await sendFollowups();
+      setFollowupJob({ total: 0, sent: 0, skipped_no_email: 0, failed: 0, done: false });
+      followupPollRef.current = setInterval(async () => {
+        try {
+          const status = await getSendFollowupsStatus(jobId);
+          setFollowupJob(status);
+          if (status.done) {
+            clearInterval(followupPollRef.current);
+            loadFollowupInfo();
+            loadStats();
+          }
+        } catch (err) {
+          clearInterval(followupPollRef.current);
+          setFollowupJob(null);
+          setFollowupModalOpen(false);
+          setToast({ type: "error", message: err.message });
+        }
+      }, BULK_JOB_POLL_MS);
+    } catch (err) {
+      setFollowupModalOpen(false);
+      setToast({ type: "error", message: err.message });
+    }
+  }
+
+  function handleCloseFollowupsModal() {
+    if (followupPollRef.current) clearInterval(followupPollRef.current);
+    setFollowupJob(null);
+    setFollowupModalOpen(false);
+  }
+
   async function handleConfirmSendSelected() {
     const selected = pendingSelected;
     setPendingSelected([]);
@@ -410,6 +467,16 @@ export default function App() {
                 className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
               >
                 Send All Emails
+              </button>
+            )}
+            {activeView === "clientData" && (
+              <button
+                type="button"
+                onClick={() => setFollowupModalOpen(true)}
+                disabled={(followupJob !== null && !followupJob.done) || followupInfo.eligible === 0}
+                className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+              >
+                Send Follow-ups
               </button>
             )}
           </div>
@@ -537,6 +604,15 @@ open={bulkModalOpen}
         onConfirm={handleConfirmSendAllEmails}
         onCancel={sendAllEmailJob ? handleCloseSendAllEmailsModal : () => setEmailBulkModalOpen(false)}
         filteredScopeNote={expiryMonth ? "Includes every status (active, expired, etc.) — the month filter ignores current renewal status." : null}
+      />
+      <SendFollowupsModal
+        open={followupModalOpen}
+        eligible={followupInfo.eligible}
+        remainingQuota={followupInfo.remaining_quota}
+        separateKey={followupInfo.separate_key}
+        job={followupJob}
+        onConfirm={handleConfirmSendFollowups}
+        onCancel={followupJob ? handleCloseFollowupsModal : () => setFollowupModalOpen(false)}
       />
       <SendSelectedConfirmModal
         clients={pendingSelected}

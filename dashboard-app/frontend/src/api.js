@@ -278,3 +278,28 @@ export async function getAdhocNoticeSendStatus(noticeId, jobId) {
   if (!res.ok) throw new Error(`Failed to load adhoc notice send status: ${res.status}`);
   return res.json();
 }
+
+export async function getFollowupCount() {
+  const res = await fetch(`${API_BASE}/api/followup-count`, { credentials: "include", headers: {} });
+  if (!res.ok) throw new Error(`Failed to load follow-up count: ${res.status}`);
+  return res.json();
+}
+
+export async function sendFollowups() {
+  const res = await fetch(`${API_BASE}/api/send-followups`, {
+    method: "POST", credentials: "include", headers: {},
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Send follow-ups failed: ${res.status}`);
+  }
+  return data;
+}
+
+export async function getSendFollowupsStatus(jobId) {
+  const res = await fetch(`${API_BASE}/api/send-followups/status/${jobId}`, {
+    credentials: "include", headers: {},
+  });
+  if (!res.ok) throw new Error(`Failed to load follow-up status: ${res.status}`);
+  return res.json();
+}

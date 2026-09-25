@@ -84,3 +84,29 @@ def get_email_content(scheme: str) -> tuple[str, str]:
         subject_template or default_subject,
         intro_text or default_intro,
     )
+
+
+FOLLOWUP_DEFAULT_SUBJECT = "Follow-up: Renew {cert_name} — {company}"
+FOLLOWUP_DEFAULT_INTRO = (
+    "This is a follow-up to our earlier email about the certification held by "
+    "<strong>{company}</strong>. Our records show its renewal is still pending -- "
+    "please take action at the earliest to ensure compliance continuity."
+)
+FOLLOWUP_ISI_SUBJECT = (
+    "Follow-up: Absolute Veritas — BIS ISI Licence Renewal — {company} — {cert_id} — Expiry {expiry_date}"
+)
+FOLLOWUP_ISI_INTRO = (
+    "This is a follow-up to our earlier email regarding the upcoming renewal of the BIS ISI "
+    "Licence held by <strong>{company}</strong>. Our records show the renewal is still pending. "
+    "To avoid any disruption to the validity of the BIS licence, please initiate/complete the "
+    "renewal process at the earliest -- or book an appointment and we will assist you."
+)
+
+
+def get_followup_content(scheme: str) -> tuple[str, str]:
+    """(subject_template, intro_text) for the follow-up email -- same
+    placeholders as get_email_content, in code (not env vars) like ISI's
+    renewal wording."""
+    if scheme.upper() == "ISI":
+        return FOLLOWUP_ISI_SUBJECT, FOLLOWUP_ISI_INTRO
+    return FOLLOWUP_DEFAULT_SUBJECT, FOLLOWUP_DEFAULT_INTRO

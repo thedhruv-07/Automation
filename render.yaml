@@ -36,6 +36,10 @@ services:
         sync: false
       - key: BREVO_API_KEY
         sync: false
+      - key: FOLLOWUP_BREVO_API_KEY
+        sync: false
+      - key: FOLLOWUP_EMAIL_SENDER
+        sync: false
       - key: DASHBOARD_ALLOWED_ORIGIN
         sync: false
       - key: MONGODB_URI

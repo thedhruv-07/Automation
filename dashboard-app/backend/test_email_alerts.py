@@ -454,3 +454,98 @@ def test_run_email_alerts_calls_on_progress_for_each_record(tmp_path, mongo_db):
     )
 
     assert progress_calls == [("sent", 1)]
+
+
+from email_alerts import run_followups, send_followup_via_brevo
+from db import record_email_sent, get_followup_eligible_clients, count_followups_sent_today
+
+
+def test_send_followup_via_brevo_uses_follow_up_subject_and_wording():
+    record = _record_dict(ROW_WITH_EMAIL)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-fu-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        ok, info = send_followup_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="r@x.com")
+
+    assert ok is True
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["subject"] == "Follow-up: Absolute Veritas — BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
+    assert "follow-up" in payload["htmlContent"].lower()
+
+
+def _seed_emailed(mongo_db, rows, emailed):
+    upsert_clients(mongo_db, rows, mode="replace")
+    for cid, status, date in emailed:
+        record_email_sent(mongo_db, cid, status, date, "m", "x@x.com", f"{date}T10:00:00")
+
+
+def test_run_followups_sends_and_records_each_eligible_client(mongo_db):
+    _seed_emailed(mongo_db, [ROW_WITH_EMAIL], [("CLT001", "CRITICAL", "2026-07-10")])
+    send_fn = Mock(return_value=(True, {"message_id": "fu-1"}))
+
+    results = run_followups(mongo_db, "api-key", "sender@x.com", "Absolute Veritas", today="2026-07-21", send_fn=send_fn)
+
+    assert [r["action"] for r in results] == ["sent"]
+    send_fn.assert_called_once()
+    assert count_followups_sent_today(mongo_db, "2026-07-21") == 1
+    assert get_followup_eligible_clients(mongo_db, "2026-07-21") == []
+
+
+def test_run_followups_skips_clients_without_a_valid_email(mongo_db):
+    _seed_emailed(mongo_db, [ROW_NO_EMAIL], [("CLT002", "URGENT", "2026-07-10")])
+    send_fn = Mock()
+
+    results = run_followups(mongo_db, "api-key", "sender@x.com", "Absolute Veritas", today="2026-07-21", send_fn=send_fn)
+
+    assert [r["action"] for r in results] == ["skipped_no_email"]
+    send_fn.assert_not_called()
+    assert count_followups_sent_today(mongo_db, "2026-07-21") == 0
+
+
+def test_run_followups_failed_send_is_not_recorded_so_it_can_be_retried(mongo_db):
+    _seed_emailed(mongo_db, [ROW_WITH_EMAIL], [("CLT001", "CRITICAL", "2026-07-10")])
+    send_fn = Mock(return_value=(False, {"error": "boom"}))
+
+    results = run_followups(mongo_db, "api-key", "sender@x.com", "Absolute Veritas", today="2026-07-21", send_fn=send_fn)
+
+    assert [r["action"] for r in results] == ["failed"]
+    assert results[0]["error"] == "boom"
+    assert len(get_followup_eligible_clients(mongo_db, "2026-07-21")) == 1
+
+
+def test_run_followups_stops_at_the_limit(mongo_db):
+    row_b = ("CLT004", "Deepa Rao", "FreshFoods", "d@x.com", "919000000001",
+             "CRS-Cert", "CRS", "CRS-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
+    _seed_emailed(mongo_db, [ROW_WITH_EMAIL, row_b],
+                  [("CLT001", "CRITICAL", "2026-07-10"), ("CLT004", "URGENT", "2026-07-10")])
+    send_fn = Mock(return_value=(True, {"message_id": "fu"}))
+
+    results = run_followups(mongo_db, "api-key", "sender@x.com", "Absolute Veritas",
+                            today="2026-07-21", send_fn=send_fn, limit=1)
+
+    assert [r["action"] for r in results] == ["sent"]
+    assert send_fn.call_count == 1
+
+
+def test_run_followups_calls_on_progress_for_each_client(mongo_db):
+    _seed_emailed(mongo_db, [ROW_WITH_EMAIL], [("CLT001", "CRITICAL", "2026-07-10")])
+    on_progress = Mock()
+
+    run_followups(mongo_db, "api-key", "sender@x.com", "Absolute Veritas", today="2026-07-21",
+                  send_fn=Mock(return_value=(True, {"message_id": "fu"})), on_progress=on_progress)
+
+    on_progress.assert_called_once()
+    assert on_progress.call_args.args[1] == 1
+
+
+def test_run_followups_with_test_email_redirects_and_does_not_record(mongo_db):
+    _seed_emailed(mongo_db, [ROW_WITH_EMAIL], [("CLT001", "CRITICAL", "2026-07-10")])
+    send_fn = Mock(return_value=(True, {"message_id": "fu"}))
+
+    results = run_followups(mongo_db, "api-key", "sender@x.com", "Absolute Veritas", today="2026-07-21",
+                            send_fn=send_fn, test_email="me@x.com")
+
+    assert send_fn.call_args.kwargs["to_email"] == "me@x.com"
+    assert results[0]["to"] == "me@x.com"
+    assert count_followups_sent_today(mongo_db, "2026-07-21") == 0

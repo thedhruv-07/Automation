@@ -15,10 +15,10 @@ from dotenv import load_dotenv
 
 from db import (
     DEFAULT_DB_PATH, get_eligible_clients, load_email_sent_log, save_email_sent_log,
-    count_emails_sent_today,
+    count_emails_sent_today, get_followup_eligible_clients, record_followup_sent,
 )
 from email_template import build_email_html, _tier
-from scheme_templates import get_email_content
+from scheme_templates import get_email_content, get_followup_content
 from whatsapp_renewal_alerts import dedup_key
 
 SCRIPT_DIR = Path(__file__).parent
@@ -138,10 +138,14 @@ def post_email_via_brevo(payload: dict, brevo_api_key: str) -> tuple[bool, dict]
     return False, {"error": error_message}
 
 
-def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_name: str, to_email: str):
+def send_email_via_brevo(
+    rec: dict, brevo_api_key: str, email_sender: str, org_name: str, to_email: str,
+    followup: bool = False,
+):
     """Builds the HTML (same build_email_html() the preview endpoint uses) and
     sends via Brevo's transactional email API. Returns (success, info_dict)
-    matching whatsapp_renewal_alerts.send_message()'s contract."""
+    matching whatsapp_renewal_alerts.send_message()'s contract. followup=True
+    swaps in the follow-up subject/intro (see get_followup_content)."""
     expiry_dt = _parse_expiry(rec["expiry_date"])
     days_left = (expiry_dt - datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)).days
     template_rec = {
@@ -150,7 +154,7 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
         "expiry_formatted": expiry_dt.strftime("%d %B %Y"),
     }
 
-    subject_template, intro_text = get_email_content(rec["scheme"])
+    subject_template, intro_text = (get_followup_content if followup else get_email_content)(rec["scheme"])
     html = build_email_html(
         template_rec, org_name=org_name, org_website="", org_contact="",
         org_email="cs@absoluteveritas.com", intro_text=intro_text, qr_src=qr_url(),
@@ -168,6 +172,10 @@ def send_email_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_n
         "htmlContent": html,
     }
     return post_email_via_brevo(payload, brevo_api_key)
+
+
+def send_followup_via_brevo(rec: dict, brevo_api_key: str, email_sender: str, org_name: str, to_email: str):
+    return send_email_via_brevo(rec, brevo_api_key, email_sender, org_name, to_email, followup=True)
 
 
 def send_one_email_alert(
@@ -310,6 +318,60 @@ def run_email_alerts(
 
     if persist_log and log_dirty:
         save_email_sent_log(db_path, sent_log)
+
+    return results
+
+
+def run_followups(
+    db_path,
+    brevo_api_key: str,
+    email_sender: str,
+    org_name: str,
+    today: str | None = None,
+    send_fn=send_followup_via_brevo,
+    on_progress=None,
+    limit: int | None = None,
+    test_email: str | None = None,
+) -> list[dict]:
+    """Sends the follow-up email to every client get_followup_eligible_clients
+    returns (soonest-expiring first), recording each success immediately so a
+    crash mid-run can't cause a duplicate on retry. A failed send isn't
+    recorded, so it stays eligible. limit caps actual sends, like
+    run_email_alerts. test_email redirects every send to that address and
+    records nothing (the dashboard's DASHBOARD_TEST_EMAIL safety override)."""
+    today = today or datetime.now().strftime("%Y-%m-%d")
+    records = get_followup_eligible_clients(db_path, today)
+    results = []
+    sent_count = 0
+
+    for rec in records:
+        if limit is not None and sent_count >= limit:
+            break
+        base = {"client_id": rec["client_id"], "name": rec["name"], "status": rec["status"]}
+        to_email = test_email or rec.get("email")
+        if not _is_valid_email(to_email):
+            result = {**base, "action": "skipped_no_email", "to": None}
+        else:
+            try:
+                ok, info = send_fn(rec, brevo_api_key, email_sender, org_name, to_email=to_email)
+            except Exception as exc:
+                ok, info = False, {"error": str(exc)}
+            if ok:
+                if not test_email:
+                    record_followup_sent(
+                        db_path, rec["client_id"], rec["_followup_for"], today,
+                        info.get("message_id"), to_email, datetime.now().isoformat(),
+                    )
+                sent_count += 1
+                result = {**base, "action": "sent", "to": to_email, "message_id": info.get("message_id")}
+            else:
+                result = {**base, "action": "failed", "to": to_email, "error": info.get("error")}
+        results.append(result)
+        if on_progress:
+            try:
+                on_progress(result, len(records))
+            except Exception as exc:
+                print(f"⚠ on_progress callback raised {exc!r}; continuing follow-up batch.")
 
     return results
 

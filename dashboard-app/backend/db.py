@@ -47,6 +47,7 @@ _SORTABLE_COLUMNS = {
 
 ALERT_STATUSES = ("CRITICAL", "URGENT", "DUE SOON", "EXPIRED")
 REMINDER_INTERVAL_DAYS = 20
+FOLLOWUP_DELAY_DAYS = 4
 
 
 _initialized_dbs: "weakref.WeakSet" = weakref.WeakSet()
@@ -67,6 +68,7 @@ def init_db(db: Database) -> None:
     db["clients"].create_index("_seq")
     db["sent_log"].create_index([("client_id", 1), ("status", 1)])
     db["email_sent_log"].create_index([("client_id", 1), ("status", 1)])
+    db["followup_sent_log"].create_index([("client_id", 1), ("followup_for", 1)])
     db["notice_sent_log"].create_index(
         [("client_id", 1), ("notice_id", 1), ("channel", 1)], unique=True,
     )
@@ -479,6 +481,52 @@ def record_email_sent(db: Database, client_id, status, sent_date, message_id, em
         {"$set": {"message_id": message_id, "email": email, "sent_at": sent_at}},
         upsert=True,
     )
+
+
+def record_followup_sent(db: Database, client_id, followup_for, sent_date, message_id, email, sent_at) -> None:
+    """followup_for is the sent_date of the renewal email this follow-up
+    chases -- a client gets at most one follow-up per renewal email."""
+    init_db(db)
+    db["followup_sent_log"].update_one(
+        {"client_id": client_id, "followup_for": followup_for},
+        {"$set": {"sent_date": sent_date, "message_id": message_id, "email": email, "sent_at": sent_at}},
+        upsert=True,
+    )
+
+
+def count_followups_sent_today(db: Database, today: str) -> int:
+    init_db(db)
+    return db["followup_sent_log"].count_documents({"sent_date": today})
+
+
+def _followup_candidates(db: Database, today: str, delay_days: int) -> dict[str, str]:
+    """{client_id: sent_date of their latest renewal email} for every client
+    whose latest renewal email is at least delay_days old and hasn't been
+    followed up yet."""
+    cutoff = (datetime.strptime(today, "%Y-%m-%d") - timedelta(days=delay_days)).strftime("%Y-%m-%d")
+    latest = {
+        doc["_id"]: doc["last"]
+        for doc in db["email_sent_log"].aggregate([{"$group": {"_id": "$client_id", "last": {"$max": "$sent_date"}}}])
+        if doc["last"] <= cutoff
+    }
+    followed = {(d["client_id"], d["followup_for"]) for d in db["followup_sent_log"].find()}
+    return {cid: last for cid, last in latest.items() if (cid, last) not in followed}
+
+
+def get_followup_eligible_clients(db: Database, today: str, delay_days: int = FOLLOWUP_DELAY_DAYS) -> list[dict]:
+    """Clients still in ALERT_STATUSES (a renewed client's expiry moves out,
+    dropping them to ACTIVE) whose latest renewal email is at least
+    delay_days old with no follow-up yet, soonest-expiring first. Each
+    record carries _followup_for (that email's date) for record_followup_sent."""
+    init_db(db)
+    candidates = _followup_candidates(db, today, delay_days)
+    if not candidates:
+        return []
+    query = {"client_id": {"$in": list(candidates)}, "status": {"$in": list(ALERT_STATUSES)}}
+    return [
+        {**_doc_to_dict(doc), "_followup_for": candidates[doc["client_id"]]}
+        for doc in db["clients"].find(query).sort("expiry_date_iso", 1)
+    ]
 
 
 def count_emails_sent_today(db: Database, today: str) -> int:

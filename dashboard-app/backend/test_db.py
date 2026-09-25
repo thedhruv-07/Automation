@@ -820,3 +820,83 @@ def test_get_broadcast_clients_page_notice_status_is_independent_per_notice(mong
     rows, _ = get_broadcast_clients_page(mongo_db, "meity_series_guidelines_2026")
 
     assert rows[0]["notice_sent_whatsapp"] is False
+
+
+from db import (
+    record_email_sent, record_followup_sent, get_followup_eligible_clients,
+    count_followups_sent_today, FOLLOWUP_DELAY_DAYS,
+)
+
+
+def _emailed(mongo_db, client_id, status, sent_date):
+    record_email_sent(mongo_db, client_id, status, sent_date, "m", "x@x.com", f"{sent_date}T10:00:00")
+
+
+def test_followup_delay_is_four_days():
+    assert FOLLOWUP_DELAY_DAYS == 4
+
+
+def test_followup_eligible_once_delay_has_passed(mongo_db):
+    _seeded_db(mongo_db)
+    _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-17")
+    rows = get_followup_eligible_clients(mongo_db, "2026-07-21")
+    assert [r["client_id"] for r in rows] == ["CLT001"]
+    assert rows[0]["_followup_for"] == "2026-07-17"
+
+
+def test_followup_not_eligible_before_delay_has_passed(mongo_db):
+    _seeded_db(mongo_db)
+    _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-18")
+    assert get_followup_eligible_clients(mongo_db, "2026-07-21") == []
+
+
+def test_followup_not_eligible_when_never_emailed(mongo_db):
+    _seeded_db(mongo_db)
+    assert get_followup_eligible_clients(mongo_db, "2026-07-21") == []
+
+
+def test_followup_not_eligible_once_already_followed_up_for_that_email(mongo_db):
+    _seeded_db(mongo_db)
+    _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-10")
+    record_followup_sent(mongo_db, "CLT001", "2026-07-10", "2026-07-15", "m", "x@x.com", "2026-07-15T10:00:00")
+    assert get_followup_eligible_clients(mongo_db, "2026-07-21") == []
+
+
+def test_followup_eligible_again_after_a_newer_renewal_email(mongo_db):
+    _seeded_db(mongo_db)
+    _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-01")
+    record_followup_sent(mongo_db, "CLT001", "2026-07-01", "2026-07-06", "m", "x@x.com", "2026-07-06T10:00:00")
+    _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-16")
+    rows = get_followup_eligible_clients(mongo_db, "2026-07-21")
+    assert [r["_followup_for"] for r in rows] == ["2026-07-16"]
+
+
+def test_followup_uses_the_latest_renewal_email_date(mongo_db):
+    """An old email plus a fresh one 1 day ago -- the fresh one hasn't waited
+    long enough, so the client isn't due a follow-up yet."""
+    _seeded_db(mongo_db)
+    _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-01")
+    _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-20")
+    assert get_followup_eligible_clients(mongo_db, "2026-07-21") == []
+
+
+def test_followup_skips_clients_who_are_no_longer_alert_eligible(mongo_db):
+    """CLT004 is ACTIVE (renewed, so its expiry moved out) -- no follow-up."""
+    _seeded_db(mongo_db)
+    _emailed(mongo_db, "CLT004", "DUE SOON", "2026-07-10")
+    assert get_followup_eligible_clients(mongo_db, "2026-07-21") == []
+
+
+def test_followup_sorted_soonest_expiry_first(mongo_db):
+    _seeded_db(mongo_db)
+    for cid, status in (("CLT001", "CRITICAL"), ("CLT002", "URGENT"), ("CLT005", "EXPIRED")):
+        _emailed(mongo_db, cid, status, "2026-07-10")
+    rows = get_followup_eligible_clients(mongo_db, "2026-07-21")
+    assert [r["client_id"] for r in rows] == ["CLT005", "CLT001", "CLT002"]
+
+
+def test_count_followups_sent_today(mongo_db):
+    record_followup_sent(mongo_db, "CLT001", "2026-07-10", "2026-07-21", "m", "x@x.com", "2026-07-21T10:00:00")
+    record_followup_sent(mongo_db, "CLT002", "2026-07-10", "2026-07-21", "m", "x@x.com", "2026-07-21T10:01:00")
+    record_followup_sent(mongo_db, "CLT003", "2026-07-10", "2026-07-20", "m", "x@x.com", "2026-07-20T10:00:00")
+    assert count_followups_sent_today(mongo_db, "2026-07-21") == 2

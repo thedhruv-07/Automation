@@ -2216,3 +2216,102 @@ def test_send_adhoc_notice_whatsapp_unknown_notice_returns_404(tmp_path, monkeyp
 def test_send_adhoc_notice_whatsapp_status_unknown_job_returns_404():
     response = client.get("/api/adhoc-notices/independence_day_2026/send-whatsapp/status/does-not-exist")
     assert response.status_code == 404
+
+
+ISI_ROW_1 = ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+             "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"]
+ISI_ROW_2 = ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+             "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT"]
+
+
+def _setup_followups(monkeypatch, mongo_db, rows):
+    from db import record_email_sent
+    _write_db(mongo_db, rows)
+    for row in rows:
+        record_email_sent(mongo_db, row[0], row[11], "2026-07-10", "m", row[3], "2026-07-10T10:00:00")
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-21")
+    for var in ("FOLLOWUP_BREVO_API_KEY", "FOLLOWUP_EMAIL_SENDER", "DASHBOARD_TEST_EMAIL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+
+
+def _run_followup_job():
+    import time
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-fu"}})()
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        start = client.post("/api/send-followups")
+        assert start.status_code == 200
+        job_id = start.json()["job_id"]
+        status = None
+        for _ in range(100):
+            status = client.get(f"/api/send-followups/status/{job_id}")
+            if status.json()["done"]:
+                break
+            time.sleep(0.05)
+    return status.json(), mock_post
+
+
+def test_followup_count_reports_eligible_clients_and_quota(monkeypatch, mongo_db):
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1, ISI_ROW_2])
+    response = client.get("/api/followup-count")
+    assert response.status_code == 200
+    assert response.json() == {"eligible": 2, "separate_key": False, "remaining_quota": 300}
+
+
+def test_send_followups_uses_the_main_key_when_no_followup_key_is_set(monkeypatch, mongo_db):
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1])
+    final, mock_post = _run_followup_job()
+    assert final["sent"] == 1
+    assert mock_post.call_args.kwargs["headers"]["api-key"] == "main-key"
+    assert mock_post.call_args.kwargs["json"]["sender"]["email"] == "main@x.com"
+    assert mock_post.call_args.kwargs["json"]["subject"].startswith("Follow-up:")
+
+
+def test_send_followups_uses_the_separate_followup_key_when_configured(monkeypatch, mongo_db):
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1])
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "followup-key")
+    monkeypatch.setenv("FOLLOWUP_EMAIL_SENDER", "followup@x.com")
+    final, mock_post = _run_followup_job()
+    assert final["sent"] == 1
+    assert mock_post.call_args.kwargs["headers"]["api-key"] == "followup-key"
+    assert mock_post.call_args.kwargs["json"]["sender"]["email"] == "followup@x.com"
+
+
+def test_send_followups_does_not_resend_to_the_same_client(monkeypatch, mongo_db):
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1])
+    _run_followup_job()
+    final, _ = _run_followup_job()
+    assert final["total"] == 0
+    assert final["sent"] == 0
+
+
+def test_send_followups_respects_the_daily_limit(monkeypatch, mongo_db):
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1, ISI_ROW_2])
+    monkeypatch.setattr(main_module, "BREVO_DAILY_LIMIT", 1)
+    final, _ = _run_followup_job()
+    assert final["sent"] == 1
+
+
+def test_followups_share_the_main_quota_when_they_use_the_same_key(monkeypatch, mongo_db):
+    from db import record_followup_sent
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1])
+    record_followup_sent(mongo_db, "CLT009", "2026-07-01", "2026-07-21", "m", "x@x.com", "2026-07-21T09:00:00")
+    assert main_module._remaining_email_quota_today() == 299
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "followup-key")
+    assert main_module._remaining_email_quota_today() == 300
+    assert main_module._remaining_followup_quota_today() == 299
+
+
+def test_send_followups_honours_the_dashboard_test_email_override(monkeypatch, mongo_db):
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1])
+    monkeypatch.setenv("DASHBOARD_TEST_EMAIL", "me@x.com")
+    final, mock_post = _run_followup_job()
+    assert final["sent"] == 1
+    assert mock_post.call_args.kwargs["json"]["to"][0]["email"] == "me@x.com"
+    assert client.get("/api/followup-count").json()["eligible"] == 1  # not recorded
+
+
+def test_send_followups_unknown_job_status_returns_404():
+    assert client.get("/api/send-followups/status/nope").status_code == 404

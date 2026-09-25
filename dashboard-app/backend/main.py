@@ -24,14 +24,14 @@ from db import (  # noqa: E402
     is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
     get_eligible_count, get_notice_eligible_count, get_broadcast_clients_page,
     load_notice_sent_log, find_clients_by_ids, get_adhoc_recipient_count, get_adhoc_eligible_count,
-    count_emails_sent_today,
+    count_emails_sent_today, count_followups_sent_today, get_followup_eligible_clients,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, filter_alertable, normalize_phone,
     send_one_alert, run,
 )
 from email_alerts import (  # noqa: E402
-    send_email_via_brevo, send_one_email_alert, run_email_alerts, BREVO_DAILY_LIMIT,
+    send_email_via_brevo, send_one_email_alert, run_email_alerts, run_followups, BREVO_DAILY_LIMIT,
     scheme_html_overrides, LOGO_PATH as _LOGO_PATH, QR_PATH as _QR_PATH, qr_url as _qr_url,
 )
 from email_template import build_email_html  # noqa: E402
@@ -50,14 +50,40 @@ def _today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
+def _followup_uses_separate_key() -> bool:
+    return bool(os.environ.get("FOLLOWUP_BREVO_API_KEY"))
+
+
 def _remaining_email_quota_today() -> int:
     """BREVO_DAILY_LIMIT is a single account-wide cap shared by every
     feature that sends email (daily renewal alerts, one-time notice
     broadcasts, the single-client Send Email button) -- so the limit
     passed into any one of them has to account for what the others already
-    sent today, not just reset to the full 300 on every call."""
+    sent today, not just reset to the full 300 on every call. Follow-ups
+    count against it too unless they go out through their own Brevo
+    account (FOLLOWUP_BREVO_API_KEY), which has its own 300/day."""
     already_sent = count_emails_sent_today(DEFAULT_DB_PATH, _today_str())
+    if not _followup_uses_separate_key():
+        already_sent += count_followups_sent_today(DEFAULT_DB_PATH, _today_str())
     return max(0, BREVO_DAILY_LIMIT - already_sent)
+
+
+def _remaining_followup_quota_today() -> int:
+    """The follow-up counterpart of _remaining_email_quota_today -- same
+    shared-vs-separate-account reasoning, from the follow-up side."""
+    used = count_followups_sent_today(DEFAULT_DB_PATH, _today_str())
+    if not _followup_uses_separate_key():
+        used += count_emails_sent_today(DEFAULT_DB_PATH, _today_str())
+    return max(0, BREVO_DAILY_LIMIT - used)
+
+
+def _followup_credentials() -> tuple[str, str]:
+    """(api_key, sender) for follow-up emails: the FOLLOWUP_* env vars when a
+    separate Brevo account is configured, else the main ones. The sender must
+    be a verified sender on whichever account the key belongs to."""
+    if _followup_uses_separate_key():
+        return os.environ["FOLLOWUP_BREVO_API_KEY"], os.environ.get("FOLLOWUP_EMAIL_SENDER") or os.environ["EMAIL_SENDER"]
+    return os.environ["BREVO_API_KEY"], os.environ["EMAIL_SENDER"]
 
 
 def _parse_expiry(value) -> datetime:
@@ -618,6 +644,85 @@ def send_all_emails(
 @app.get("/api/send-all-emails/status/{job_id}")
 def send_all_emails_status(job_id: str):
     job = _send_all_email_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    return job
+
+
+_followup_jobs: dict[str, dict] = {}
+
+
+@app.get("/api/followup-count")
+def followup_count():
+    return {
+        "eligible": len(get_followup_eligible_clients(DEFAULT_DB_PATH, _today_str())),
+        "separate_key": _followup_uses_separate_key(),
+        "remaining_quota": _remaining_followup_quota_today(),
+    }
+
+
+def _run_followup_job(job_id, brevo_api_key, email_sender, test_email):
+    def progress(result, total):
+        job = _followup_jobs[job_id]
+        job["total"] = total
+        if result["action"] == "sent":
+            job["sent"] += 1
+        elif result["action"] == "skipped_no_email":
+            job["skipped_no_email"] += 1
+        elif result["action"] == "failed":
+            job["failed"] += 1
+            print(f"⚠ follow-up failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
+
+    try:
+        run_followups(
+            DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
+            on_progress=progress, limit=_remaining_followup_quota_today(), test_email=test_email,
+        )
+    except Exception as exc:
+        _followup_jobs[job_id]["error"] = str(exc)
+    finally:
+        _followup_jobs[job_id]["done"] = True
+        global _email_bulk_in_progress
+        with _email_send_lock:
+            _email_bulk_in_progress = False
+
+
+@app.post("/api/send-followups")
+def send_followups():
+    # Shares the bulk-email lock: when follow-ups use the main Brevo account
+    # they draw on the same daily quota, so the two must not run at once.
+    global _email_bulk_in_progress
+    with _email_send_lock:
+        if _email_bulk_in_progress:
+            raise HTTPException(status_code=409, detail="A bulk email send is already in progress")
+        if _pending_email_sends:
+            raise HTTPException(
+                status_code=409,
+                detail="One or more per-client email sends are in progress; try again shortly",
+            )
+        _email_bulk_in_progress = True
+
+    try:
+        brevo_api_key, email_sender = _followup_credentials()
+        test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
+
+        job_id = str(uuid.uuid4())
+        _followup_jobs[job_id] = {
+            "total": 0, "sent": 0, "skipped_no_email": 0, "failed": 0, "done": False, "error": None,
+        }
+        threading.Thread(
+            target=_run_followup_job, args=(job_id, brevo_api_key, email_sender, test_email), daemon=True,
+        ).start()
+        return {"job_id": job_id}
+    except Exception:
+        with _email_send_lock:
+            _email_bulk_in_progress = False
+        raise HTTPException(status_code=500, detail="Server is not configured to send emails")
+
+
+@app.get("/api/send-followups/status/{job_id}")
+def send_followups_status(job_id: str):
+    job = _followup_jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job
