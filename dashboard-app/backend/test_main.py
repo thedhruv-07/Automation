@@ -2314,3 +2314,61 @@ def test_send_followups_honours_the_dashboard_test_email_override(monkeypatch, m
 
 def test_send_followups_unknown_job_status_returns_404():
     assert client.get("/api/send-followups/status/nope").status_code == 404
+
+
+def _renewals_file(licence="0009156278", validity="2031/08/31"):
+    from test_renewals_import import _manak_xlsx, _row
+    return _manak_xlsx([_row(licence=licence, validity=validity)])
+
+
+def _post_renewals(data, apply=None, name="BIS.xlsx"):
+    form = {} if apply is None else {"apply": "true" if apply else "false"}
+    return client.post("/api/import-renewals", files={"file": (name, data, "application/vnd.ms-excel")}, data=form)
+
+
+def _seed_renewal_client(monkeypatch, mongo_db):
+    _write_db(mongo_db, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "IS 4250:2015", "ISI", "0009156278", "01-01-2021", "24-07-2026", "https://x", "EXPIRED"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+
+
+def test_import_renewals_previews_by_default_without_changing_anything(monkeypatch, mongo_db):
+    _seed_renewal_client(monkeypatch, mongo_db)
+    response = _post_renewals(_renewals_file())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["applied"] is False
+    assert body["renewed"] == 1
+    assert client.get("/api/clients", params={"page_size": 50}).json()["rows"][0]["expiry_date"] == "24-07-2026"
+
+
+def test_import_renewals_applies_when_asked(monkeypatch, mongo_db):
+    _seed_renewal_client(monkeypatch, mongo_db)
+    response = _post_renewals(_renewals_file(), apply=True)
+    assert response.status_code == 200
+    assert response.json()["applied"] is True
+    row = client.get("/api/clients", params={"page_size": 50}).json()["rows"][0]
+    assert row["expiry_date"] == "31-08-2031"
+    assert row["status"] == "ACTIVE"
+
+
+def test_import_renewals_rejects_a_non_xlsx_filename(monkeypatch, mongo_db):
+    _seed_renewal_client(monkeypatch, mongo_db)
+    assert _post_renewals(b"x", name="report.csv").status_code == 400
+
+
+def test_import_renewals_rejects_something_that_is_not_a_spreadsheet(monkeypatch, mongo_db):
+    _seed_renewal_client(monkeypatch, mongo_db)
+    response = _post_renewals(b"not a spreadsheet")
+    assert response.status_code == 400
+    assert "valid .xlsx" in response.json()["detail"]
+
+
+def test_import_renewals_rejects_a_spreadsheet_without_the_expected_columns(monkeypatch, mongo_db):
+    from test_renewals_import import _manak_xlsx
+    _seed_renewal_client(monkeypatch, mongo_db)
+    response = _post_renewals(_manak_xlsx([["a", "b"]], header=["Name", "Amount"]))
+    assert response.status_code == 400
+    assert "Licence No" in response.json()["detail"]

@@ -65,6 +65,7 @@ def init_db(db: Database) -> None:
     db["clients"].create_index("status")
     db["clients"].create_index("expiry_date_iso")
     db["clients"].create_index("cert_name")
+    db["clients"].create_index("cert_id")
     db["clients"].create_index("_seq")
     db["sent_log"].create_index([("client_id", 1), ("status", 1)])
     db["email_sent_log"].create_index([("client_id", 1), ("status", 1)])

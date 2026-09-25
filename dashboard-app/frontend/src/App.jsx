@@ -6,6 +6,7 @@ import FilterBar from "./components/FilterBar";
 import ClientDataFilters from "./components/ClientDataFilters";
 import ClientTable from "./components/ClientTable";
 import ExcelSyncView from "./components/ExcelSyncView";
+import RenewalsImport from "./components/RenewalsImport";
 import MessageLogView from "./components/MessageLogView";
 import NoticeLogView from "./components/NoticeLogView";
 import WhatsAppSettingsView from "./components/WhatsAppSettingsView";
@@ -21,7 +22,7 @@ import {
   mergeClientsFile, getMessageLog, getNoticeLog, getSettingsInfo, getEmailPreview,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
-  getNoticeClients, getFollowupCount, sendFollowups, getSendFollowupsStatus,
+  getNoticeClients, getFollowupCount, sendFollowups, getSendFollowupsStatus, importRenewals,
   listAdhocNotices, getAdhocNoticeCount, sendAdhocNotice, getAdhocNoticeSendStatus,
 } from "./api";
 
@@ -544,7 +545,19 @@ export default function App() {
           )}
 
           {activeView === "excelSync" && (
-            <ExcelSyncView onUpload={handleUploadClients} onMerge={handleMergeClients} />
+            <div className="space-y-6">
+              <ExcelSyncView onUpload={handleUploadClients} onMerge={handleMergeClients} />
+              <RenewalsImport
+                importRenewals={async (file, apply) => {
+                  const result = await importRenewals(file, apply);
+                  if (apply) {
+                    loadClients();
+                    loadStats();
+                  }
+                  return result;
+                }}
+              />
+            </div>
           )}
 
           {activeView === "messageLog" && <MessageLogView fetchLog={getMessageLog} />}

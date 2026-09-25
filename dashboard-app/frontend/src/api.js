@@ -303,3 +303,17 @@ export async function getSendFollowupsStatus(jobId) {
   if (!res.ok) throw new Error(`Failed to load follow-up status: ${res.status}`);
   return res.json();
 }
+
+export async function importRenewals(file, apply) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("apply", apply ? "true" : "false");
+  const res = await fetch(`${API_BASE}/api/import-renewals`, {
+    method: "POST", credentials: "include", headers: {}, body: formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Import failed: ${res.status}`);
+  }
+  return data;
+}
