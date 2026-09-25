@@ -2231,7 +2231,7 @@ def _setup_followups(monkeypatch, mongo_db, rows):
         record_email_sent(mongo_db, row[0], row[11], "2026-07-10", "m", row[3], "2026-07-10T10:00:00")
     monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
     monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-21")
-    for var in ("FOLLOWUP_BREVO_API_KEY", "FOLLOWUP_EMAIL_SENDER", "DASHBOARD_TEST_EMAIL"):
+    for var in ("FOLLOWUP_BREVO_API_KEY", "DASHBOARD_TEST_EMAIL"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("BREVO_API_KEY", "main-key")
     monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
@@ -2269,14 +2269,13 @@ def test_send_followups_uses_the_main_key_when_no_followup_key_is_set(monkeypatc
     assert mock_post.call_args.kwargs["json"]["subject"].startswith("Follow-up:")
 
 
-def test_send_followups_uses_the_separate_followup_key_when_configured(monkeypatch, mongo_db):
+def test_send_followups_uses_the_separate_key_but_the_same_sender(monkeypatch, mongo_db):
     _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1])
     monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "followup-key")
-    monkeypatch.setenv("FOLLOWUP_EMAIL_SENDER", "followup@x.com")
     final, mock_post = _run_followup_job()
     assert final["sent"] == 1
     assert mock_post.call_args.kwargs["headers"]["api-key"] == "followup-key"
-    assert mock_post.call_args.kwargs["json"]["sender"]["email"] == "followup@x.com"
+    assert mock_post.call_args.kwargs["json"]["sender"]["email"] == "main@x.com"
 
 
 def test_send_followups_does_not_resend_to_the_same_client(monkeypatch, mongo_db):

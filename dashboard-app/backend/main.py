@@ -78,12 +78,11 @@ def _remaining_followup_quota_today() -> int:
 
 
 def _followup_credentials() -> tuple[str, str]:
-    """(api_key, sender) for follow-up emails: the FOLLOWUP_* env vars when a
-    separate Brevo account is configured, else the main ones. The sender must
-    be a verified sender on whichever account the key belongs to."""
-    if _followup_uses_separate_key():
-        return os.environ["FOLLOWUP_BREVO_API_KEY"], os.environ.get("FOLLOWUP_EMAIL_SENDER") or os.environ["EMAIL_SENDER"]
-    return os.environ["BREVO_API_KEY"], os.environ["EMAIL_SENDER"]
+    """(api_key, sender) for follow-up emails: the same EMAIL_SENDER as every
+    other email, but FOLLOWUP_BREVO_API_KEY when a separate Brevo account is
+    configured -- so that sender must also be verified on that account."""
+    api_key = os.environ["FOLLOWUP_BREVO_API_KEY"] if _followup_uses_separate_key() else os.environ["BREVO_API_KEY"]
+    return api_key, os.environ["EMAIL_SENDER"]
 
 
 def _parse_expiry(value) -> datetime:
