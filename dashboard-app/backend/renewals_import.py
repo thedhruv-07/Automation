@@ -110,6 +110,27 @@ def parse_report(data: bytes) -> tuple[list[dict], int]:
     return rows, unreadable
 
 
+def parse_reports(files: list[tuple[str, bytes]]) -> tuple[list[dict], int]:
+    """parse_report over several files (e.g. one Manak download per state) as
+    one combined list. A licence in more than one file keeps its latest
+    validity. A file that can't be read fails the whole call, naming the file,
+    so nothing is half-imported."""
+    latest, unreadable_total = {}, 0
+    for name, data in files:
+        try:
+            rows, unreadable = parse_report(data)
+        except zipfile.BadZipFile:
+            raise ValueError(f"{name}: could not be read as a valid .xlsx spreadsheet")
+        except ValueError as exc:
+            raise ValueError(f"{name}: {exc}")
+        unreadable_total += unreadable
+        for row in rows:
+            known = latest.get(row["licence_no"])
+            if known is None or row["validity_iso"] > known["validity_iso"]:
+                latest[row["licence_no"]] = row
+    return list(latest.values()), unreadable_total
+
+
 def apply_report(db, rows: list[dict], unreadable: int, apply: bool, today: datetime | None = None) -> dict:
     """Matches report rows to clients by licence number (cert_id). Where the
     report's validity is later than the client's expiry, the client is renewed:

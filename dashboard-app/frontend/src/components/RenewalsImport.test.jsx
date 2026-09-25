@@ -12,8 +12,8 @@ const preview = {
   ],
 };
 
-function pick(f = file) {
-  fireEvent.change(screen.getByTestId("renewals-file-input"), { target: { files: [f] } });
+function pick(...picked) {
+  fireEvent.change(screen.getByTestId("renewals-file-input"), { target: { files: picked.length ? picked : [file] } });
 }
 
 describe("RenewalsImport", () => {
@@ -25,12 +25,25 @@ describe("RenewalsImport", () => {
     expect(screen.getByRole("button", { name: "Check report" })).not.toBeDisabled();
   });
 
+  it("accepts several files at once and says how many were chosen", async () => {
+    const importRenewals = vi.fn().mockResolvedValue({ ...preview, files: 3 });
+    const second = new File(["y"], "haryana.xlsx");
+    const third = new File(["z"], "punjab.xlsx");
+    render(<RenewalsImport importRenewals={importRenewals} />);
+    expect(screen.getByTestId("renewals-file-input")).toHaveAttribute("multiple");
+    pick(file, second, third);
+    expect(screen.getByText("3 files selected")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check report" }));
+    await waitFor(() => expect(importRenewals).toHaveBeenCalledWith([file, second, third], false));
+    expect(await screen.findByText(/from 3 files/)).toBeInTheDocument();
+  });
+
   it("previews without applying and shows the counts and what would change", async () => {
     const importRenewals = vi.fn().mockResolvedValue(preview);
     render(<RenewalsImport importRenewals={importRenewals} />);
     pick();
     fireEvent.click(screen.getByRole("button", { name: "Check report" }));
-    await waitFor(() => expect(importRenewals).toHaveBeenCalledWith(file, false));
+    await waitFor(() => expect(importRenewals).toHaveBeenCalledWith([file], false));
     expect(await screen.findByText(/3 clients have renewed/)).toBeInTheDocument();
     expect(screen.getByText(/36 licences in the report/)).toBeInTheDocument();
     expect(screen.getByText(/31 not in your roster/)).toBeInTheDocument();
@@ -47,7 +60,7 @@ describe("RenewalsImport", () => {
     pick();
     fireEvent.click(screen.getByRole("button", { name: "Check report" }));
     fireEvent.click(await screen.findByRole("button", { name: "Apply 3 renewals" }));
-    await waitFor(() => expect(importRenewals).toHaveBeenLastCalledWith(file, true));
+    await waitFor(() => expect(importRenewals).toHaveBeenLastCalledWith([file], true));
     expect(await screen.findByText(/Marked 3 clients as renewed/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
   });

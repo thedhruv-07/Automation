@@ -1,14 +1,14 @@
 import { useState } from "react";
 
 export default function RenewalsImport({ importRenewals }) {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   const [done, setDone] = useState(null);
   const [error, setError] = useState(null);
 
   function reset() {
-    setFile(null);
+    setFiles([]);
     setPreview(null);
     setDone(null);
     setError(null);
@@ -18,7 +18,7 @@ export default function RenewalsImport({ importRenewals }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await importRenewals(file, apply);
+      const result = await importRenewals(files, apply);
       if (apply) {
         setDone(result);
         setPreview(null);
@@ -40,7 +40,7 @@ export default function RenewalsImport({ importRenewals }) {
       <div>
         <h3 className="text-base font-bold text-ink-primary">Import renewals from Manak Online</h3>
         <p className="text-sm text-ink-secondary mt-1">
-          Upload a &quot;List of Licences&quot; report (.xlsx) downloaded from Manak Online. Clients whose
+          Upload one or more &quot;List of Licences&quot; reports (.xlsx) downloaded from Manak Online, e.g. one per state. Clients whose
           licence now shows a later validity date are moved to that date and marked renewed, so they are
           skipped by renewal emails and follow-ups. Nothing changes until you confirm.
         </p>
@@ -50,19 +50,21 @@ export default function RenewalsImport({ importRenewals }) {
         <input
           type="file"
           accept=".xlsx"
+          multiple
           data-testid="renewals-file-input"
           onChange={(e) => {
-            setFile(e.target.files?.[0] || null);
+            setFiles(Array.from(e.target.files || []));
             setPreview(null);
             setDone(null);
             setError(null);
           }}
           className="text-sm text-ink-secondary"
         />
+        {files.length > 1 && <span className="text-sm text-ink-secondary">{files.length} files selected</span>}
         <button
           type="button"
           onClick={() => run(false)}
-          disabled={!file || busy}
+          disabled={files.length === 0 || busy}
           className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors disabled:opacity-50"
         >
           Check report
@@ -84,7 +86,7 @@ export default function RenewalsImport({ importRenewals }) {
       {preview && (
         <div className="space-y-3">
           <p className="text-sm text-ink-secondary">
-            {plural(preview.report_rows, "licence")} in the report · {preview.matched} matched your clients ·{" "}
+            {plural(preview.report_rows, "licence")} in the report{preview.files > 1 ? ` (from ${preview.files} files)` : ""} · {preview.matched} matched your clients ·{" "}
             {preview.already_current} already up to date · {preview.not_found} not in your roster
             {preview.unreadable > 0 && ` · ${preview.unreadable} rows could not be read`}
           </p>

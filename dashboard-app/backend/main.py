@@ -8,7 +8,6 @@ import io
 import os
 import threading
 import uuid
-import zipfile
 
 import openpyxl
 from dotenv import load_dotenv
@@ -41,7 +40,7 @@ from import_formats import IMPORT_FORMATS, FORMAT_DISPLAY_NAMES  # noqa: E402
 from wasabi import archive_upload  # noqa: E402
 from scheme_templates import get_email_content  # noqa: E402
 from notices import list_notices, get_notice_module, list_adhoc_notices, get_adhoc_notice_module  # noqa: E402
-from renewals_import import parse_report, apply_report  # noqa: E402
+from renewals_import import parse_reports, apply_report  # noqa: E402
 from notice_sender import send_notice_whatsapp, send_notice_email, send_adhoc_whatsapp_notice  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
@@ -1144,20 +1143,20 @@ async def upload_clients(file: UploadFile = File(...), import_format: str = Form
 
 
 @app.post("/api/import-renewals")
-async def import_renewals(file: UploadFile = File(...), apply: bool = Form(False)):
-    """Reads a BIS Manak Online "List of Licences" report and moves renewed
-    clients' expiry dates forward (see renewals_import). apply=false (the
-    default) only previews the counts, so the UI can show what would change
-    before anything is written."""
-    if not file.filename.lower().endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="File must be an .xlsx spreadsheet")
+async def import_renewals(files: list[UploadFile] = File(...), apply: bool = Form(False)):
+    """Reads one or more BIS Manak Online "List of Licences" reports (e.g. one
+    per state) and moves renewed clients' expiry dates forward (see
+    renewals_import). apply=false (the default) only previews the counts, so
+    the UI can show what would change before anything is written."""
+    for f in files:
+        if not f.filename.lower().endswith(".xlsx"):
+            raise HTTPException(status_code=400, detail=f"{f.filename}: file must be an .xlsx spreadsheet")
     try:
-        rows, unreadable = parse_report(await file.read())
-    except zipfile.BadZipFile:
-        raise HTTPException(status_code=400, detail="Could not read the uploaded file as a valid .xlsx spreadsheet")
+        rows, unreadable = parse_reports([(f.filename, await f.read()) for f in files])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return await run_in_threadpool(apply_report, DEFAULT_DB_PATH, rows, unreadable, apply)
+    summary = await run_in_threadpool(apply_report, DEFAULT_DB_PATH, rows, unreadable, apply)
+    return {**summary, "files": len(files)}
 
 
 @app.post("/api/merge-clients")

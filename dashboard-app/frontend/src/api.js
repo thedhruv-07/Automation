@@ -304,9 +304,9 @@ export async function getSendFollowupsStatus(jobId) {
   return res.json();
 }
 
-export async function importRenewals(file, apply) {
+export async function importRenewals(files, apply) {
   const formData = new FormData();
-  formData.append("file", file);
+  for (const file of files) formData.append("files", file);
   formData.append("apply", apply ? "true" : "false");
   const res = await fetch(`${API_BASE}/api/import-renewals`, {
     method: "POST", credentials: "include", headers: {}, body: formData,

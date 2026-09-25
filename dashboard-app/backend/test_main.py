@@ -2321,9 +2321,11 @@ def _renewals_file(licence="0009156278", validity="2031/08/31"):
     return _manak_xlsx([_row(licence=licence, validity=validity)])
 
 
-def _post_renewals(data, apply=None, name="BIS.xlsx"):
+def _post_renewals(data, apply=None, name="BIS.xlsx", extra=()):
     form = {} if apply is None else {"apply": "true" if apply else "false"}
-    return client.post("/api/import-renewals", files={"file": (name, data, "application/vnd.ms-excel")}, data=form)
+    files = [("files", (name, data, "application/vnd.ms-excel"))]
+    files += [("files", (n, d, "application/vnd.ms-excel")) for n, d in extra]
+    return client.post("/api/import-renewals", files=files, data=form)
 
 
 def _seed_renewal_client(monkeypatch, mongo_db):
@@ -2372,3 +2374,29 @@ def test_import_renewals_rejects_a_spreadsheet_without_the_expected_columns(monk
     response = _post_renewals(_manak_xlsx([["a", "b"]], header=["Name", "Amount"]))
     assert response.status_code == 400
     assert "Licence No" in response.json()["detail"]
+
+
+def test_import_renewals_accepts_several_files_at_once(monkeypatch, mongo_db):
+    from test_renewals_import import _manak_xlsx, _row
+    _write_db(mongo_db, [
+        ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
+         "IS 4250:2015", "ISI", "0009156278", "01-01-2021", "24-07-2026", "https://x", "EXPIRED"],
+        ["CLT002", "Priya Mehta", "BuildRight", "p@x.com", "919812345678",
+         "IS 4250:2015", "ISI", "0000000002", "01-01-2021", "24-07-2026", "https://x", "EXPIRED"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    second = _manak_xlsx([_row(licence="0000000002", validity="2030/01/01")])
+
+    response = _post_renewals(_renewals_file(), apply=True, extra=[("haryana.xlsx", second)])
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["renewed"] == 2
+    assert body["files"] == 2
+
+
+def test_import_renewals_names_the_bad_file_when_one_of_several_is_broken(monkeypatch, mongo_db):
+    _seed_renewal_client(monkeypatch, mongo_db)
+    response = _post_renewals(_renewals_file(), extra=[("broken.xlsx", b"garbage")])
+    assert response.status_code == 400
+    assert "broken.xlsx" in response.json()["detail"]

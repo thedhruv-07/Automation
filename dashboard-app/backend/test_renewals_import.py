@@ -9,7 +9,7 @@ import openpyxl
 import pytest
 
 from db import upsert_clients, find_client_by_id
-from renewals_import import parse_report, apply_report
+from renewals_import import parse_report, parse_reports, apply_report
 
 HEADER = ["S. No.", "Licence No", "Firm Name & Address", "District", "State", "Validity Date", "Status", "Variety", "Brand Names"]
 
@@ -197,3 +197,31 @@ def test_apply_renews_a_client_with_no_expiry_on_file(mongo_db):
     summary = apply_report(mongo_db, [_report()], 0, apply=True, today=TODAY)
 
     assert summary["renewed"] == 1
+
+
+def test_parse_reports_combines_the_rows_of_every_file():
+    rows, unreadable = parse_reports([
+        ("gujarat.xlsx", _manak_xlsx([_row(licence="0000000001")])),
+        ("haryana.xlsx", _manak_xlsx([_row(licence="0000000002"), _row(licence="bad")])),
+    ])
+    assert sorted(r["licence_no"] for r in rows) == ["0000000001", "0000000002"]
+    assert unreadable == 1
+
+
+def test_parse_reports_keeps_the_latest_validity_when_a_licence_is_in_two_files():
+    rows, _ = parse_reports([
+        ("a.xlsx", _manak_xlsx([_row(validity="2028/01/01")])),
+        ("b.xlsx", _manak_xlsx([_row(validity="2031/08/31")])),
+        ("c.xlsx", _manak_xlsx([_row(validity="2029/05/05")])),
+    ])
+    assert rows == [{"licence_no": "0009156278", "validity_iso": "2031-08-31", "bis_status": "Operative"}]
+
+
+def test_parse_reports_names_the_file_that_is_not_a_spreadsheet():
+    with pytest.raises(ValueError, match=r"haryana\.xlsx.*valid \.xlsx"):
+        parse_reports([("gujarat.xlsx", _manak_xlsx([_row()])), ("haryana.xlsx", b"garbage")])
+
+
+def test_parse_reports_names_the_file_with_the_wrong_columns():
+    with pytest.raises(ValueError, match=r"punjab\.xlsx.*Licence No"):
+        parse_reports([("punjab.xlsx", _manak_xlsx([["a", "b"]], header=["Name", "Amount"]))])

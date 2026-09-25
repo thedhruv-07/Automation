@@ -44,6 +44,6 @@ describe("App renewals import", () => {
     await screen.findByText(/Marked 1 client as renewed/);
     await waitFor(() => expect(api.getClients.mock.calls.length).toBeGreaterThan(clientCalls));
     await waitFor(() => expect(api.getStats.mock.calls.length).toBeGreaterThan(statsCalls));
-    expect(api.importRenewals).toHaveBeenLastCalledWith(expect.any(File), true);
+    expect(api.importRenewals).toHaveBeenLastCalledWith([expect.any(File)], true);
   });
 });
