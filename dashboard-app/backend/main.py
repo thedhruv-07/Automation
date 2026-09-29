@@ -147,8 +147,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health():
+    # HEAD too -- uptime monitors (e.g. UptimeRobot) default to HEAD requests.
     return {"status": "ok"}
 
 

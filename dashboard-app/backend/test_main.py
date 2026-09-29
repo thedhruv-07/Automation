@@ -34,6 +34,16 @@ def test_health_endpoint():
     assert response.json() == {"status": "ok"}
 
 
+def test_health_accepts_head_for_uptime_monitors_that_use_it(client=client):
+    """UptimeRobot and similar keep-alive pingers send HEAD by default --
+    without this, every ping 405s, which both fails to register as \"up\"
+    on the monitor and (irrelevantly to Render's spin-down, since any
+    request wakes the app regardless of status code, but still worth
+    fixing) looks like a real outage."""
+    response = client.head("/api/health")
+    assert response.status_code == 200
+
+
 def test_resolve_allowed_origins_includes_localhost_by_default(monkeypatch):
     monkeypatch.delenv("DASHBOARD_ALLOWED_ORIGIN", raising=False)
     from main import _resolve_allowed_origins
