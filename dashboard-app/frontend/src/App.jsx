@@ -30,6 +30,7 @@ const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPI
 const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
 const BULK_JOB_POLL_MS = 500;
+const STATS_RETRY_DELAYS_MS = [1500, 4000];  // a slow/cold-starting server usually recovers within a few seconds
 const VALID_VIEWS = new Set([
   "dashboard", "clientData", "excelSync", "whatsappSettings", "messageLog", "notices", "noticeLog",
 ]);
@@ -56,6 +57,7 @@ export default function App() {
   const [clientsLoading, setClientsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [stats, setStats] = useState(null);
+  const [statsError, setStatsError] = useState(null);
   const [activeStatus, setActiveStatus] = useState(storedClientFilters?.activeStatus || "ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -129,8 +131,27 @@ export default function App() {
       });
   }, [queryParams]);
 
-  const loadStats = useCallback(() => {
-    return getStats().then(setStats).catch(() => {});
+  const loadStats = useCallback(async () => {
+    // A silently-swallowed failure here used to leave `stats` at its default
+    // and render as literal 0s (Total Clients: 0, etc.) with no indication
+    // anything went wrong -- indistinguishable from a genuinely empty
+    // database. A transient failure (e.g. a still-waking-up free-tier
+    // server) is common enough that it's worth a couple of automatic
+    // retries before bothering the user with an error at all.
+    for (let attempt = 0; attempt <= STATS_RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        const data = await getStats();
+        setStats(data);
+        setStatsError(null);
+        return;
+      } catch (err) {
+        if (attempt === STATS_RETRY_DELAYS_MS.length) {
+          setStatsError(err.message);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, STATS_RETRY_DELAYS_MS[attempt]));
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -501,8 +522,26 @@ export default function App() {
                   Real-time status of all active and upcoming certification renewals.
                 </p>
               </div>
-              <StatCards stats={stats} />
-              <RenewalsByMonthChart renewalsByMonth={stats?.renewals_by_month || []} />
+              {statsError ? (
+                <div
+                  role="alert"
+                  className="text-sm text-ink-primary bg-status-critical/10 border border-status-critical/30 rounded-lg px-4 py-3 flex items-center justify-between gap-4"
+                >
+                  <span>Could not load dashboard stats: {statsError}. This does not mean your data is gone.</span>
+                  <button
+                    type="button"
+                    onClick={loadStats}
+                    className="px-3 py-1.5 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors whitespace-nowrap"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <StatCards stats={stats} />
+                  <RenewalsByMonthChart renewalsByMonth={stats?.renewals_by_month || []} />
+                </>
+              )}
             </>
           )}
 
