@@ -54,6 +54,7 @@ def build_email_html(
     cta_label: str = "",
     signature_html: str = "",
     qr_src: str = "",
+    more_info_url: str = "",
 ) -> str:
     """detail_rows/expiry_label/cta_label/signature_html let a caller swap in
     a scheme-specific layout (see email_alerts.send_email_via_brevo's ISI
@@ -88,6 +89,11 @@ def build_email_html(
 
     cta_label_html = f'<p style="margin:0 0 4px;font-weight:700;">{cta_label}</p>' if cta_label else ""
 
+    more_info_html = (
+        f'<p>For more info, <a href="{more_info_url}" target="_blank" rel="noopener noreferrer" style="color:{ACCENT};">click here</a>.</p>'
+        if more_info_url else ""
+    )
+
     qr_html = (
         f'<p>For quick response, you can use the barcode below to add us to '
         f'<strong style="color:#E36C0A;">WHATSAPP</strong>.</p>\n'
@@ -117,6 +123,8 @@ def build_email_html(
       {cta_label_html}
       <a href="{CALENDLY_URL}" target="_blank" rel="noopener noreferrer" style="color:{ACCENT};">Book an Appointment</a>
     </p>
+
+    {more_info_html}
 
     {qr_html}
 

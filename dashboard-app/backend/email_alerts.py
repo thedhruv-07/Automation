@@ -34,6 +34,7 @@ EMAIL_DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y")
 
 ISI_CTA_LABEL = "Proceed with Renewal"
 ISI_EXPIRY_LABEL = "BIS License Expiry date:"
+ISI_MORE_INFO_URL = "https://absoluteveritas.com/bis-isi-renewal-and-amc-services-2026/"
 ISI_SIGNATURE_HTML = """
     <p style="color:#1F497D;font-size:14px;font-weight:700;margin:0 0 2px;">Absolute Veritas</p>
     <p style="color:#E36C0A;font-size:13px;font-weight:700;margin:0 0 10px;">Inspection, Testing &amp; Certifications</p>
@@ -88,6 +89,7 @@ def scheme_html_overrides(rec: dict, scheme: str) -> dict:
         "expiry_label": ISI_EXPIRY_LABEL,
         "cta_label": ISI_CTA_LABEL,
         "signature_html": ISI_SIGNATURE_HTML,
+        "more_info_url": ISI_MORE_INFO_URL,
     }
 
 

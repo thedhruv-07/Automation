@@ -175,3 +175,23 @@ def test_signature_html_overrides_the_default_contact_block():
     assert "+1 555-0100" not in html
     assert "https://example.com" not in html
     assert 'rel="noopener noreferrer"' in html
+
+
+def test_more_info_link_is_absent_by_default():
+    html = build_email_html(make_rec(5))
+    assert "For more info" not in html
+
+
+def test_more_info_link_renders_when_given():
+    html = build_email_html(make_rec(5), more_info_url="https://absoluteveritas.com/bis-isi-renewal-and-amc-services-2026/")
+    assert 'href="https://absoluteveritas.com/bis-isi-renewal-and-amc-services-2026/"' in html
+    assert "For more info" in html
+    assert "click" in html.lower()
+
+
+def test_more_info_link_appears_before_the_signature_block():
+    html = build_email_html(
+        make_rec(5), more_info_url="https://example.com/info",
+        signature_html="<p>Absolute Veritas Signature</p>",
+    )
+    assert html.index("https://example.com/info") < html.index("Absolute Veritas Signature")

@@ -305,6 +305,8 @@ def test_send_email_via_brevo_isi_uses_bis_specific_layout():
     assert "Inspection, Testing &amp; Certifications" in html
     assert "www.absoluteveritas.com" in html
     assert "Certificate ID</td>" not in html
+    assert 'href="https://absoluteveritas.com/bis-isi-renewal-and-amc-services-2026/"' in html
+    assert "For more info" in html
 
 
 def test_send_email_via_brevo_isi_colors_current_validity_red_when_expired():
