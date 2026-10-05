@@ -551,3 +551,40 @@ def test_run_followups_with_test_email_redirects_and_does_not_record(mongo_db):
     assert send_fn.call_args.kwargs["to_email"] == "me@x.com"
     assert results[0]["to"] == "me@x.com"
     assert count_followups_sent_today(mongo_db, "2026-07-21") == 0
+
+
+def test_send_one_email_alert_tags_sent_log_entry_with_account():
+    record = _record_dict(ROW_WITH_EMAIL)
+    sent_log = {}
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
+
+    result = send_one_email_alert(
+        record, sent_log, "2026-07-17", "api-key", "sender@x.com", "Absolute Veritas",
+        send_fn=send_fn, account="followup",
+    )
+
+    assert result["action"] == "sent"
+    key = "CLT001|CRITICAL|2026-07-17"
+    assert sent_log[key]["account"] == "followup"
+
+
+def test_send_one_email_alert_defaults_account_to_main():
+    record = _record_dict(ROW_WITH_EMAIL)
+    sent_log = {}
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
+
+    send_one_email_alert(record, sent_log, "2026-07-17", "api-key", "sender@x.com", "Absolute Veritas", send_fn=send_fn)
+
+    assert sent_log["CLT001|CRITICAL|2026-07-17"]["account"] == "main"
+
+
+def test_run_email_alerts_persists_the_given_account_tag(mongo_db):
+    upsert_clients(mongo_db, [ROW_WITH_EMAIL], mode="replace")
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
+
+    run_email_alerts(mongo_db, "api-key", "sender@x.com", "Absolute Veritas", send_fn=send_fn, account="followup")
+
+    from db import count_overflow_sent_today, count_emails_sent_today
+    today = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+    assert count_overflow_sent_today(mongo_db, today) == 1
+    assert count_emails_sent_today(mongo_db, today) == 0

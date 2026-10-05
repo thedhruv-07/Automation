@@ -2410,3 +2410,108 @@ def test_import_renewals_names_the_bad_file_when_one_of_several_is_broken(monkey
     response = _post_renewals(_renewals_file(), extra=[("broken.xlsx", b"garbage")])
     assert response.status_code == 400
     assert "broken.xlsx" in response.json()["detail"]
+
+
+def _overflow_rows(n):
+    rows = []
+    for i in range(n):
+        rows.append([
+            f"CLTOV{i:03d}", f"Client {i}", "OverflowCo", f"ov{i}@x.com", f"91900000{i:04d}",
+            "IS 4250:2015", "ISI", f"OV-{i}", "01-01-2025", "24-07-2026", "https://x", "CRITICAL",
+        ])
+    return rows
+
+
+def _run_send_all_emails_job():
+    import time
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-ov"}})()
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        start = client.post("/api/send-all-emails")
+        assert start.status_code == 200
+        job_id = start.json()["job_id"]
+        status = None
+        for _ in range(100):
+            status = client.get(f"/api/send-all-emails/status/{job_id}")
+            if status.json()["done"]:
+                break
+            time.sleep(0.05)
+    return status.json(), mock_post
+
+
+def test_send_all_emails_overflows_into_the_followup_account_once_main_quota_is_exhausted(monkeypatch, mongo_db):
+    _write_db(mongo_db, _overflow_rows(5))
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setattr(main_module, "BREVO_DAILY_LIMIT", 3)
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "overflow-key")
+    monkeypatch.setenv("OVERFLOW_EMAIL_SENDER", "marketing@absoluteveritas.com")
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+
+    final, mock_post = _run_send_all_emails_job()
+
+    assert final["sent"] == 5  # 3 via main quota, then 2 overflow into the 2nd account
+    used_keys = {c.kwargs["headers"]["api-key"] for c in mock_post.call_args_list}
+    used_senders = {c.kwargs["json"]["sender"]["email"] for c in mock_post.call_args_list}
+    assert used_keys == {"main-key", "overflow-key"}
+    assert used_senders == {"main@x.com", "marketing@absoluteveritas.com"}
+    from db import count_emails_sent_today, count_overflow_sent_today
+    import datetime as _dt
+    real_today = _dt.datetime.now().strftime("%Y-%m-%d")
+    assert count_emails_sent_today(mongo_db, real_today) == 3
+    assert count_overflow_sent_today(mongo_db, real_today) == 2
+
+
+def test_send_all_emails_does_not_overflow_without_a_followup_key_configured(monkeypatch, mongo_db):
+    _write_db(mongo_db, _overflow_rows(5))
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setattr(main_module, "BREVO_DAILY_LIMIT", 3)
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.delenv("FOLLOWUP_BREVO_API_KEY", raising=False)
+    monkeypatch.delenv("OVERFLOW_EMAIL_SENDER", raising=False)
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+
+    final, _ = _run_send_all_emails_job()
+
+    assert final["sent"] == 3  # stops at the main account's limit, as before
+
+
+def test_send_all_emails_does_not_overflow_when_main_quota_was_not_the_binding_constraint(monkeypatch, mongo_db):
+    """Only 2 eligible clients and a limit of 3 -- the main pass finishes
+    because it ran out of clients, not quota, so no overflow attempt."""
+    _write_db(mongo_db, _overflow_rows(2))
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setattr(main_module, "BREVO_DAILY_LIMIT", 3)
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "overflow-key")
+    monkeypatch.delenv("OVERFLOW_EMAIL_SENDER", raising=False)
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+
+    final, mock_post = _run_send_all_emails_job()
+
+    assert final["sent"] == 2
+    used_keys = {c.kwargs["headers"]["api-key"] for c in mock_post.call_args_list}
+    assert used_keys == {"main-key"}
+
+
+def test_overflow_sender_falls_back_to_email_sender_when_unset(monkeypatch, mongo_db):
+    _write_db(mongo_db, _overflow_rows(5))
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setattr(main_module, "BREVO_DAILY_LIMIT", 3)
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "overflow-key")
+    monkeypatch.delenv("OVERFLOW_EMAIL_SENDER", raising=False)
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+
+    final, mock_post = _run_send_all_emails_job()
+
+    assert final["sent"] == 5
+    used_senders = {c.kwargs["json"]["sender"]["email"] for c in mock_post.call_args_list}
+    assert used_senders == {"main@x.com"}

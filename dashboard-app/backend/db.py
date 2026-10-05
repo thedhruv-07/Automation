@@ -475,11 +475,17 @@ def save_sent_log(db: Database, log: dict) -> None:
         )
 
 
-def record_email_sent(db: Database, client_id, status, sent_date, message_id, email, sent_at) -> None:
+def record_email_sent(db: Database, client_id, status, sent_date, message_id, email, sent_at, account: str = "main") -> None:
+    """account distinguishes which real Brevo account actually sent this --
+    "main" (the default) or "followup" (the separate account also used for
+    follow-ups, when an overflow send spills over into it once the main
+    account's daily quota is exhausted). Both draw on the same per-day
+    reminder dedup (this collection), but are counted against separate
+    quotas -- see count_emails_sent_today/count_overflow_sent_today."""
     init_db(db)
     db["email_sent_log"].update_one(
         {"client_id": client_id, "status": status, "sent_date": sent_date},
-        {"$set": {"message_id": message_id, "email": email, "sent_at": sent_at}},
+        {"$set": {"message_id": message_id, "email": email, "sent_at": sent_at, "account": account}},
         upsert=True,
     )
 
@@ -538,11 +544,23 @@ def count_emails_sent_today(db: Database, today: str) -> int:
     300/day quota, so a real daily cap has to count both regardless of
     which feature sent them, not just whichever one is asking."""
     init_db(db)
-    renewal_count = db["email_sent_log"].count_documents({"sent_date": today})
+    renewal_count = db["email_sent_log"].count_documents({"sent_date": today, "account": {"$ne": "followup"}})
     notice_count = db["notice_sent_log"].count_documents({
         "channel": "email", "sent_at": {"$regex": f"^{today}"},
     })
     return renewal_count + notice_count
+
+
+def count_overflow_sent_today(db: Database, today: str) -> int:
+    """Renewal emails sent today via the "followup" account -- an overflow
+    send that spilled over into the separate Brevo account once the main
+    account's daily quota ran out. Counted separately from
+    count_emails_sent_today (main account) and count_followups_sent_today
+    (actual follow-ups), since an overflow send and a follow-up both draw on
+    that SAME real account's one daily quota and must be added together to
+    know what's left on it -- see main._remaining_followup_quota_today."""
+    init_db(db)
+    return db["email_sent_log"].count_documents({"sent_date": today, "account": "followup"})
 
 
 def is_email_already_sent(db: Database, client_id, status, sent_date) -> bool:
@@ -557,7 +575,10 @@ def load_email_sent_log(db: Database) -> dict:
     log = {}
     for doc in db["email_sent_log"].find():
         key = f"{doc['client_id']}|{doc['status']}|{doc['sent_date']}"
-        log[key] = {"sent_at": doc["sent_at"], "message_id": doc["message_id"], "email": doc["email"]}
+        log[key] = {
+            "sent_at": doc["sent_at"], "message_id": doc["message_id"], "email": doc["email"],
+            "account": doc.get("account", "main"),
+        }
     return log
 
 
@@ -567,6 +588,7 @@ def save_email_sent_log(db: Database, log: dict) -> None:
         record_email_sent(
             db, client_id, status, sent_date,
             info.get("message_id"), info.get("email"), info.get("sent_at"),
+            account=info.get("account", "main"),
         )
 
 

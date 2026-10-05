@@ -24,7 +24,7 @@ from db import (  # noqa: E402
     is_already_sent, load_email_sent_log, save_email_sent_log, is_email_already_sent,
     get_eligible_count, get_notice_eligible_count, get_broadcast_clients_page,
     load_notice_sent_log, find_clients_by_ids, get_adhoc_recipient_count, get_adhoc_eligible_count,
-    count_emails_sent_today, count_followups_sent_today, get_followup_eligible_clients,
+    count_emails_sent_today, count_followups_sent_today, count_overflow_sent_today, get_followup_eligible_clients,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
     ALERT_STATUSES, filter_alertable, normalize_phone,
@@ -71,9 +71,16 @@ def _remaining_email_quota_today() -> int:
 
 def _remaining_followup_quota_today() -> int:
     """The follow-up counterpart of _remaining_email_quota_today -- same
-    shared-vs-separate-account reasoning, from the follow-up side."""
+    shared-vs-separate-account reasoning, from the follow-up side. Also the
+    quota for an overflow send (see _run_send_all_email_job): when a
+    separate FOLLOWUP_BREVO_API_KEY is configured, overflow sends spill
+    into that SAME account/quota as follow-ups, not a quota of their own,
+    so both count_followups_sent_today and count_overflow_sent_today must
+    be subtracted together to know what's left on that real account."""
     used = count_followups_sent_today(DEFAULT_DB_PATH, _today_str())
-    if not _followup_uses_separate_key():
+    if _followup_uses_separate_key():
+        used += count_overflow_sent_today(DEFAULT_DB_PATH, _today_str())
+    else:
         used += count_emails_sent_today(DEFAULT_DB_PATH, _today_str())
     return max(0, BREVO_DAILY_LIMIT - used)
 
@@ -84,6 +91,20 @@ def _followup_credentials() -> tuple[str, str]:
     configured -- so that sender must also be verified on that account."""
     api_key = os.environ["FOLLOWUP_BREVO_API_KEY"] if _followup_uses_separate_key() else os.environ["BREVO_API_KEY"]
     return api_key, os.environ["EMAIL_SENDER"]
+
+
+def _overflow_credentials() -> tuple[str, str] | None:
+    """(api_key, sender) for an overflow send -- the main renewal send
+    spilling into the separate Brevo account once BREVO_API_KEY's own daily
+    quota is exhausted. None when no separate account is configured (there
+    is nowhere to overflow into, so the run just stops at the main limit
+    like before). Uses OVERFLOW_EMAIL_SENDER (falls back to EMAIL_SENDER)
+    since that address needs to be verified on the overflow account too,
+    which may not be the same address follow-ups use there."""
+    if not _followup_uses_separate_key():
+        return None
+    sender = os.environ.get("OVERFLOW_EMAIL_SENDER") or os.environ["EMAIL_SENDER"]
+    return os.environ["FOLLOWUP_BREVO_API_KEY"], sender
 
 
 def _parse_expiry(value) -> datetime:
@@ -583,13 +604,30 @@ def _run_send_all_email_job(
             print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
 
     try:
-        run_email_alerts(
+        main_limit = _remaining_email_quota_today()
+        main_results = run_email_alerts(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before,
-            search=search, scheme=scheme, limit=_remaining_email_quota_today(), sort_by_expiry=True,
+            search=search, scheme=scheme, limit=main_limit, sort_by_expiry=True,
             expiry_month=expiry_month, ignore_alert_status=ignore_alert_status,
         )
+        # The main account's daily quota was the binding constraint (not just
+        # "fewer eligible clients than the quota") -- spill the rest into the
+        # separate Brevo account if one's configured. Clients already sent in
+        # the main pass are skipped automatically by run_email_alerts' own
+        # per-day dedup, so this is safe to just re-run over the same filters.
+        sent_in_main_pass = sum(1 for r in main_results if r["action"] == "sent")
+        overflow = _overflow_credentials()
+        if sent_in_main_pass >= main_limit and overflow is not None:
+            overflow_key, overflow_sender = overflow
+            run_email_alerts(
+                DEFAULT_DB_PATH, overflow_key, overflow_sender, "Absolute Veritas",
+                dry_run=False, test_email=test_email, on_progress=progress,
+                status=status, cert_type=cert_type, expiry_before=expiry_before,
+                search=search, scheme=scheme, limit=_remaining_followup_quota_today(), sort_by_expiry=True,
+                expiry_month=expiry_month, ignore_alert_status=ignore_alert_status, account="followup",
+            )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
     finally:

@@ -189,10 +189,14 @@ def send_one_email_alert(
     org_name: str,
     to_email_override: str | None = None,
     send_fn=send_email_via_brevo,
+    account: str = "main",
 ) -> dict:
     """Send (or skip) one alert-eligible client's renewal email. Mutates
     sent_log in place on a successful send. Returns a result dict with action
-    one of 'sent' / 'skipped_duplicate' / 'skipped_no_email' / 'failed'."""
+    one of 'sent' / 'skipped_duplicate' / 'skipped_no_email' / 'failed'.
+    account tags the sent_log entry with which real Brevo account sent it
+    ("main" or "followup", for an overflow send once the main account's
+    daily quota runs out) -- see db.count_overflow_sent_today."""
     to_email = to_email_override or record.get("email")
 
     if not _is_valid_email(to_email):
@@ -231,6 +235,7 @@ def send_one_email_alert(
                 "sent_at": datetime.now().isoformat(),
                 "message_id": info.get("message_id"),
                 "email": to_email,
+                "account": account,
             }
             return {
                 "client_id": record["client_id"], "name": record["name"],
@@ -269,6 +274,7 @@ def run_email_alerts(
     sort_by_expiry: bool = False,
     expiry_month: str | None = None,
     ignore_alert_status: bool = False,
+    account: str = "main",
 ) -> list[dict]:
     """limit caps how many actual sends (action == "sent") this call makes --
     e.g. Brevo's 300/day cap. Once hit, remaining eligible records are left
@@ -279,7 +285,9 @@ def run_email_alerts(
     -- see get_eligible_clients for why this defaults to False (insertion
     order is depended on elsewhere). expiry_month/ignore_alert_status let a
     caller send to every client expiring in a specific month regardless of
-    their current urgency status -- see get_eligible_clients."""
+    their current urgency status -- see get_eligible_clients. account tags
+    every sent_log entry this run writes (see send_one_email_alert) --
+    "followup" for an overflow run through the separate Brevo account."""
     today = today or datetime.now().strftime("%Y-%m-%d")
     records = get_eligible_clients(
         db_path, status=status, cert_type=cert_type, expiry_before=expiry_before,
@@ -305,7 +313,7 @@ def run_email_alerts(
         else:
             result = send_one_email_alert(
                 rec, sent_log, today, brevo_api_key, email_sender, org_name,
-                to_email_override=test_email, send_fn=send_fn,
+                to_email_override=test_email, send_fn=send_fn, account=account,
             )
             if result["action"] == "sent":
                 log_dirty = True
