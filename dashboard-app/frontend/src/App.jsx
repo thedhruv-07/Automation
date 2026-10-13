@@ -30,6 +30,42 @@ const ALERT_ELIGIBLE_STATUSES = new Set(["CRITICAL", "URGENT", "DUE SOON", "EXPI
 const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 300;
 const BULK_JOB_POLL_MS = 500;
+
+function useJobPoll() {
+  const [job, setJob] = useState(null);
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  function start(initialJob, pollFn, { onDone, onError }) {
+    setJob(initialJob);
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await pollFn();
+        setJob(status);
+        if (status.done) {
+          clearInterval(pollRef.current);
+          onDone?.();
+        }
+      } catch (err) {
+        clearInterval(pollRef.current);
+        setJob(null);
+        onError?.(err);
+      }
+    }, BULK_JOB_POLL_MS);
+  }
+
+  function stop() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setJob(null);
+  }
+
+  return { job, start, stop };
+}
 const STATS_RETRY_DELAYS_MS = [1500, 4000];  // a slow/cold-starting server usually recovers within a few seconds
 const VALID_VIEWS = new Set([
   "dashboard", "clientData", "excelSync", "whatsappSettings", "messageLog", "notices", "noticeLog",
@@ -73,16 +109,16 @@ export default function App() {
   const [pendingClient, setPendingClient] = useState(null);
   const [toast, setToast] = useState(null);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
-  const [sendAllJob, setSendAllJob] = useState(null);
+  const sendAllPoll = useJobPoll();
   const [refreshing, setRefreshing] = useState(false);
   const [pendingSelected, setPendingSelected] = useState([]);
   const [bulkSelectedSending, setBulkSelectedSending] = useState(false);
   const [previewClientId, setPreviewClientId] = useState(null);
   const [pendingEmailClient, setPendingEmailClient] = useState(null);
   const [emailBulkModalOpen, setEmailBulkModalOpen] = useState(false);
-  const [sendAllEmailJob, setSendAllEmailJob] = useState(null);
+  const sendAllEmailPoll = useJobPoll();
   const [followupModalOpen, setFollowupModalOpen] = useState(false);
-  const [followupJob, setFollowupJob] = useState(null);
+  const followupPoll = useJobPoll();
   const [followupInfo, setFollowupInfo] = useState({ eligible: 0, separate_key: false, remaining_quota: 0 });
   const [filteredEligibleCount, setFilteredEligibleCount] = useState({ whatsapp: 0, email: 0 });
 
@@ -231,13 +267,6 @@ export default function App() {
   }
 
   const eligibleCount = stats?.eligible_not_sent_today || 0;
-  const jobPollRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (jobPollRef.current) clearInterval(jobPollRef.current);
-    };
-  }, []);
 
   async function handleConfirmSendAll(sendScope) {
     try {
@@ -245,23 +274,14 @@ export default function App() {
         ? { status: activeStatus, certType, scheme, expiryBefore, search: debouncedSearch }
         : {};
       const { job_id: jobId } = await sendAllAlerts(filters);
-      setSendAllJob({ total: 0, sent: 0, skipped: 0, failed: 0, done: false });
-      jobPollRef.current = setInterval(async () => {
-        try {
-          const status = await getSendAllStatus(jobId);
-          setSendAllJob(status);
-          if (status.done) {
-            clearInterval(jobPollRef.current); 
-            loadClients();
-            loadStats();
-          }
-        } catch (err) {
-          clearInterval(jobPollRef.current);
-          setSendAllJob(null);
-          setBulkModalOpen(false);
-          setToast({ type: "error", message: err.message });
-        }
-      }, BULK_JOB_POLL_MS);
+      sendAllPoll.start(
+        { total: 0, sent: 0, skipped: 0, failed: 0, done: false },
+        () => getSendAllStatus(jobId),
+        {
+          onDone: () => { loadClients(); loadStats(); },
+          onError: (err) => { setBulkModalOpen(false); setToast({ type: "error", message: err.message }); },
+        },
+      );
     } catch (err) {
       setBulkModalOpen(false);
       setToast({ type: "error", message: err.message });
@@ -269,19 +289,11 @@ export default function App() {
   }
 
   function handleCloseSendAllModal() {
-    if (jobPollRef.current) clearInterval(jobPollRef.current);
-    setSendAllJob(null);
+    sendAllPoll.stop();
     setBulkModalOpen(false);
   }
 
   const eligibleEmailCount = stats?.eligible_not_emailed_today || 0;
-  const emailJobPollRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (emailJobPollRef.current) clearInterval(emailJobPollRef.current);
-    };
-  }, []);
 
   async function handleConfirmSendAllEmails(sendScope) {
     try {
@@ -289,23 +301,14 @@ export default function App() {
         ? { status: activeStatus, certType, scheme, expiryBefore, expiryMonth, search: debouncedSearch }
         : {};
       const { job_id: jobId } = await sendAllEmailAlerts(filters);
-      setSendAllEmailJob({ total: 0, sent: 0, skipped: 0, skipped_no_email: 0, failed: 0, done: false });
-      emailJobPollRef.current = setInterval(async () => {
-        try {
-          const status = await getSendAllEmailsStatus(jobId);
-          setSendAllEmailJob(status);
-          if (status.done) {
-            clearInterval(emailJobPollRef.current);
-            loadClients();
-            loadStats();
-          }
-        } catch (err) {
-          clearInterval(emailJobPollRef.current);
-          setSendAllEmailJob(null);
-          setEmailBulkModalOpen(false);
-          setToast({ type: "error", message: err.message });
-        }
-      }, BULK_JOB_POLL_MS);
+      sendAllEmailPoll.start(
+        { total: 0, sent: 0, skipped: 0, skipped_no_email: 0, failed: 0, done: false },
+        () => getSendAllEmailsStatus(jobId),
+        {
+          onDone: () => { loadClients(); loadStats(); },
+          onError: (err) => { setEmailBulkModalOpen(false); setToast({ type: "error", message: err.message }); },
+        },
+      );
     } catch (err) {
       setEmailBulkModalOpen(false);
       setToast({ type: "error", message: err.message });
@@ -313,18 +316,9 @@ export default function App() {
   }
 
   function handleCloseSendAllEmailsModal() {
-    if (emailJobPollRef.current) clearInterval(emailJobPollRef.current);
-    setSendAllEmailJob(null);
+    sendAllEmailPoll.stop();
     setEmailBulkModalOpen(false);
   }
-
-  const followupPollRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (followupPollRef.current) clearInterval(followupPollRef.current);
-    };
-  }, []);
 
   async function loadFollowupInfo() {
     try {
@@ -342,23 +336,14 @@ export default function App() {
   async function handleConfirmSendFollowups() {
     try {
       const { job_id: jobId } = await sendFollowups();
-      setFollowupJob({ total: 0, sent: 0, skipped_no_email: 0, failed: 0, done: false });
-      followupPollRef.current = setInterval(async () => {
-        try {
-          const status = await getSendFollowupsStatus(jobId);
-          setFollowupJob(status);
-          if (status.done) {
-            clearInterval(followupPollRef.current);
-            loadFollowupInfo();
-            loadStats();
-          }
-        } catch (err) {
-          clearInterval(followupPollRef.current);
-          setFollowupJob(null);
-          setFollowupModalOpen(false);
-          setToast({ type: "error", message: err.message });
-        }
-      }, BULK_JOB_POLL_MS);
+      followupPoll.start(
+        { total: 0, sent: 0, skipped_no_email: 0, failed: 0, done: false },
+        () => getSendFollowupsStatus(jobId),
+        {
+          onDone: () => { loadFollowupInfo(); loadStats(); },
+          onError: (err) => { setFollowupModalOpen(false); setToast({ type: "error", message: err.message }); },
+        },
+      );
     } catch (err) {
       setFollowupModalOpen(false);
       setToast({ type: "error", message: err.message });
@@ -366,8 +351,7 @@ export default function App() {
   }
 
   function handleCloseFollowupsModal() {
-    if (followupPollRef.current) clearInterval(followupPollRef.current);
-    setFollowupJob(null);
+    followupPoll.stop();
     setFollowupModalOpen(false);
   }
 
@@ -475,7 +459,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setBulkModalOpen(true)}
-                disabled={(sendAllJob !== null && !sendAllJob.done) || eligibleCount === 0}
+                disabled={(sendAllPoll.job !== null && !sendAllPoll.job.done) || eligibleCount === 0}
                 className="px-4 py-2 rounded-full text-sm font-semibold text-white bg-accent hover:bg-accent-dark transition-colors disabled:opacity-50"
               >
                 Send All Eligible
@@ -485,7 +469,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setEmailBulkModalOpen(true)}
-                disabled={(sendAllEmailJob !== null && !sendAllEmailJob.done) || eligibleEmailCount === 0}
+                disabled={(sendAllEmailPoll.job !== null && !sendAllEmailPoll.job.done) || eligibleEmailCount === 0}
                 className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
               >
                 Send All Emails
@@ -495,7 +479,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setFollowupModalOpen(true)}
-                disabled={(followupJob !== null && !followupJob.done) || followupInfo.eligible === 0}
+                disabled={(followupPoll.job !== null && !followupPoll.job.done) || followupInfo.eligible === 0}
                 className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
               >
                 Send Follow-ups
@@ -637,9 +621,9 @@ open={bulkModalOpen}
         eligibleCount={eligibleCount}
         filteredCount={filteredEligibleCount.whatsapp}
         channel="whatsapp"
-        job={sendAllJob}
+        job={sendAllPoll.job}
         onConfirm={handleConfirmSendAll}
-        onCancel={sendAllJob ? handleCloseSendAllModal : () => setBulkModalOpen(false)}
+        onCancel={sendAllPoll.job ? handleCloseSendAllModal : () => setBulkModalOpen(false)}
       />
       <SendConfirmModal
         client={pendingEmailClient}
@@ -652,9 +636,9 @@ open={bulkModalOpen}
         eligibleCount={eligibleEmailCount}
         filteredCount={filteredEligibleCount.email}
         channel="email"
-        job={sendAllEmailJob}
+        job={sendAllEmailPoll.job}
         onConfirm={handleConfirmSendAllEmails}
-        onCancel={sendAllEmailJob ? handleCloseSendAllEmailsModal : () => setEmailBulkModalOpen(false)}
+        onCancel={sendAllEmailPoll.job ? handleCloseSendAllEmailsModal : () => setEmailBulkModalOpen(false)}
         filteredScopeNote={expiryMonth ? "Includes every status (active, expired, etc.) — the month filter ignores current renewal status." : null}
       />
       <SendFollowupsModal
@@ -662,9 +646,9 @@ open={bulkModalOpen}
         eligible={followupInfo.eligible}
         remainingQuota={followupInfo.remaining_quota}
         separateKey={followupInfo.separate_key}
-        job={followupJob}
+        job={followupPoll.job}
         onConfirm={handleConfirmSendFollowups}
-        onCancel={followupJob ? handleCloseFollowupsModal : () => setFollowupModalOpen(false)}
+        onCancel={followupPoll.job ? handleCloseFollowupsModal : () => setFollowupModalOpen(false)}
       />
       <SendSelectedConfirmModal
         clients={pendingSelected}

@@ -428,6 +428,28 @@ def send_alert(client_id: str):
             _pending_sends.discard(client_id)
 
 
+def _job_status(jobs: dict, job_id: str) -> dict:
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    return job
+
+
+def _make_progress(jobs: dict, job_id: str, action_fields: dict, fail_label: str = "client_id", fail_prefix: str = "send failed"):
+    """Builds the on_progress callback shared by every bulk-send job runner.
+    action_fields maps a result['action'] string to the job-dict counter key
+    to increment; actions absent from the map (e.g. 'dry_run') are ignored."""
+    def progress(result, total):
+        job = jobs[job_id]
+        job["total"] = total
+        field = action_fields.get(result["action"])
+        if field:
+            job[field] += 1
+        if result["action"] == "failed":
+            print(f"⚠ {fail_prefix} for {result.get(fail_label)} ({result.get('to')}): {result.get('error')}")
+    return progress
+
+
 _send_all_jobs: dict[str, dict] = {}
 
 
@@ -435,18 +457,10 @@ def _run_send_all_job(
     job_id, token, phone_number_id, test_number,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
 ):
-    def progress(result, total):
-        job = _send_all_jobs[job_id]
-        job["total"] = total
-        if result["action"] == "sent":
-            job["sent"] += 1
-        elif result["action"] == "skipped_duplicate":
-            job["skipped"] += 1
-        elif result["action"] == "skipped_no_template":
-            job["skipped_no_template"] += 1
-        elif result["action"] == "failed":
-            job["failed"] += 1
-            print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
+    progress = _make_progress(_send_all_jobs, job_id, {
+        "sent": "sent", "skipped_duplicate": "skipped",
+        "skipped_no_template": "skipped_no_template", "failed": "failed",
+    })
 
     try:
         run(
@@ -513,10 +527,7 @@ def send_all_alerts(
 
 @app.get("/api/send-all/status/{job_id}")
 def send_all_status(job_id: str):
-    job = _send_all_jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job_id")
-    return job
+    return _job_status(_send_all_jobs, job_id)
 
 
 @app.post("/api/send-email/{client_id}")
@@ -589,18 +600,10 @@ def _run_send_all_email_job(
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
     expiry_month=None, ignore_alert_status=False,
 ):
-    def progress(result, total):
-        job = _send_all_email_jobs[job_id]
-        job["total"] = total
-        if result["action"] == "sent":
-            job["sent"] += 1
-        elif result["action"] == "skipped_duplicate":
-            job["skipped"] += 1
-        elif result["action"] == "skipped_no_email":
-            job["skipped_no_email"] += 1
-        elif result["action"] == "failed":
-            job["failed"] += 1
-            print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
+    progress = _make_progress(_send_all_email_jobs, job_id, {
+        "sent": "sent", "skipped_duplicate": "skipped",
+        "skipped_no_email": "skipped_no_email", "failed": "failed",
+    })
 
     try:
         main_limit = _remaining_email_quota_today()
@@ -681,10 +684,7 @@ def send_all_emails(
 
 @app.get("/api/send-all-emails/status/{job_id}")
 def send_all_emails_status(job_id: str):
-    job = _send_all_email_jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job_id")
-    return job
+    return _job_status(_send_all_email_jobs, job_id)
 
 
 _followup_jobs: dict[str, dict] = {}
@@ -700,16 +700,10 @@ def followup_count():
 
 
 def _run_followup_job(job_id, brevo_api_key, email_sender, test_email):
-    def progress(result, total):
-        job = _followup_jobs[job_id]
-        job["total"] = total
-        if result["action"] == "sent":
-            job["sent"] += 1
-        elif result["action"] == "skipped_no_email":
-            job["skipped_no_email"] += 1
-        elif result["action"] == "failed":
-            job["failed"] += 1
-            print(f"⚠ follow-up failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
+    progress = _make_progress(
+        _followup_jobs, job_id, {"sent": "sent", "skipped_no_email": "skipped_no_email", "failed": "failed"},
+        fail_prefix="follow-up failed",
+    )
 
     try:
         run_followups(
@@ -760,10 +754,7 @@ def send_followups():
 
 @app.get("/api/send-followups/status/{job_id}")
 def send_followups_status(job_id: str):
-    job = _followup_jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job_id")
-    return job
+    return _job_status(_followup_jobs, job_id)
 
 
 @app.get("/api/notices")
@@ -830,18 +821,10 @@ def _run_send_notice_whatsapp_job(
     job_id, notice_id, lock_key, token, phone_number_id, test_number,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
 ):
-    def progress(result, total):
-        job = _send_notice_jobs[job_id]
-        job["total"] = total
-        if result["action"] == "sent":
-            job["sent"] += 1
-        elif result["action"] == "skipped_duplicate":
-            job["skipped"] += 1
-        elif result["action"] == "skipped_no_template":
-            job["skipped_no_template"] += 1
-        elif result["action"] == "failed":
-            job["failed"] += 1
-            print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
+    progress = _make_progress(_send_notice_jobs, job_id, {
+        "sent": "sent", "skipped_duplicate": "skipped",
+        "skipped_no_template": "skipped_no_template", "failed": "failed",
+    })
 
     try:
         send_notice_whatsapp(
@@ -900,10 +883,7 @@ def send_notice_whatsapp_endpoint(
 
 @app.get("/api/notices/{notice_id}/send-whatsapp/status/{job_id}")
 def send_notice_whatsapp_status(notice_id: str, job_id: str):
-    job = _send_notice_jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job_id")
-    return job
+    return _job_status(_send_notice_jobs, job_id)
 
 
 _send_notice_email_jobs: dict[str, dict] = {}
@@ -913,18 +893,10 @@ def _run_send_notice_email_job(
     job_id, notice_id, lock_key, brevo_api_key, email_sender, test_email,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
 ):
-    def progress(result, total):
-        job = _send_notice_email_jobs[job_id]
-        job["total"] = total
-        if result["action"] == "sent":
-            job["sent"] += 1
-        elif result["action"] == "skipped_duplicate":
-            job["skipped"] += 1
-        elif result["action"] == "skipped_no_email":
-            job["skipped_no_email"] += 1
-        elif result["action"] == "failed":
-            job["failed"] += 1
-            print(f"⚠ send failed for {result['client_id']} ({result.get('to')}): {result.get('error')}")
+    progress = _make_progress(_send_notice_email_jobs, job_id, {
+        "sent": "sent", "skipped_duplicate": "skipped",
+        "skipped_no_email": "skipped_no_email", "failed": "failed",
+    })
 
     try:
         send_notice_email(
@@ -983,28 +955,17 @@ def send_notice_email_endpoint(
 
 @app.get("/api/notices/{notice_id}/send-email/status/{job_id}")
 def send_notice_email_status(notice_id: str, job_id: str):
-    job = _send_notice_email_jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job_id")
-    return job
+    return _job_status(_send_notice_email_jobs, job_id)
 
 
 _send_adhoc_notice_jobs: dict[str, dict] = {}
 
 
 def _run_send_adhoc_whatsapp_job(job_id, notice_id, lock_key, token, phone_number_id, test_number, limit, pace_seconds):
-    def progress(result, total):
-        job = _send_adhoc_notice_jobs[job_id]
-        job["total"] = total
-        if result["action"] == "sent":
-            job["sent"] += 1
-        elif result["action"] == "skipped_duplicate":
-            job["skipped"] += 1
-        elif result["action"] == "skipped_no_template":
-            job["skipped_no_template"] += 1
-        elif result["action"] == "failed":
-            job["failed"] += 1
-            print(f"⚠ send failed for {result['phone']} ({result.get('to')}): {result.get('error')}")
+    progress = _make_progress(_send_adhoc_notice_jobs, job_id, {
+        "sent": "sent", "skipped_duplicate": "skipped",
+        "skipped_no_template": "skipped_no_template", "failed": "failed",
+    }, fail_label="phone")
 
     try:
         send_adhoc_whatsapp_notice(
@@ -1074,10 +1035,7 @@ def send_adhoc_notice_whatsapp_endpoint(notice_id: str):
 
 @app.get("/api/adhoc-notices/{notice_id}/send-whatsapp/status/{job_id}")
 def send_adhoc_notice_whatsapp_status(notice_id: str, job_id: str):
-    job = _send_adhoc_notice_jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job_id")
-    return job
+    return _job_status(_send_adhoc_notice_jobs, job_id)
 
 
 @app.get("/api/client-template")
