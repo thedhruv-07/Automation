@@ -40,9 +40,9 @@ export default function RenewalsImport({ importRenewals }) {
       <div>
         <h3 className="text-base font-bold text-ink-primary">Import renewals from Manak Online</h3>
         <p className="text-sm text-ink-secondary mt-1">
-          Upload one or more &quot;List of Licences&quot; reports (.xlsx) downloaded from Manak Online, e.g. one per state. Clients whose
-          licence now shows a later validity date are moved to that date and marked renewed, so they are
-          skipped by renewal emails and follow-ups. Nothing changes until you confirm.
+          Upload one or more Manak Online reports (.xlsx) -- ISI's &quot;List of Licences&quot; (one per state) or FMCS's
+          &quot;CML No&quot; report. Clients whose licence now shows a later validity date are moved to that date and
+          marked renewed, so they are skipped by renewal emails and follow-ups. Nothing changes until you confirm.
         </p>
       </div>
 

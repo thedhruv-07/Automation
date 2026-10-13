@@ -225,3 +225,33 @@ def test_parse_reports_names_the_file_that_is_not_a_spreadsheet():
 def test_parse_reports_names_the_file_with_the_wrong_columns():
     with pytest.raises(ValueError, match=r"punjab\.xlsx.*Licence No"):
         parse_reports([("punjab.xlsx", _manak_xlsx([["a", "b"]], header=["Name", "Amount"]))])
+
+
+FMCS_HEADER = ["S No", "Email ID", "CML No", "Name", "Address", "City", "Country", "Validity Date", "Standard No", "Status", "Product", "Brand Names"]
+
+
+def _fmcs_row(cml="4100277486", validity="2026-11-02", status="Operative"):
+    return ["1", None, cml, "Some Foreign Firm", "Some Address", None, "Nepal", validity, "IS 2202", status, "Product desc", None]
+
+
+def test_parse_reads_an_fmcs_report_using_cml_no_as_the_licence_column():
+    rows, unreadable = parse_report(_manak_xlsx([_fmcs_row()], header=FMCS_HEADER))
+    assert unreadable == 0
+    assert rows == [{"licence_no": "4100277486", "validity_iso": "2026-11-02", "bis_status": "Operative"}]
+
+
+def test_parse_still_rejects_a_spreadsheet_with_neither_licence_no_nor_cml_no():
+    with pytest.raises(ValueError, match="Licence No.*CML No"):
+        parse_report(_manak_xlsx([["a", "b"]], header=["Name", "Amount"]))
+
+
+def test_apply_renews_an_fmcs_client_matched_by_cml_no(mongo_db):
+    fmcs_client = ("CLT010", "Foreign Mfr", "Some Foreign Firm", "f@x.com", "900000000",
+                   "IS 2202", "FMCS", "4100277486", "01-01-2021", "01-09-2026", "https://x", "EXPIRED")
+    upsert_clients(mongo_db, [fmcs_client], mode="replace")
+
+    report_rows, _ = parse_report(_manak_xlsx([_fmcs_row()], header=FMCS_HEADER))
+    summary = apply_report(mongo_db, report_rows, 0, apply=True, today=TODAY)
+
+    assert summary["renewed"] == 1
+    assert find_client_by_id(mongo_db, "CLT010")["expiry_date"] == "02-11-2026"

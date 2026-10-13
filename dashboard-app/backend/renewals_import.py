@@ -78,19 +78,25 @@ def _validity_iso(value) -> str | None:
     return None
 
 
+_LICENCE_COLUMN_ALIASES = ("licence no", "cml no")  # ISI's "List of Licences" vs FMCS' "CML No" export
+
+
 def parse_report(data: bytes) -> tuple[list[dict], int]:
     """(rows, unreadable): one {licence_no, validity_iso, bis_status} per usable
     row, and how many rows had no readable licence number or validity date.
-    Columns are found by header name, so their order doesn't matter."""
+    Columns are found by header name, so their order doesn't matter. Works for
+    both the ISI "List of Licences" report (Licence No) and the FMCS report
+    (CML No) -- same Validity Date/Status columns otherwise."""
     table = _sheet_rows(data)
     for header_at, row in enumerate(table):
         names = {str(v).strip().lower(): i for i, v in enumerate(row) if v is not None}
-        if "licence no" in names and "validity date" in names:
+        licence_column = next((c for c in _LICENCE_COLUMN_ALIASES if c in names), None)
+        if licence_column and "validity date" in names:
             break
     else:
         raise ValueError(
-            "This doesn't look like a Manak Online 'List of Licences' report -- "
-            "expected 'Licence No' and 'Validity Date' columns."
+            "This doesn't look like a Manak Online licences report -- expected "
+            "'Licence No' (ISI) or 'CML No' (FMCS) plus a 'Validity Date' column."
         )
 
     def cell(row, name):
@@ -101,7 +107,7 @@ def parse_report(data: bytes) -> tuple[list[dict], int]:
     for row in table[header_at + 1:]:
         if not any(v not in (None, "") for v in row):
             continue
-        licence, validity = _licence_no(cell(row, "licence no")), _validity_iso(cell(row, "validity date"))
+        licence, validity = _licence_no(cell(row, licence_column)), _validity_iso(cell(row, "validity date"))
         if licence is None or validity is None:
             unreadable += 1
             continue
