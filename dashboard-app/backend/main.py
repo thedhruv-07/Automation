@@ -27,11 +27,10 @@ from db import (  # noqa: E402
     count_emails_sent_today, count_followups_sent_today, count_overflow_sent_today, get_followup_eligible_clients,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
-    ALERT_STATUSES, filter_alertable, normalize_phone,
-    send_one_alert, run,
+    ALERT_STATUSES, send_one_alert, run,
 )
 from email_alerts import (  # noqa: E402
-    send_email_via_brevo, send_one_email_alert, run_email_alerts, run_followups, BREVO_DAILY_LIMIT,
+    send_one_email_alert, run_email_alerts, run_followups, BREVO_DAILY_LIMIT,
     scheme_html_overrides, LOGO_PATH as _LOGO_PATH, QR_PATH as _QR_PATH, qr_url as _qr_url,
 )
 from email_template import build_email_html  # noqa: E402

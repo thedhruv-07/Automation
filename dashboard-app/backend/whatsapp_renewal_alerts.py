@@ -46,8 +46,7 @@ def dedup_key(client_id: str, status: str, date_str: str) -> str:
 
 
 from db import (  # noqa: E402
-    DEFAULT_DB_PATH, read_clients, find_client_by_id, load_sent_log, save_sent_log,
-    RECORD_FIELDS, get_eligible_clients,
+    DEFAULT_DB_PATH, read_clients, load_sent_log, save_sent_log, get_eligible_clients,
 )
 from scheme_templates import get_whatsapp_template, get_whatsapp_image_id  # noqa: E402
 
