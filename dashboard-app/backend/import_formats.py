@@ -13,15 +13,16 @@ than sniffed by cascading through every entry. Each entry is
     error message when a file explicitly selected as this format doesn't
     actually match it.
 
-To add a new scheme (e.g. FMCS): write import_fmcs.py with
-looks_like_fmcs_workbook()/import_fmcs_workbook() following
-import_bis_isi_data.py as a template, then add one line below plus an entry
-in FORMAT_DISPLAY_NAMES. No endpoint changes needed -- both
-/api/upload-clients and /api/merge-clients look up this list by name
+To add a new scheme: write import_<scheme>.py with
+looks_like_<scheme>_workbook()/import_<scheme>_workbook() following
+import_bis_isi_data.py (or import_fmcs.py) as a template, then add one line
+below plus an entry in FORMAT_DISPLAY_NAMES. No endpoint changes needed --
+both /api/upload-clients and /api/merge-clients look up this list by name
 already.
 """
 from import_bis_isi_data import looks_like_bis_isi_workbook, import_bis_isi_workbook
 from import_crs import looks_like_crs_workbook, import_crs_workbook
+from import_fmcs import looks_like_fmcs_workbook, import_fmcs_workbook
 from import_roster import looks_like_roster_workbook, import_roster_workbook
 
 IMPORT_FORMATS = [
@@ -31,10 +32,13 @@ IMPORT_FORMATS = [
      "a Licence No. and Firm Name column"),
     ("crs", looks_like_crs_workbook, import_crs_workbook,
      "a License No. and Organization Name column"),
+    ("fmcs", looks_like_fmcs_workbook, import_fmcs_workbook,
+     "a CML No. and Name column"),
 ]
 
 FORMAT_DISPLAY_NAMES = {
     "roster": "roster",
     "bis_isi": "BIS ISI",
     "crs": "CRS",
+    "fmcs": "FMCS",
 }

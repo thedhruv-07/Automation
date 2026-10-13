@@ -23,13 +23,14 @@ describe("ExcelSyncView", () => {
     expect(screen.queryByText("Upload and Replace Client Data")).not.toBeInTheDocument();
   });
 
-  it("lists Roster, BIS ISI, and CRS as selectable, and FMCS as disabled", () => {
+  it("lists Roster, BIS ISI, CRS, and FMCS as all selectable", () => {
     render(<ExcelSyncView onUpload={vi.fn()} />);
     const select = screen.getByLabelText("Import format");
     const options = Array.from(select.querySelectorAll("option"));
-    const fmcsOption = options.find((o) => o.value === "fmcs");
     expect(options.map((o) => o.value)).toEqual(expect.arrayContaining(["roster", "bis_isi", "crs", "fmcs"]));
-    expect(fmcsOption.disabled).toBe(true);
+    for (const value of ["roster", "bis_isi", "crs", "fmcs"]) {
+      expect(options.find((o) => o.value === value).disabled).toBe(false);
+    }
   });
 
   it("keeps the Upload button disabled until both a file and a format are set", () => {

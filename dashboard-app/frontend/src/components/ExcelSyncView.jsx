@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { downloadClientTemplate } from "../api";
 
-const FORMAT_LABELS = { bis_isi: "BIS ISI licence", crs: "CRS registration" };
+const FORMAT_LABELS = { bis_isi: "BIS ISI licence", crs: "CRS registration", fmcs: "FMCS licence" };
 
 export default function ExcelSyncView({ onUpload, onMerge }) {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -88,7 +88,7 @@ export default function ExcelSyncView({ onUpload, onMerge }) {
           <option value="roster">Roster (dashboard template)</option>
           <option value="bis_isi">BIS ISI (raw government export)</option>
           <option value="crs">CRS (raw government export)</option>
-          <option value="fmcs" disabled>FMCS (coming soon)</option>
+          <option value="fmcs">FMCS (raw government export)</option>
         </select>
       </div>
 
