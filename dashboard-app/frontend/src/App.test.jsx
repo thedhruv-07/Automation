@@ -160,6 +160,42 @@ describe("App", () => {
     expect(api.getSendAllEmailsStatus.mock.calls.length).toBe(callsAfterError);
   });
 
+  it("hides the Continue via Overflow button when the main quota isn't exhausted", async () => {
+    api.getStats.mockResolvedValue({
+      ...sampleStats, eligible_not_emailed_today: 1, overflow_configured: true, remaining_email_quota: 50,
+    });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Email"));
+    expect(screen.queryByText("Continue via Overflow")).not.toBeInTheDocument();
+  });
+
+  it("hides the Continue via Overflow button when no overflow account is configured", async () => {
+    api.getStats.mockResolvedValue({
+      ...sampleStats, eligible_not_emailed_today: 1, overflow_configured: false, remaining_email_quota: 0,
+    });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Email"));
+    expect(screen.queryByText("Continue via Overflow")).not.toBeInTheDocument();
+  });
+
+  it("sends overflow emails and shows a summary toast once the job finishes", async () => {
+    api.getStats.mockResolvedValue({
+      ...sampleStats, eligible_not_emailed_today: 1, overflow_configured: true, remaining_email_quota: 0,
+    });
+    api.sendOverflowEmails.mockResolvedValue({ job_id: "ov-1" });
+    api.getSendOverflowEmailsStatus.mockResolvedValue({
+      total: 1, sent: 1, skipped: 0, skipped_no_email: 0, failed: 0, done: true,
+    });
+    render(<App />);
+    await waitFor(() => screen.getByText("Continue via Overflow"));
+    fireEvent.click(screen.getByText("Continue via Overflow"));
+    expect(screen.getByTestId("send-all-confirm-modal-overflow")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() => expect(api.sendOverflowEmails).toHaveBeenCalled());
+    await waitFor(() => expect(api.getSendOverflowEmailsStatus).toHaveBeenCalledWith("ov-1"));
+    await waitFor(() => expect(screen.getByText(/1 sent, 0 skipped, 0 failed/)).toBeInTheDocument());
+  });
+
   it("includes the header search term when 'Currently filtered view' is confirmed for Send All Emails", async () => {
     api.getStats.mockResolvedValue({ ...sampleStats, eligible_not_emailed_today: 1 });
     api.getEligibleCount.mockResolvedValue({ whatsapp: 1, email: 1 });
@@ -183,7 +219,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Confirm Send All"));
     await waitFor(() =>
       expect(api.sendAllEmailAlerts).toHaveBeenCalledWith({
-        status: "ALL", certType: [], scheme: "ALL", expiryBefore: "", search: "BuildRight",
+        status: "ALL", certType: [], scheme: "ALL", expiryBefore: "", expiryMonth: "", search: "BuildRight",
       })
     );
   });
@@ -536,6 +572,59 @@ describe("App", () => {
       expect(api.sendAllAlerts).toHaveBeenCalledWith(
         expect.objectContaining({ scheme: "FMCS" })
       )
+    );
+  });
+
+  it("selecting an expiry month filters the table and the email eligible count, and flows into the send-all-emails scope", async () => {
+    api.getStats.mockResolvedValue({ ...sampleStats, eligible_not_emailed_today: 4 });
+    api.getEligibleCount.mockResolvedValue({ whatsapp: 0, email: 4 });
+    api.sendAllEmailAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllEmailsStatus.mockResolvedValue({ total: 4, sent: 4, skipped: 0, skipped_no_email: 0, failed: 0, done: true });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+
+    fireEvent.change(screen.getByLabelText(/Filter by expiry month/), { target: { value: "2026-08" } });
+    await waitFor(() =>
+      expect(api.getClients).toHaveBeenCalledWith(expect.objectContaining({ expiryMonth: "2026-08" }))
+    );
+
+    fireEvent.click(screen.getByText("Send All Emails"));
+    await waitFor(() =>
+      expect(api.getEligibleCount).toHaveBeenCalledWith(
+        expect.objectContaining({ expiryMonth: "2026-08" })
+      )
+    );
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() =>
+      expect(api.sendAllEmailAlerts).toHaveBeenCalledWith(
+        expect.objectContaining({ expiryMonth: "2026-08" })
+      )
+    );
+  });
+
+  it("does not send an expiry month to the WhatsApp eligible-count or send-all, since send-all has no month-filter support", async () => {
+    api.getEligibleCount.mockResolvedValue({ whatsapp: 3, email: 4 });
+    api.sendAllAlerts.mockResolvedValue({ job_id: "job-1" });
+    api.getSendAllStatus.mockResolvedValue({ total: 3, sent: 3, skipped: 0, failed: 0, done: true });
+    render(<App />);
+    await waitFor(() => screen.getByText("Send Alert"));
+
+    fireEvent.change(screen.getByLabelText(/Filter by expiry month/), { target: { value: "2026-08" } });
+    await waitFor(() =>
+      expect(api.getClients).toHaveBeenCalledWith(expect.objectContaining({ expiryMonth: "2026-08" }))
+    );
+
+    fireEvent.click(screen.getByText("Send All Eligible"));
+    await waitFor(() => expect(api.getEligibleCount).toHaveBeenCalled());
+    expect(api.getEligibleCount).not.toHaveBeenCalledWith(
+      expect.objectContaining({ expiryMonth: expect.anything() })
+    );
+    fireEvent.click(screen.getByLabelText(/Currently filtered view/));
+    fireEvent.click(screen.getByText("Confirm Send All"));
+    await waitFor(() => expect(api.sendAllAlerts).toHaveBeenCalled());
+    expect(api.sendAllAlerts).not.toHaveBeenCalledWith(
+      expect.objectContaining({ expiryMonth: expect.anything() })
     );
   });
 });

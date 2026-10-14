@@ -97,7 +97,9 @@ export default function SendAllConfirmModal({
     >
       <div className="bg-surface rounded-2xl shadow-xl p-6 max-w-sm w-full border border-line">
         <h3 id="send-all-confirm-title" className="text-lg font-bold text-ink-primary mb-2">
-          {noticeLabel ? `Send "${noticeLabel}"?` : "Send bulk renewal alerts?"}
+          {noticeLabel
+            ? `Send "${noticeLabel}"?`
+            : channel === "overflow" ? "Continue via overflow account?" : "Send bulk renewal alerts?"}
         </h3>
         {job ? (
           <div className="mb-2">
@@ -150,7 +152,9 @@ export default function SendAllConfirmModal({
             <p className="text-sm text-ink-secondary mb-3">
               {noticeLabel
                 ? `Send "${noticeLabel}" via ${channel === "email" ? "email" : "WhatsApp"}`
-                : (channel === "email" ? "Send a renewal email" : "Send a real WhatsApp renewal alert")} to:
+                : channel === "overflow"
+                  ? "Continue sending via the overflow account (marketing@absoluteveritas.com)"
+                  : (channel === "email" ? "Send a renewal email" : "Send a real WhatsApp renewal alert")} to:
             </p>
             {singleScope ? (
               <p className="text-sm text-ink-secondary mb-6">

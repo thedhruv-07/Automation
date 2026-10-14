@@ -21,6 +21,7 @@ import {
   getClients, getStats, sendAlert, sendAllAlerts, getSendAllStatus, uploadClientsFile,
   mergeClientsFile, getMessageLog, getNoticeLog, getSettingsInfo, getEmailPreview,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
+  sendOverflowEmails, getSendOverflowEmailsStatus,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients, getFollowupCount, sendFollowups, getSendFollowupsStatus, importRenewals,
   listAdhocNotices, getAdhocNoticeCount, sendAdhocNotice, getAdhocNoticeSendStatus,
@@ -117,6 +118,8 @@ export default function App() {
   const [pendingEmailClient, setPendingEmailClient] = useState(null);
   const [emailBulkModalOpen, setEmailBulkModalOpen] = useState(false);
   const sendAllEmailPoll = useJobPoll();
+  const [overflowModalOpen, setOverflowModalOpen] = useState(false);
+  const overflowPoll = useJobPoll();
   const [followupModalOpen, setFollowupModalOpen] = useState(false);
   const followupPoll = useJobPoll();
   const [followupInfo, setFollowupInfo] = useState({ eligible: 0, separate_key: false, remaining_quota: 0 });
@@ -320,6 +323,33 @@ export default function App() {
     setEmailBulkModalOpen(false);
   }
 
+  const overflowAvailable = Boolean(stats?.overflow_configured) && (stats?.remaining_email_quota || 0) <= 0;
+
+  async function handleConfirmSendOverflow(sendScope) {
+    try {
+      const filters = sendScope === "filtered"
+        ? { status: activeStatus, certType, scheme, expiryBefore, expiryMonth, search: debouncedSearch }
+        : {};
+      const { job_id: jobId } = await sendOverflowEmails(filters);
+      overflowPoll.start(
+        { total: 0, sent: 0, skipped: 0, skipped_no_email: 0, failed: 0, done: false },
+        () => getSendOverflowEmailsStatus(jobId),
+        {
+          onDone: () => { loadClients(); loadStats(); },
+          onError: (err) => { setOverflowModalOpen(false); setToast({ type: "error", message: err.message }); },
+        },
+      );
+    } catch (err) {
+      setOverflowModalOpen(false);
+      setToast({ type: "error", message: err.message });
+    }
+  }
+
+  function handleCloseOverflowModal() {
+    overflowPoll.stop();
+    setOverflowModalOpen(false);
+  }
+
   async function loadFollowupInfo() {
     try {
       const info = await getFollowupCount();
@@ -473,6 +503,17 @@ export default function App() {
                 className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
               >
                 Send All Emails
+              </button>
+            )}
+            {activeView === "clientData" && overflowAvailable && (
+              <button
+                type="button"
+                onClick={() => setOverflowModalOpen(true)}
+                disabled={(overflowPoll.job !== null && !overflowPoll.job.done) || eligibleEmailCount === 0}
+                className="px-4 py-2 rounded-full text-sm font-semibold text-accent border border-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+                title="Main account's 300/day limit is reached — continue sending via the overflow account"
+              >
+                Continue via Overflow
               </button>
             )}
             {activeView === "clientData" && (
@@ -639,6 +680,16 @@ open={bulkModalOpen}
         job={sendAllEmailPoll.job}
         onConfirm={handleConfirmSendAllEmails}
         onCancel={sendAllEmailPoll.job ? handleCloseSendAllEmailsModal : () => setEmailBulkModalOpen(false)}
+        filteredScopeNote={expiryMonth ? "Includes every status (active, expired, etc.) — the month filter ignores current renewal status." : null}
+      />
+      <SendAllConfirmModal
+        open={overflowModalOpen}
+        eligibleCount={eligibleEmailCount}
+        filteredCount={filteredEligibleCount.email}
+        channel="overflow"
+        job={overflowPoll.job}
+        onConfirm={handleConfirmSendOverflow}
+        onCancel={overflowPoll.job ? handleCloseOverflowModal : () => setOverflowModalOpen(false)}
         filteredScopeNote={expiryMonth ? "Includes every status (active, expired, etc.) — the month filter ignores current renewal status." : null}
       />
       <SendFollowupsModal

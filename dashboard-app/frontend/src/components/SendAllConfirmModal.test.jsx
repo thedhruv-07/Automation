@@ -227,6 +227,21 @@ describe("SendAllConfirmModal", () => {
     expect(screen.getByTestId("send-all-confirm-modal-email")).toBeInTheDocument();
   });
 
+  it("shows overflow-specific text, title, and a distinct testid when channel is 'overflow'", () => {
+    render(
+      <SendAllConfirmModal
+        open={true}
+        eligibleCount={5}
+        channel="overflow"
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText("Continue via overflow account?")).toBeInTheDocument();
+    expect(screen.getByText(/Continue sending via the overflow account/)).toBeInTheDocument();
+    expect(screen.getByTestId("send-all-confirm-modal-overflow")).toBeInTheDocument();
+  });
+
   it("defaults to WhatsApp text and testid when channel is omitted", () => {
     render(
       <SendAllConfirmModal open={true} eligibleCount={5} onConfirm={() => {}} onCancel={() => {}} />

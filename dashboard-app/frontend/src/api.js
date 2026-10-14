@@ -127,6 +127,28 @@ export async function getSendAllEmailsStatus(jobId) {
   return res.json();
 }
 
+export async function sendOverflowEmails(params = {}) {
+  const query = new URLSearchParams(scopeQueryString(params));
+  if (params.expiryMonth) query.set("expiry_month", params.expiryMonth);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}${qs ? `/api/send-overflow-emails?${qs}` : "/api/send-overflow-emails"}`, {
+    method: "POST", credentials: "include", headers: {},
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data && data.detail) || `Send-overflow failed: ${res.status}`);
+  }
+  return data;
+}
+
+export async function getSendOverflowEmailsStatus(jobId) {
+  const res = await fetch(`${API_BASE}/api/send-overflow-emails/status/${jobId}`, {
+    credentials: "include", headers: {},
+  });
+  if (!res.ok) throw new Error(`Failed to load send-overflow status: ${res.status}`);
+  return res.json();
+}
+
 export async function getEligibleCount(params = {}) {
   const query = new URLSearchParams(scopeQueryString(params));
   if (params.expiryMonth) query.set("expiry_month", params.expiryMonth);

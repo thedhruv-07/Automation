@@ -4,6 +4,7 @@ import {
   getMessageLog, getNoticeLog, getSettingsInfo, getEmailPreview,
   getStats, getSendAllStatus,
   sendEmailAlert, sendAllEmailAlerts, getSendAllEmailsStatus, getEligibleCount,
+  sendOverflowEmails, getSendOverflowEmailsStatus,
   listNotices, getNoticeEligibleCount, sendNotice, getNoticeSendStatus, getNoticePreview,
   getNoticeClients,
   listAdhocNotices, getAdhocNoticeCount, sendAdhocNotice, getAdhocNoticeSendStatus,
@@ -41,6 +42,18 @@ describe("getClients", () => {
     await getClients({ scheme: "FMCS" });
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/clients?scheme=FMCS",
+      { credentials: "include", headers: {} }
+    );
+  });
+
+  it("passes expiry_month as a query param when given", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ rows: [], total: 0, page: 1, page_size: 50 }),
+    });
+    await getClients({ expiryMonth: "2026-08" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/clients?expiry_month=2026-08",
       { credentials: "include", headers: {} }
     );
   });
@@ -304,6 +317,15 @@ describe("sendAllEmailAlerts", () => {
     });
     await expect(sendAllEmailAlerts()).rejects.toThrow("A bulk email send is already in progress");
   });
+
+  it("adds expiry_month as a query param when given", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "abc-123" }) });
+    await sendAllEmailAlerts({ expiryMonth: "2026-08" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/send-all-emails?expiry_month=2026-08",
+      { method: "POST", credentials: "include", headers: {} }
+    );
+  });
 });
 
 describe("getSendAllEmailsStatus", () => {
@@ -315,6 +337,46 @@ describe("getSendAllEmailsStatus", () => {
     const status = await getSendAllEmailsStatus("abc-123");
     expect(status).toEqual({ total: 5, sent: 2, skipped: 1, skipped_no_email: 0, failed: 0, done: false });
     expect(global.fetch).toHaveBeenCalledWith("/api/send-all-emails/status/abc-123", { credentials: "include", headers: {} });
+  });
+});
+
+describe("sendOverflowEmails", () => {
+  it("returns a job id on success", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "ov-123" }) });
+    const result = await sendOverflowEmails();
+    expect(result).toEqual({ job_id: "ov-123" });
+    expect(global.fetch).toHaveBeenCalledWith("/api/send-overflow-emails", { method: "POST", credentials: "include", headers: {} });
+  });
+
+  it("adds status/cert_type/expiry_before/search/scheme as query params when given", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ job_id: "ov-123" }) });
+    await sendOverflowEmails({
+      status: "CRITICAL", certType: ["OSHA"], expiryBefore: "2026-12-31", search: "BuildRight", scheme: "ISI",
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/send-overflow-emails?status=CRITICAL&cert_type=OSHA&expiry_before=2026-12-31&search=BuildRight&scheme=ISI",
+      { method: "POST", credentials: "include", headers: {} }
+    );
+  });
+
+  it("throws the backend's detail message on failure", async () => {
+    global.fetch.mockResolvedValue({
+      ok: false, status: 400,
+      json: async () => ({ detail: "No overflow Brevo account is configured (FOLLOWUP_BREVO_API_KEY)" }),
+    });
+    await expect(sendOverflowEmails()).rejects.toThrow("No overflow Brevo account is configured");
+  });
+});
+
+describe("getSendOverflowEmailsStatus", () => {
+  it("returns parsed JSON on success", async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ total: 2, sent: 2, skipped: 0, skipped_no_email: 0, failed: 0, done: true }),
+    });
+    const status = await getSendOverflowEmailsStatus("ov-123");
+    expect(status).toEqual({ total: 2, sent: 2, skipped: 0, skipped_no_email: 0, failed: 0, done: true });
+    expect(global.fetch).toHaveBeenCalledWith("/api/send-overflow-emails/status/ov-123", { credentials: "include", headers: {} });
   });
 });
 
@@ -349,6 +411,15 @@ describe("getEligibleCount", () => {
   it("throws when the response is not ok", async () => {
     global.fetch.mockResolvedValue({ ok: false, status: 500 });
     await expect(getEligibleCount()).rejects.toThrow("Failed to load eligible count: 500");
+  });
+
+  it("adds expiry_month as a query param when given", async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ whatsapp: 1, email: 1 }) });
+    await getEligibleCount({ expiryMonth: "2026-08" });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/eligible-count?expiry_month=2026-08",
+      { credentials: "include", headers: {} }
+    );
   });
 });
 

@@ -73,6 +73,40 @@ describe("ClientDataFilters", () => {
     expect(onExpiryBeforeChange).toHaveBeenCalledWith("2026-12-31");
   });
 
+  it("calls onExpiryMonthChange when the month input changes", () => {
+    const onExpiryMonthChange = vi.fn();
+    render(
+      <ClientDataFilters
+        certOptions={[]}
+        certType={[]}
+        onCertTypeChange={() => {}}
+        expiryBefore=""
+        onExpiryBeforeChange={() => {}}
+        expiryMonth=""
+        onExpiryMonthChange={onExpiryMonthChange}
+        onClearAll={() => {}}
+      />
+    );
+    fireEvent.change(screen.getByLabelText(/Filter by expiry month/), { target: { value: "2026-08" } });
+    expect(onExpiryMonthChange).toHaveBeenCalledWith("2026-08");
+  });
+
+  it("shows Clear All when only the expiry month filter is active", () => {
+    render(
+      <ClientDataFilters
+        certOptions={[]}
+        certType={[]}
+        onCertTypeChange={() => {}}
+        expiryBefore=""
+        onExpiryBeforeChange={() => {}}
+        expiryMonth="2026-08"
+        onExpiryMonthChange={() => {}}
+        onClearAll={() => {}}
+      />
+    );
+    expect(screen.getByText("Clear All")).toBeInTheDocument();
+  });
+
   it("calls onExpiryBeforeChange with the correct date when '3 months' is clicked", () => {
     const onExpiryBeforeChange = vi.fn();
     render(

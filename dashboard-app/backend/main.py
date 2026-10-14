@@ -221,7 +221,12 @@ def get_clients(
 
 @app.get("/api/stats")
 def stats():
-    return get_stats(DEFAULT_DB_PATH, _today_str())
+    result = get_stats(DEFAULT_DB_PATH, _today_str())
+    overflow = _overflow_credentials()
+    result["remaining_email_quota"] = _remaining_email_quota_today()
+    result["overflow_configured"] = overflow is not None
+    result["remaining_overflow_quota"] = _remaining_followup_quota_today() if overflow is not None else 0
+    return result
 
 
 @app.get("/api/eligible-count")
@@ -606,30 +611,13 @@ def _run_send_all_email_job(
     })
 
     try:
-        main_limit = _remaining_email_quota_today()
-        main_results = run_email_alerts(
+        run_email_alerts(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before,
-            search=search, scheme=scheme, limit=main_limit, sort_by_expiry=True,
+            search=search, scheme=scheme, limit=_remaining_email_quota_today(), sort_by_expiry=True,
             expiry_month=expiry_month, ignore_alert_status=ignore_alert_status,
         )
-        # The main account's daily quota was the binding constraint (not just
-        # "fewer eligible clients than the quota") -- spill the rest into the
-        # separate Brevo account if one's configured. Clients already sent in
-        # the main pass are skipped automatically by run_email_alerts' own
-        # per-day dedup, so this is safe to just re-run over the same filters.
-        sent_in_main_pass = sum(1 for r in main_results if r["action"] == "sent")
-        overflow = _overflow_credentials()
-        if sent_in_main_pass >= main_limit and overflow is not None:
-            overflow_key, overflow_sender = overflow
-            run_email_alerts(
-                DEFAULT_DB_PATH, overflow_key, overflow_sender, "Absolute Veritas",
-                dry_run=False, test_email=test_email, on_progress=progress,
-                status=status, cert_type=cert_type, expiry_before=expiry_before,
-                search=search, scheme=scheme, limit=_remaining_followup_quota_today(), sort_by_expiry=True,
-                expiry_month=expiry_month, ignore_alert_status=ignore_alert_status, account="followup",
-            )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
     finally:
@@ -685,6 +673,100 @@ def send_all_emails(
 @app.get("/api/send-all-emails/status/{job_id}")
 def send_all_emails_status(job_id: str):
     return _job_status(_send_all_email_jobs, job_id)
+
+
+_send_overflow_email_jobs: dict[str, dict] = {}
+
+
+def _run_overflow_email_job(
+    job_id, overflow_api_key, overflow_sender, test_email,
+    status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
+    expiry_month=None, ignore_alert_status=False,
+):
+    progress = _make_progress(_send_overflow_email_jobs, job_id, {
+        "sent": "sent", "skipped_duplicate": "skipped",
+        "skipped_no_email": "skipped_no_email", "failed": "failed",
+    })
+
+    try:
+        run_email_alerts(
+            DEFAULT_DB_PATH, overflow_api_key, overflow_sender, "Absolute Veritas",
+            dry_run=False, test_email=test_email, on_progress=progress,
+            status=status, cert_type=cert_type, expiry_before=expiry_before,
+            search=search, scheme=scheme, limit=_remaining_followup_quota_today(), sort_by_expiry=True,
+            expiry_month=expiry_month, ignore_alert_status=ignore_alert_status, account="followup",
+        )
+    except Exception as exc:
+        _send_overflow_email_jobs[job_id]["error"] = str(exc)
+    finally:
+        _send_overflow_email_jobs[job_id]["done"] = True
+        global _email_bulk_in_progress
+        with _email_send_lock:
+            _email_bulk_in_progress = False
+
+
+@app.post("/api/send-overflow-emails")
+def send_overflow_emails(
+    status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "",
+    expiry_month: str = "",
+):
+    """Explicit, separate continuation of send-all-emails once the main
+    Brevo account's 300/day quota is exhausted -- deliberately NOT automatic
+    (see _run_send_all_email_job), so a send from the overflow account's own
+    address is always something a human clicked, never a side effect of
+    clicking "Send All Emails". Re-running the same filters is safe: clients
+    already emailed in the main pass are skipped by run_email_alerts' own
+    per-day dedup, so this only reaches whoever the main pass didn't get to.
+    Shares the same bulk-email lock as send-all-emails/send-followups, since
+    all three draw on one of the same two real Brevo accounts and must not
+    run concurrently."""
+    overflow = _overflow_credentials()
+    if overflow is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No overflow Brevo account is configured (FOLLOWUP_BREVO_API_KEY)",
+        )
+
+    global _email_bulk_in_progress
+    with _email_send_lock:
+        if _email_bulk_in_progress:
+            raise HTTPException(status_code=409, detail="A bulk email send is already in progress")
+        if _pending_email_sends:
+            raise HTTPException(
+                status_code=409,
+                detail="One or more per-client email sends are in progress; try again shortly",
+            )
+        _email_bulk_in_progress = True
+
+    try:
+        overflow_api_key, overflow_sender = overflow
+        test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
+
+        job_id = str(uuid.uuid4())
+        _send_overflow_email_jobs[job_id] = {
+            "total": 0, "sent": 0, "skipped": 0, "skipped_no_email": 0, "failed": 0,
+            "done": False, "error": None,
+        }
+        thread = threading.Thread(
+            target=_run_overflow_email_job,
+            args=(
+                job_id, overflow_api_key, overflow_sender, test_email,
+                status or None, cert_type, expiry_before or None, search or None, scheme or None,
+                expiry_month or None, bool(expiry_month),
+            ),
+            daemon=True,
+        )
+        thread.start()
+        return {"job_id": job_id}
+    except Exception:
+        with _email_send_lock:
+            _email_bulk_in_progress = False
+        raise HTTPException(status_code=500, detail="Server is not configured to send emails")
+
+
+@app.get("/api/send-overflow-emails/status/{job_id}")
+def send_overflow_emails_status(job_id: str):
+    return _job_status(_send_overflow_email_jobs, job_id)
 
 
 _followup_jobs: dict[str, dict] = {}
