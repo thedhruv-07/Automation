@@ -5,14 +5,11 @@ from fastapi.testclient import TestClient
 from main import app
 from unittest.mock import patch
 from db import upsert_clients, record_sent, load_sent_log, read_clients
+from import_helpers import REQUIRED_HEADERS
 
 client = TestClient(app)
 
-HEADERS = [
-    "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
-    "Certification Name", "Scheme", "Certification ID", "Issue Date", "Expiry Date",
-    "Renewal Link", "Status",
-]
+HEADERS = REQUIRED_HEADERS
 
 
 def _write_xlsx(path, rows):

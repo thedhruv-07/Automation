@@ -12,6 +12,9 @@ ROW_NO_EMAIL = ("CLT002", "Priya Mehta", "BuildRight", None, "919812345678",
                  "OSHA", "ISI", "OSHA-1", "01-01-2025", "11-08-2026", "https://x", "URGENT")
 ROW_INVALID_EMAIL = ("CLT003", "Amit Verma", "HealthFirst", "not-an-email", "919800000000",
                        "ISO 9001", "ISI", "ISO27-1", "01-01-2025", "10-09-2026", "https://x", "DUE SOON")
+ROW_FMCS = ("CLT005", "Li Wei", "Lotte Chemical Titan", "l@x.com", None,
+             "IS 7328 : 2020", "FMCS", "4100106459", None, "03-11-2026", "https://x", "URGENT",
+             "Polyethylene Moulding & Extrusion Material")
 
 
 def _record_dict(row):
@@ -307,6 +310,53 @@ def test_send_email_via_brevo_isi_uses_bis_specific_layout():
     assert "Certificate ID</td>" not in html
     assert 'href="https://absoluteveritas.com/bis-isi-renewal-and-amc-services-2026/"' in html
     assert "For more info" in html
+
+
+def test_send_email_via_brevo_fmcs_uses_bis_specific_layout_and_subject():
+    """FMCS clients get the dedicated Manufacturer/Certificate Number/Indian
+    Standard Number/Name of Product table and the FMCS-specific subject line
+    -- not the generic 2-row Certification/Certificate ID table."""
+    record = _record_dict(ROW_FMCS)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="l@x.com")
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["subject"] == (
+        "India BIS FMCS Certification Renewal | Lotte Chemical Titan | "
+        "CM/L-4100106459 | Expiry: 03 November 2026 | Absolute Veritas"
+    )
+    html = payload["htmlContent"]
+    assert "Name of Manufacturer</td>" in html
+    assert "M/s Lotte Chemical Titan" in html
+    assert "Certificate Number</td>" in html
+    assert "4100106459" in html
+    assert "Indian Standard Number</td>" in html
+    assert "IS 7328 : 2020" in html
+    assert "Name of Product</td>" in html
+    assert "Polyethylene Moulding &amp; Extrusion Material" in html or "Polyethylene Moulding & Extrusion Material" in html
+    assert "Certification</td>" not in html
+    assert "Certificate ID</td>" not in html
+
+
+def test_send_email_via_brevo_fmcs_shows_placeholder_when_product_name_missing():
+    """Older FMCS rows imported before the Product Name field existed have
+    no value for it -- the email should show a placeholder dash, not crash
+    or render a blank/None cell."""
+    row_without_product = ROW_FMCS[:12]  # no 13th (Product Name) element
+    record = _record_dict(row_without_product)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="l@x.com")
+
+    html = mock_post.call_args.kwargs["json"]["htmlContent"]
+    assert "Name of Product</td>" in html
+    assert ">—</td>" in html  # placeholder dash, not "None"
+    assert ">None<" not in html
 
 
 def test_send_email_via_brevo_isi_colors_current_validity_red_when_expired():

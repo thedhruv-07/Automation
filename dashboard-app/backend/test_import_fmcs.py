@@ -57,6 +57,7 @@ def test_import_fmcs_workbook_converts_rows_to_roster_schema():
     assert row[9] == "02-11-2026"  # Expiry Date
     assert row[10] is None  # Renewal Link
     assert row[11] in ("DUE SOON", "ACTIVE", "URGENT", "CRITICAL", "EXPIRED")  # recomputed, not "Operative"
+    assert row[12] == "Product"  # Product Name
 
 
 def test_import_fmcs_workbook_skips_rows_missing_cml_no_or_validity_date():

@@ -30,6 +30,14 @@ SCHEME_EMAIL_DEFAULTS = {
             "before the current licence expiry date."
         ),
     ),
+    "FMCS": (
+        "India BIS FMCS Certification Renewal | {company} | CM/L-{cert_id} | Expiry: {expiry_date} | Absolute Veritas",
+        (
+            "This is a notification regarding the India BIS Certification held by "
+            "<strong>{company}</strong>. Please review the details below and "
+            "take action to ensure compliance continuity."
+        ),
+    ),
 }
 
 

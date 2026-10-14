@@ -76,15 +76,28 @@ def test_get_email_content_returns_scheme_specific_override_when_configured(monk
 
 
 def test_get_email_content_falls_back_to_generic_default_when_unconfigured(monkeypatch):
-    """FMCS (any scheme with no scheme-specific default -- unlike ISI, see
+    """CRS (any scheme with no scheme-specific default -- unlike ISI/FMCS, see
     below) falls all the way through to the fully generic default."""
+    for var in ("EMAIL_SUBJECT_TEMPLATE_CRS", "EMAIL_INTRO_TEXT_CRS"):
+        monkeypatch.delenv(var, raising=False)
+
+    subject_template, intro_text = get_email_content("CRS")
+
+    assert subject_template == DEFAULT_EMAIL_SUBJECT_TEMPLATE
+    assert intro_text == DEFAULT_INTRO_TEXT
+
+
+def test_get_email_content_fmcs_uses_bis_specific_default_when_unconfigured(monkeypatch):
+    """FMCS has its own hardcoded default (see SCHEME_EMAIL_DEFAULTS), like
+    ISI -- a fresh environment with no env vars set still sends the
+    FMCS-specific wording, not the generic default."""
     for var in ("EMAIL_SUBJECT_TEMPLATE_FMCS", "EMAIL_INTRO_TEXT_FMCS"):
         monkeypatch.delenv(var, raising=False)
 
     subject_template, intro_text = get_email_content("FMCS")
 
-    assert subject_template == DEFAULT_EMAIL_SUBJECT_TEMPLATE
-    assert intro_text == DEFAULT_INTRO_TEXT
+    assert subject_template != DEFAULT_EMAIL_SUBJECT_TEMPLATE
+    assert "FMCS" in subject_template
 
 
 def test_get_email_content_isi_uses_bis_specific_default_when_unconfigured(monkeypatch):

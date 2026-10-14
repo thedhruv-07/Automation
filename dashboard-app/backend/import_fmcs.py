@@ -28,7 +28,7 @@ from import_helpers import RowCollector, parse_validity_date, compute_status, he
 OUTPUT_HEADERS = [
     "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
     "Certification Name", "Scheme", "Certification ID", "Issue Date", "Expiry Date",
-    "Renewal Link", "Status",
+    "Renewal Link", "Status", "Product Name",
 ]
 
 
@@ -73,6 +73,7 @@ def import_fmcs_workbook(wb, out_ws, today=None):
             email = get(row, index_map, "email id", "email")
             validity_raw = get(row, index_map, "validity date", "validity")
             cert_name = get(row, index_map, "standard no", "standard")
+            product = get(row, index_map, "product")
 
             if not cml_no or not validity_raw or not cert_name:
                 stats["rows_skipped_missing_key"] += 1
@@ -102,6 +103,7 @@ def import_fmcs_workbook(wb, out_ws, today=None):
                 expiry_dt.strftime("%d-%m-%Y"),
                 None,
                 compute_status(expiry_dt, today),
+                product,
             ])
             stats["rows_written"] += 1
             sheet_had_rows = True

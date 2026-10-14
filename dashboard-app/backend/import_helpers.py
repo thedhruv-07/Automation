@@ -6,7 +6,7 @@ from datetime import datetime
 REQUIRED_HEADERS = [
     "Client ID", "Full Name", "Company", "Email", "Phone (WhatsApp)",
     "Certification Name", "Scheme", "Certification ID", "Issue Date", "Expiry Date",
-    "Renewal Link", "Status",
+    "Renewal Link", "Status", "Product Name",
 ]
 
 

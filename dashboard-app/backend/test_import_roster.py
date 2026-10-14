@@ -19,7 +19,7 @@ def _workbook(headers, rows):
 def test_looks_like_roster_workbook_matches_exact_headers():
     wb = _workbook(REQUIRED_HEADERS, [
         ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL", None],
     ])
     assert looks_like_roster_workbook(wb) is True
 
@@ -36,7 +36,7 @@ def test_looks_like_roster_workbook_rejects_empty_sheet():
 
 def test_import_roster_workbook_passes_rows_through_unchanged():
     row = ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-           "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"]
+           "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL", None]
     wb = _workbook(REQUIRED_HEADERS, [row])
     collector = RowCollector()
 
@@ -48,8 +48,8 @@ def test_import_roster_workbook_passes_rows_through_unchanged():
 
 def test_import_roster_workbook_skips_blank_rows():
     good_row = ["CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "919876543210",
-                "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"]
-    blank_row = [None] * 12
+                "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL", None]
+    blank_row = [None] * len(REQUIRED_HEADERS)
     wb = _workbook(REQUIRED_HEADERS, [good_row, blank_row])
     collector = RowCollector()
 

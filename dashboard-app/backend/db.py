@@ -36,7 +36,7 @@ DEFAULT_DB_PATH = _resolve_default_db()
 
 RECORD_FIELDS = [
     "client_id", "name", "company", "email", "phone", "cert_name", "scheme",
-    "cert_id", "issue_date", "expiry_date", "renewal_link", "status",
+    "cert_id", "issue_date", "expiry_date", "renewal_link", "status", "product_name",
 ]
 
 DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y")

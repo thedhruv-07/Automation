@@ -70,27 +70,37 @@ def qr_url() -> str:
 def scheme_html_overrides(rec: dict, scheme: str) -> dict:
     """Returns build_email_html() kwargs for the given scheme's dedicated
     layout, or {} to keep the generic default layout. rec must already carry
-    expiry_formatted (see send_email_via_brevo/email_preview). ISI is the
-    only scheme with a dedicated layout so far -- ships in code (not env
+    expiry_formatted (see send_email_via_brevo/email_preview). ISI and FMCS
+    are the schemes with a dedicated layout so far -- ships in code (not env
     vars, unlike subject/intro text) since it's a whole extra table row set
     and signature block, not a short string a non-developer would tweak."""
-    if scheme.upper() != "ISI":
-        return {}
-    _label, tier_color, _message, _hero_label = _tier(rec["days_left"])
-    current_validity = f'Upto <span style="color:{tier_color};">{rec["expiry_formatted"]}</span>'
-    return {
-        "detail_rows": [
-            ("Manufacturer", f"M/s {rec['company']}"),
-            ("Product Certification", "ISI Certification"),
-            ("Indian Standard", rec["cert_name"]),
-            ("BIS Licence No.", rec["cert_id"]),
-            ("Current Validity", current_validity),
-        ],
-        "expiry_label": ISI_EXPIRY_LABEL,
-        "cta_label": ISI_CTA_LABEL,
-        "signature_html": ISI_SIGNATURE_HTML,
-        "more_info_url": ISI_MORE_INFO_URL,
-    }
+    scheme_key = scheme.upper()
+    if scheme_key == "ISI":
+        _label, tier_color, _message, _hero_label = _tier(rec["days_left"])
+        current_validity = f'Upto <span style="color:{tier_color};">{rec["expiry_formatted"]}</span>'
+        return {
+            "detail_rows": [
+                ("Manufacturer", f"M/s {rec['company']}"),
+                ("Product Certification", "ISI Certification"),
+                ("Indian Standard", rec["cert_name"]),
+                ("BIS Licence No.", rec["cert_id"]),
+                ("Current Validity", current_validity),
+            ],
+            "expiry_label": ISI_EXPIRY_LABEL,
+            "cta_label": ISI_CTA_LABEL,
+            "signature_html": ISI_SIGNATURE_HTML,
+            "more_info_url": ISI_MORE_INFO_URL,
+        }
+    if scheme_key == "FMCS":
+        return {
+            "detail_rows": [
+                ("Name of Manufacturer", f"M/s {rec['company']}"),
+                ("Certificate Number", rec["cert_id"]),
+                ("Indian Standard Number", rec["cert_name"]),
+                ("Name of Product", rec.get("product_name") or "—"),
+            ],
+        }
+    return {}
 
 
 def _parse_expiry(value) -> datetime:
