@@ -272,6 +272,47 @@ def test_send_email_via_brevo_success():
     assert payload["subject"] == "Absolute Veritas — BIS ISI Licence Renewal — TechCorp — ISO-1 — Expiry 24 July 2026"
 
 
+def test_send_email_via_brevo_splits_multiple_semicolon_joined_addresses():
+    """Many FMCS prospect records carry a source email field like
+    "a@x.com;b@x.com" (a primary + backup inbox) -- Brevo's API rejects
+    that whole string as a single invalid "to" address ("email is not
+    valid in to"), which was silently failing most of a real campaign.
+    Each address must become its own recipient entry."""
+    record = _record_dict(ROW_WITH_EMAIL)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(
+            record, "api-key", "sender@x.com", "Absolute Veritas",
+            to_email="primary@x.com;backup@x.com",
+        )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["to"] == [
+        {"email": "primary@x.com", "name": "Rahul Sharma"},
+        {"email": "backup@x.com", "name": "Rahul Sharma"},
+    ]
+
+
+def test_send_email_via_brevo_splits_comma_joined_addresses_and_trims_whitespace():
+    record = _record_dict(ROW_WITH_EMAIL)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(
+            record, "api-key", "sender@x.com", "Absolute Veritas",
+            to_email=" primary@x.com , backup@x.com ",
+        )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["to"] == [
+        {"email": "primary@x.com", "name": "Rahul Sharma"},
+        {"email": "backup@x.com", "name": "Rahul Sharma"},
+    ]
+
+
 def test_send_email_via_brevo_includes_whatsapp_qr_when_present(tmp_path):
     record = _record_dict(ROW_WITH_EMAIL)
     qr_path = tmp_path / "whatsapp-qr.png"

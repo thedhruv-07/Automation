@@ -6,6 +6,7 @@ consistently, but tracks its own dedup log (email_sent_log, independent of
 WhatsApp's sent_log) so a client can receive both channels the same day
 without one blocking the other."""
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -118,6 +119,16 @@ def _is_valid_email(value) -> bool:
     return bool(value) and "@" in str(value)
 
 
+def _split_recipient_emails(value: str) -> list[str]:
+    """A source email field can hold multiple addresses joined by ';' or
+    ',' (common in web-sourced FMCS contact data -- a primary + backup
+    inbox). Brevo's API rejects that whole string as a single invalid "to"
+    address ("email is not valid in to"), which was silently failing most
+    of a real campaign -- each address needs its own recipient entry."""
+    parts = re.split(r"[;,]", str(value))
+    return [p.strip() for p in parts if p.strip() and "@" in p]
+
+
 def post_email_via_brevo(payload: dict, brevo_api_key: str) -> tuple[bool, dict]:
     """Low-level Brevo transactional email API call, shared by
     send_email_via_brevo (renewal alerts) and notice_sender.py's notice
@@ -179,7 +190,7 @@ def send_email_via_brevo(
 
     payload = {
         "sender": {"name": org_name, "email": email_sender},
-        "to": [{"email": to_email, "name": rec["name"]}],
+        "to": [{"email": addr, "name": rec["name"]} for addr in _split_recipient_emails(to_email) or [to_email]],
         "subject": subject,
         "htmlContent": html,
     }
