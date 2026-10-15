@@ -23,9 +23,25 @@ from pymongo.database import Database
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 
+# pymongo's serverSelectionTimeoutMS defaults to 30s, but connectTimeoutMS
+# and (critically) socketTimeoutMS default to no timeout at all -- a TCP
+# connection that stalls after going idle (observed on Render's free tier
+# after the service sits idle or right after a restart) can then hang a
+# query forever with no exception raised. That left a bulk-send job's
+# background thread stuck mid-query, which never reached its finally block
+# to release _email_bulk_in_progress (see main.py) -- the lock stayed held
+# until someone manually restarted the server. Bounding every socket
+# operation here turns that hang into a raised exception within a few
+# seconds instead, which callers' existing try/except already handles.
+MONGO_TIMEOUT_MS = 15000
+
+
 def get_client(mongodb_uri: str | None = None) -> MongoClient:
     uri = mongodb_uri or os.environ.get("MONGODB_URI", "mongodb://localhost:27017")
-    return MongoClient(uri)
+    return MongoClient(
+        uri, serverSelectionTimeoutMS=MONGO_TIMEOUT_MS, connectTimeoutMS=MONGO_TIMEOUT_MS,
+        socketTimeoutMS=MONGO_TIMEOUT_MS,
+    )
 
 
 def _resolve_default_db() -> Database:

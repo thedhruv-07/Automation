@@ -37,7 +37,30 @@ def test_get_client_uses_env_mongodb_uri(monkeypatch):
     import db
     with patch("db.MongoClient", return_value=MagicMock()) as mock_client:
         db.get_client()
-    mock_client.assert_called_once_with("mongodb://custom-host:27017/mydb")
+    mock_client.assert_called_once_with(
+        "mongodb://custom-host:27017/mydb",
+        serverSelectionTimeoutMS=db.MONGO_TIMEOUT_MS, connectTimeoutMS=db.MONGO_TIMEOUT_MS,
+        socketTimeoutMS=db.MONGO_TIMEOUT_MS,
+    )
+
+
+def test_get_client_sets_socket_timeout_so_a_stalled_connection_fails_fast(monkeypatch):
+    """pymongo's socketTimeoutMS defaults to None (no timeout at all) -- a
+    stalled TCP connection (e.g. a Render free-tier container's connection
+    pool gone stale after idling) can then hang a query forever with no
+    exception raised, which left the dashboard's bulk-send lock stuck
+    (_email_bulk_in_progress never cleared since the job thread's finally
+    block never ran) until someone manually restarted the server. An
+    explicit timeout turns that hang into a raised exception within a few
+    seconds instead, which the job runner's existing try/except already
+    handles correctly."""
+    monkeypatch.setenv("MONGODB_URI", "mongodb://custom-host:27017/mydb")
+    import db
+    with patch("db.MongoClient", return_value=MagicMock()) as mock_client:
+        db.get_client()
+    _, kwargs = mock_client.call_args
+    assert kwargs["socketTimeoutMS"] is not None
+    assert kwargs["socketTimeoutMS"] > 0
 
 
 def test_get_client_falls_back_to_localhost_default(monkeypatch):
@@ -45,7 +68,11 @@ def test_get_client_falls_back_to_localhost_default(monkeypatch):
     import db
     with patch("db.MongoClient", return_value=MagicMock()) as mock_client:
         db.get_client()
-    mock_client.assert_called_once_with("mongodb://localhost:27017")
+    mock_client.assert_called_once_with(
+        "mongodb://localhost:27017",
+        serverSelectionTimeoutMS=db.MONGO_TIMEOUT_MS, connectTimeoutMS=db.MONGO_TIMEOUT_MS,
+        socketTimeoutMS=db.MONGO_TIMEOUT_MS,
+    )
 
 
 def test_read_clients_returns_all_rows(mongo_db):
