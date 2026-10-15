@@ -1831,6 +1831,99 @@ def test_send_email_blocked_once_daily_brevo_limit_reached(tmp_path, monkeypatch
     assert "daily" in response.json()["detail"].lower()
 
 
+def test_send_email_only_persists_the_new_entry_not_the_whole_history(tmp_path, monkeypatch, mongo_db):
+    """Same bug as run_email_alerts/whatsapp_renewal_alerts.run(): this
+    endpoint's own save_email_sent_log call previously received the FULL
+    loaded sent_log (every historical entry), not just this one send."""
+    from db import record_email_sent
+    db_path = _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
+    for i in range(50):
+        record_email_sent(db_path, f"OLD{i:03d}", "CRITICAL", "2026-01-01", "m", "x@x.com", "2026-01-01T09:00:00")
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-1"}})()
+
+    with patch("main.save_email_sent_log") as mock_save, \
+         patch("email_alerts.requests.post", return_value=mock_response):
+        response = client.post("/api/send-email/CLT001")
+
+    assert response.status_code == 200
+    mock_save.assert_called_once()
+    assert list(mock_save.call_args.args[1].keys()) == ["CLT001|CRITICAL|2026-07-18"]
+
+
+def test_send_email_fmcs_uses_the_overflow_account(tmp_path, monkeypatch, mongo_db):
+    """FMCS is routed through the separate follow-up/overflow Brevo account
+    instead of BREVO_API_KEY/EMAIL_SENDER -- a dedicated account, not mixed
+    with ISI/CRS's main-account quota."""
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT010", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
+         "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "overflow-key")
+    monkeypatch.setenv("OVERFLOW_EMAIL_SENDER", "marketing@absoluteveritas.com")
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-1"}})()
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        response = client.post("/api/send-email/CLT010")
+
+    assert response.status_code == 200
+    assert mock_post.call_args.kwargs["headers"]["api-key"] == "overflow-key"
+    assert mock_post.call_args.kwargs["json"]["sender"]["email"] == "marketing@absoluteveritas.com"
+    from db import count_overflow_sent_today, count_emails_sent_today
+    assert count_overflow_sent_today(db_path, "2026-07-18") == 1
+    assert count_emails_sent_today(db_path, "2026-07-18") == 0
+
+
+def test_send_email_fmcs_falls_back_to_main_account_when_no_overflow_key(tmp_path, monkeypatch, mongo_db):
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT010", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
+         "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.delenv("FOLLOWUP_BREVO_API_KEY", raising=False)
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-1"}})()
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        response = client.post("/api/send-email/CLT010")
+
+    assert response.status_code == 200
+    assert mock_post.call_args.kwargs["headers"]["api-key"] == "main-key"
+
+
+def test_send_email_fmcs_blocked_by_the_overflow_accounts_own_quota(tmp_path, monkeypatch, mongo_db):
+    """FMCS's quota is independent of the main account's -- exhausting the
+    follow-up/overflow account blocks FMCS sends without touching ISI/CRS's
+    separate main-account limit."""
+    db_path = mongo_db
+    _write_db(db_path, [
+        ["CLT010", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
+         "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", db_path)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setattr(main_module, "BREVO_DAILY_LIMIT", 1)
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "overflow-key")
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+    from db import record_email_sent
+    record_email_sent(db_path, "SOMEONE-ELSE", "CRITICAL", "2026-07-18", "m", "x@x.com", "2026-07-18T09:00:00", account="followup")
+
+    response = client.post("/api/send-email/CLT010")
+
+    assert response.status_code == 429
+
+
 def test_send_all_emails_starts_job_and_reports_progress(tmp_path, monkeypatch, mongo_db):
     _setup_one_email_client(tmp_path, monkeypatch, mongo_db)
     mock_response = type("Resp", (), {
@@ -2492,6 +2585,49 @@ def test_send_all_emails_stops_at_main_quota_without_overflowing(monkeypatch, mo
     used_senders = {c.kwargs["json"]["sender"]["email"] for c in mock_post.call_args_list}
     assert used_keys == {"main-key"}
     assert used_senders == {"main@x.com"}
+
+
+def test_send_all_emails_fmcs_routes_through_the_overflow_account(monkeypatch, mongo_db):
+    """scheme=FMCS routes through the separate follow-up/overflow Brevo
+    account instead of the main one -- its own dedicated quota, untouched by
+    ISI/CRS's main-account limit. The main account is pre-exhausted here
+    (BREVO_DAILY_LIMIT=2, 2 already used on "main") to prove FMCS still
+    sends fine through the separate, still-fresh followup/overflow quota."""
+    from db import record_email_sent
+    _write_db(mongo_db, [
+        ["CLT020", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
+         "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT021", "Nippon Steel", "Nippon Steel", "n@x.com", None,
+         "IS 1993 : 2018", "FMCS", "4100191173", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setattr(main_module, "BREVO_DAILY_LIMIT", 2)
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "overflow-key")
+    monkeypatch.setenv("OVERFLOW_EMAIL_SENDER", "marketing@absoluteveritas.com")
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+    record_email_sent(mongo_db, "ISI-A", "CRITICAL", "2026-07-18", "m1", "a@x.com", "2026-07-18T09:00:00", account="main")
+    record_email_sent(mongo_db, "ISI-B", "CRITICAL", "2026-07-18", "m2", "b@x.com", "2026-07-18T09:00:00", account="main")
+    import time
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-1"}})()
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        start = client.post("/api/send-all-emails?scheme=FMCS")
+        job_id = start.json()["job_id"]
+        status = None
+        for _ in range(100):
+            status = client.get(f"/api/send-all-emails/status/{job_id}").json()
+            if status["done"]:
+                break
+            time.sleep(0.05)
+
+    assert status["sent"] == 2  # both sent despite the main account being at its 2/2 limit
+    used_keys = {c.kwargs["headers"]["api-key"] for c in mock_post.call_args_list}
+    used_senders = {c.kwargs["json"]["sender"]["email"] for c in mock_post.call_args_list}
+    assert used_keys == {"overflow-key"}
+    assert used_senders == {"marketing@absoluteveritas.com"}
 
 
 def test_send_overflow_emails_sends_via_the_followup_account(monkeypatch, mongo_db):

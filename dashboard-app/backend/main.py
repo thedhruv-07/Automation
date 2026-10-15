@@ -27,7 +27,7 @@ from db import (  # noqa: E402
     count_emails_sent_today, count_followups_sent_today, count_overflow_sent_today, get_followup_eligible_clients,
 )
 from whatsapp_renewal_alerts import (  # noqa: E402
-    ALERT_STATUSES, send_one_alert, run,
+    ALERT_STATUSES, send_one_alert, run, dedup_key,
 )
 from email_alerts import (  # noqa: E402
     send_one_email_alert, run_email_alerts, run_followups, BREVO_DAILY_LIMIT,
@@ -104,6 +104,22 @@ def _overflow_credentials() -> tuple[str, str] | None:
         return None
     sender = os.environ.get("OVERFLOW_EMAIL_SENDER") or os.environ["EMAIL_SENDER"]
     return os.environ["FOLLOWUP_BREVO_API_KEY"], sender
+
+
+def _email_credentials_for_scheme(scheme: str | None) -> tuple[str, str, str, int]:
+    """(api_key, sender, account_tag, remaining_quota) to send with for the
+    given scheme. FMCS is routed through the separate follow-up/overflow
+    Brevo account -- its own dedicated 300/day, tracked together with real
+    follow-ups/overflow sends on that same real account (see
+    count_overflow_sent_today) and kept apart from ISI/CRS's main-account
+    quota. Falls back to the main account if no separate account is
+    configured, or for every other scheme."""
+    if scheme and scheme.upper() == "FMCS":
+        overflow = _overflow_credentials()
+        if overflow is not None:
+            api_key, sender = overflow
+            return api_key, sender, "followup", _remaining_followup_quota_today()
+    return os.environ["BREVO_API_KEY"], os.environ["EMAIL_SENDER"], "main", _remaining_email_quota_today()
 
 
 def _parse_expiry(value) -> datetime:
@@ -551,7 +567,8 @@ def send_email(client_id: str):
             status_code=400,
             detail="This client has no valid email on file",
         )
-    if _remaining_email_quota_today() <= 0:
+    brevo_api_key, email_sender, account, remaining_quota = _email_credentials_for_scheme(record.get("scheme"))
+    if remaining_quota <= 0:
         raise HTTPException(
             status_code=429,
             detail=f"Daily Brevo email limit ({BREVO_DAILY_LIMIT}) already reached for today; try again tomorrow",
@@ -573,18 +590,17 @@ def send_email(client_id: str):
         _pending_email_sends.add(client_id)
 
     try:
-        brevo_api_key = os.environ["BREVO_API_KEY"]
-        email_sender = os.environ["EMAIL_SENDER"]
         test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
 
         result = send_one_email_alert(
             record, sent_log, today, brevo_api_key, email_sender, "Absolute Veritas",
-            to_email_override=test_email,
+            to_email_override=test_email, account=account,
         )
 
         if result["action"] == "sent":
             if not test_email:
-                save_email_sent_log(DEFAULT_DB_PATH, sent_log)
+                key = dedup_key(client_id, record["status"], today)
+                save_email_sent_log(DEFAULT_DB_PATH, {key: sent_log[key]})
             return {"status": "sent", "message_id": result["message_id"]}
         if result["action"] == "skipped_duplicate":
             raise HTTPException(
@@ -601,7 +617,7 @@ _send_all_email_jobs: dict[str, dict] = {}
 
 
 def _run_send_all_email_job(
-    job_id, brevo_api_key, email_sender, test_email,
+    job_id, brevo_api_key, email_sender, test_email, account, limit,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
     expiry_month=None, ignore_alert_status=False,
 ):
@@ -615,8 +631,8 @@ def _run_send_all_email_job(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before,
-            search=search, scheme=scheme, limit=_remaining_email_quota_today(), sort_by_expiry=True,
-            expiry_month=expiry_month, ignore_alert_status=ignore_alert_status,
+            search=search, scheme=scheme, limit=limit, sort_by_expiry=True,
+            expiry_month=expiry_month, ignore_alert_status=ignore_alert_status, account=account,
         )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
@@ -644,8 +660,7 @@ def send_all_emails(
         _email_bulk_in_progress = True
 
     try:
-        brevo_api_key = os.environ["BREVO_API_KEY"]
-        email_sender = os.environ["EMAIL_SENDER"]
+        brevo_api_key, email_sender, account, limit = _email_credentials_for_scheme(scheme or None)
         test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
 
         job_id = str(uuid.uuid4())
@@ -656,7 +671,7 @@ def send_all_emails(
         thread = threading.Thread(
             target=_run_send_all_email_job,
             args=(
-                job_id, brevo_api_key, email_sender, test_email,
+                job_id, brevo_api_key, email_sender, test_email, account, limit,
                 status or None, cert_type, expiry_before or None, search or None, scheme or None,
                 expiry_month or None, bool(expiry_month),
             ),
