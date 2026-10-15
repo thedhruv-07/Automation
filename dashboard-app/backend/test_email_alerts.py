@@ -163,6 +163,32 @@ def test_run_email_alerts_processes_all_alert_eligible_clients(tmp_path, mongo_d
     assert send_fn.call_count == 1
 
 
+def test_run_email_alerts_only_persists_new_entries_not_the_whole_history(tmp_path, mongo_db):
+    """save_email_sent_log previously received the FULL loaded sent_log
+    (every historical entry, loaded by load_email_sent_log) and rewrote
+    every single one via a separate record_email_sent() round-trip per
+    entry -- harmless when the log was small, but as it grows over months
+    of real daily sends, every bulk-send job gets slower, eventually taking
+    long enough to look like a hung job (this is what was actually
+    happening in production, not a true hang). It must only persist the
+    entries this run actually added."""
+    from db import record_email_sent
+    db_path = mongo_db
+    # A large-ish pre-existing history unrelated to this run's client --
+    # rewriting these on every save is exactly the bug being fixed.
+    for i in range(50):
+        record_email_sent(db_path, f"OLD{i:03d}", "CRITICAL", "2026-01-01", "m", "x@x.com", "2026-01-01T09:00:00")
+    upsert_clients(db_path, [ROW_WITH_EMAIL], mode="merge")
+    send_fn = Mock(return_value=(True, {"message_id": "brevo-1"}))
+
+    with patch("email_alerts.save_email_sent_log") as mock_save:
+        run_email_alerts(db_path, "api-key", "sender@x.com", "Absolute Veritas", today="2026-07-17", send_fn=send_fn)
+
+    mock_save.assert_called_once()
+    saved_log = mock_save.call_args.args[1]
+    assert list(saved_log.keys()) == ["CLT001|CRITICAL|2026-07-17"]
+
+
 def test_run_email_alerts_stops_after_limit_sends(tmp_path, mongo_db):
     row2 = ("CLT004", "Sana Iqbal", "GreenBuild", "s@x.com", "919800000001",
             "ISO 9001", "ISI", "ISO-2", "01-01-2025", "24-07-2026", "https://x", "CRITICAL")

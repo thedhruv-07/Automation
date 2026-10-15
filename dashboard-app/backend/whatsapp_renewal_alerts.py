@@ -221,7 +221,7 @@ def run(
     )
     sent_log = load_sent_log(db_path)
     persist_log = not dry_run and not test_number
-    log_dirty = False
+    new_entries = {}
     results = []
 
     for rec in records:
@@ -257,7 +257,7 @@ def run(
                     to_phone_override=test_number, send_fn=send_fn,
                 )
                 if result["action"] == "sent":
-                    log_dirty = True
+                    new_entries[key] = sent_log[key]
 
         results.append(result)
         if on_progress:
@@ -266,8 +266,10 @@ def run(
             except Exception as exc:
                 print(f"⚠ on_progress callback raised {exc!r}; continuing send batch.")
 
-    if persist_log and log_dirty:
-        save_sent_log(db_path, sent_log)
+    # Only persist the entries this run actually added -- not the whole
+    # loaded history (see email_alerts.run_email_alerts for why).
+    if persist_log and new_entries:
+        save_sent_log(db_path, new_entries)
 
     return results
 

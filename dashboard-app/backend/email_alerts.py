@@ -306,7 +306,7 @@ def run_email_alerts(
     )
     sent_log = load_email_sent_log(db_path)
     persist_log = not dry_run and not test_email
-    log_dirty = False
+    new_entries = {}
     results = []
     sent_count = 0
 
@@ -326,8 +326,9 @@ def run_email_alerts(
                 to_email_override=test_email, send_fn=send_fn, account=account,
             )
             if result["action"] == "sent":
-                log_dirty = True
                 sent_count += 1
+                key = dedup_key(rec["client_id"], rec["status"], today)
+                new_entries[key] = sent_log[key]
 
         results.append(result)
         if on_progress:
@@ -336,8 +337,14 @@ def run_email_alerts(
             except Exception as exc:
                 print(f"⚠ on_progress callback raised {exc!r}; continuing send batch.")
 
-    if persist_log and log_dirty:
-        save_email_sent_log(db_path, sent_log)
+    # Only persist the entries this run actually added -- not the whole
+    # loaded history. save_email_sent_log does one DB round-trip per entry,
+    # so passing it the full sent_log (every renewal email ever sent) would
+    # re-write the entire history on every single bulk send, getting slower
+    # as that history grows until a batch looks hung when it's really just
+    # churning through thousands of no-op rewrites.
+    if persist_log and new_entries:
+        save_email_sent_log(db_path, new_entries)
 
     return results
 

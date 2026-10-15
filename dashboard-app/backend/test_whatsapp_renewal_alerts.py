@@ -317,6 +317,27 @@ def test_run_live_sends_and_dedups_on_second_call(tmp_path, mongo_db):
     assert send_fn.call_count == 1
 
 
+def test_run_only_persists_new_entries_not_the_whole_history(tmp_path, mongo_db):
+    """Same bug as email_alerts.run_email_alerts: save_sent_log previously
+    received the FULL loaded sent_log and rewrote every historical entry
+    via a separate record_sent() round-trip per entry -- gets slower as the
+    log grows over months of real sends, until a bulk send looks hung when
+    it's really just churning through thousands of no-op rewrites."""
+    from db import record_sent
+    db_path = mongo_db
+    for i in range(50):
+        record_sent(db_path, f"OLD{i:03d}", "CRITICAL", "2026-01-01", "wamid.old", "919000000000", "2026-01-01T09:00:00")
+    _write_db(db_path, ONE_CRITICAL_ROW)
+    send_fn = Mock(return_value=(True, {"message_id": "wamid.ABC"}))
+
+    with patch("whatsapp_renewal_alerts.save_sent_log") as mock_save:
+        run(db_path=db_path, token="tok", phone_number_id="pid", today="2026-07-17", send_fn=send_fn)
+
+    mock_save.assert_called_once()
+    saved_log = mock_save.call_args.args[1]
+    assert list(saved_log.keys()) == ["CLT001|CRITICAL|2026-07-17"]
+
+
 def test_run_test_number_overrides_phone_and_skips_log_write(tmp_path, mongo_db):
     db_path = mongo_db
     _write_db(db_path, ONE_CRITICAL_ROW)
