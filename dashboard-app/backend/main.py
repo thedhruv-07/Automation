@@ -617,7 +617,7 @@ _send_all_email_jobs: dict[str, dict] = {}
 
 
 def _run_send_all_email_job(
-    job_id, brevo_api_key, email_sender, test_email, account, limit,
+    job_id, brevo_api_key, email_sender, test_email, limit, fmcs_credentials, fmcs_limit,
     status=None, cert_type=None, expiry_before=None, search=None, scheme=None,
     expiry_month=None, ignore_alert_status=False,
 ):
@@ -632,7 +632,8 @@ def _run_send_all_email_job(
             dry_run=False, test_email=test_email, on_progress=progress,
             status=status, cert_type=cert_type, expiry_before=expiry_before,
             search=search, scheme=scheme, limit=limit, sort_by_expiry=True,
-            expiry_month=expiry_month, ignore_alert_status=ignore_alert_status, account=account,
+            expiry_month=expiry_month, ignore_alert_status=ignore_alert_status,
+            fmcs_credentials=fmcs_credentials, fmcs_limit=fmcs_limit,
         )
     except Exception as exc:
         _send_all_email_jobs[job_id]["error"] = str(exc)
@@ -648,6 +649,11 @@ def send_all_emails(
     status: str = "", cert_type: list[str] = Query([]), expiry_before: str = "", search: str = "", scheme: str = "",
     expiry_month: str = "",
 ):
+    """Routes per-record, not per-request: every eligible record whose OWN
+    scheme is FMCS goes out via the separate overflow account, regardless of
+    the scheme filter this request was made with (so a mixed-scheme or
+    unfiltered batch still can't send an FMCS client through the main
+    account -- see run_email_alerts' fmcs_credentials)."""
     global _email_bulk_in_progress
     with _email_send_lock:
         if _email_bulk_in_progress:
@@ -660,7 +666,11 @@ def send_all_emails(
         _email_bulk_in_progress = True
 
     try:
-        brevo_api_key, email_sender, account, limit = _email_credentials_for_scheme(scheme or None)
+        brevo_api_key = os.environ["BREVO_API_KEY"]
+        email_sender = os.environ["EMAIL_SENDER"]
+        limit = _remaining_email_quota_today()
+        fmcs_credentials = _overflow_credentials()
+        fmcs_limit = _remaining_followup_quota_today() if fmcs_credentials is not None else None
         test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
 
         job_id = str(uuid.uuid4())
@@ -671,7 +681,7 @@ def send_all_emails(
         thread = threading.Thread(
             target=_run_send_all_email_job,
             args=(
-                job_id, brevo_api_key, email_sender, test_email, account, limit,
+                job_id, brevo_api_key, email_sender, test_email, limit, fmcs_credentials, fmcs_limit,
                 status or None, cert_type, expiry_before or None, search or None, scheme or None,
                 expiry_month or None, bool(expiry_month),
             ),

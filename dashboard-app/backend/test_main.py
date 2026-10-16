@@ -2630,6 +2630,46 @@ def test_send_all_emails_fmcs_routes_through_the_overflow_account(monkeypatch, m
     assert used_senders == {"marketing@absoluteveritas.com"}
 
 
+def test_send_all_emails_routes_fmcs_through_overflow_even_in_an_unfiltered_mixed_batch(monkeypatch, mongo_db):
+    """Regression test for the real bug: clicking Send All Emails with the
+    scheme filter left on "All" (no scheme= query param at all) must still
+    route each FMCS client through the overflow account by its OWN scheme
+    field -- not fall back to the main account just because the REQUEST
+    wasn't scheme-filtered to FMCS specifically."""
+    _write_db(mongo_db, [
+        ["CLT030", "TechCorp", "TechCorp", "t@x.com", None,
+         "ISO 9001", "ISI", "ISO-1", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+        ["CLT031", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
+         "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"],
+    ])
+    monkeypatch.setattr(main_module, "DEFAULT_DB_PATH", mongo_db)
+    monkeypatch.setattr(main_module, "_today_str", lambda: "2026-07-18")
+    monkeypatch.setenv("BREVO_API_KEY", "main-key")
+    monkeypatch.setenv("EMAIL_SENDER", "main@x.com")
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "overflow-key")
+    monkeypatch.setenv("OVERFLOW_EMAIL_SENDER", "marketing@absoluteveritas.com")
+    monkeypatch.delenv("DASHBOARD_TEST_EMAIL", raising=False)
+    import time
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-1"}})()
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        start = client.post("/api/send-all-emails")  # no scheme= query param -- "All"
+        job_id = start.json()["job_id"]
+        status = None
+        for _ in range(100):
+            status = client.get(f"/api/send-all-emails/status/{job_id}").json()
+            if status["done"]:
+                break
+            time.sleep(0.05)
+
+    assert status["sent"] == 2
+    calls_by_key = {c.kwargs["headers"]["api-key"]: c for c in mock_post.call_args_list}
+    assert calls_by_key["main-key"].kwargs["json"]["sender"]["email"] == "main@x.com"
+    assert calls_by_key["main-key"].kwargs["json"]["to"] == [{"email": "t@x.com", "name": "TechCorp"}]
+    assert calls_by_key["overflow-key"].kwargs["json"]["sender"]["email"] == "marketing@absoluteveritas.com"
+    assert calls_by_key["overflow-key"].kwargs["json"]["to"] == [{"email": "l@x.com", "name": "Lotte Chemical"}]
+
+
 def test_send_overflow_emails_sends_via_the_followup_account(monkeypatch, mongo_db):
     """Continuing via /api/send-overflow-emails after the main account is
     exhausted reaches only the clients the main pass didn't get to (its own

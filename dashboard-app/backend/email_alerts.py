@@ -296,6 +296,8 @@ def run_email_alerts(
     expiry_month: str | None = None,
     ignore_alert_status: bool = False,
     account: str = "main",
+    fmcs_credentials: tuple[str, str] | None = None,
+    fmcs_limit: int | None = None,
 ) -> list[dict]:
     """limit caps how many actual sends (action == "sent") this call makes --
     e.g. Brevo's 300/day cap. Once hit, remaining eligible records are left
@@ -308,7 +310,16 @@ def run_email_alerts(
     caller send to every client expiring in a specific month regardless of
     their current urgency status -- see get_eligible_clients. account tags
     every sent_log entry this run writes (see send_one_email_alert) --
-    "followup" for an overflow run through the separate Brevo account."""
+    "followup" for an overflow run through the separate Brevo account.
+
+    fmcs_credentials/fmcs_limit route each FMCS record (by its OWN scheme
+    field, not the scheme filter this call was made with) through a
+    separate (api_key, sender) with its own independent limit/quota --
+    dispatch is per-record so a mixed-scheme or unfiltered batch still
+    sends FMCS clients through their dedicated account, not just a batch
+    explicitly filtered to scheme=FMCS. None (the default) leaves FMCS
+    records on the main brevo_api_key/email_sender/limit like everyone
+    else -- e.g. when no separate account is configured at all."""
     today = today or datetime.now().strftime("%Y-%m-%d")
     records = get_eligible_clients(
         db_path, status=status, cert_type=cert_type, expiry_before=expiry_before,
@@ -319,11 +330,11 @@ def run_email_alerts(
     persist_log = not dry_run and not test_email
     new_entries = {}
     results = []
-    sent_count = 0
+    main_sent_count = 0
+    fmcs_sent_count = 0
 
     for rec in records:
-        if limit is not None and sent_count >= limit:
-            break
+        is_fmcs = fmcs_credentials is not None and (rec.get("scheme") or "").upper() == "FMCS"
 
         if dry_run:
             to_email = test_email or rec.get("email")
@@ -332,12 +343,24 @@ def run_email_alerts(
                 "status": rec["status"], "action": "dry_run", "to": to_email,
             }
         else:
+            if is_fmcs:
+                if fmcs_limit is not None and fmcs_sent_count >= fmcs_limit:
+                    continue
+                rec_api_key, rec_sender, rec_account = *fmcs_credentials, "followup"
+            else:
+                if limit is not None and main_sent_count >= limit:
+                    continue
+                rec_api_key, rec_sender, rec_account = brevo_api_key, email_sender, account
+
             result = send_one_email_alert(
-                rec, sent_log, today, brevo_api_key, email_sender, org_name,
-                to_email_override=test_email, send_fn=send_fn, account=account,
+                rec, sent_log, today, rec_api_key, rec_sender, org_name,
+                to_email_override=test_email, send_fn=send_fn, account=rec_account,
             )
             if result["action"] == "sent":
-                sent_count += 1
+                if is_fmcs:
+                    fmcs_sent_count += 1
+                else:
+                    main_sent_count += 1
                 key = dedup_key(rec["client_id"], rec["status"], today)
                 new_entries[key] = sent_log[key]
 
