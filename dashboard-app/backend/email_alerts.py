@@ -44,6 +44,15 @@ ISI_SIGNATURE_HTML = """
     <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Email: cs@absoluteveritas.com</p>
     <p style="color:#52514E;font-size:13px;margin:0;">Website: www.absoluteveritas.com</p>
 """
+FMCS_MORE_INFO_URL = "https://absoluteveritas.com/foreign-manufacturer-certification-services/"
+FMCS_SIGNATURE_HTML = """
+    <p style="color:#1F497D;font-size:14px;font-weight:700;margin:0 0 2px;">Absolute Veritas</p>
+    <p style="color:#E36C0A;font-size:13px;font-weight:700;margin:0 0 10px;">Testing, Inspection &amp; Certifications</p>
+    <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Mobile/Whatsapp: +91-7303215033</p>
+    <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Tel: +91-129-4001010</p>
+    <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Email: cs@absoluteveritas.com</p>
+    <p style="color:#52514E;font-size:13px;margin:0;">Website: https://absoluteveritas.com/</p>
+"""
 
 
 def logo_url() -> str:
@@ -100,6 +109,8 @@ def scheme_html_overrides(rec: dict, scheme: str) -> dict:
                 ("Indian Standard Number", rec["cert_name"]),
                 ("Name of Product", rec.get("product_name") or "—"),
             ],
+            "signature_html": FMCS_SIGNATURE_HTML,
+            "more_info_url": FMCS_MORE_INFO_URL,
         }
     return {}
 

@@ -408,6 +408,26 @@ def test_send_email_via_brevo_fmcs_uses_bis_specific_layout_and_subject():
     assert "Certificate ID</td>" not in html
 
 
+def test_send_email_via_brevo_fmcs_includes_more_info_link_and_signature_block():
+    record = _record_dict(ROW_FMCS)
+    mock_response = Mock(status_code=201)
+    mock_response.json.return_value = {"messageId": "brevo-msg-1"}
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        send_email_via_brevo(record, "api-key", "sender@x.com", "Absolute Veritas", to_email="l@x.com")
+
+    html = mock_post.call_args.kwargs["json"]["htmlContent"]
+    assert 'href="https://absoluteveritas.com/foreign-manufacturer-certification-services/"' in html
+    assert "For more info" in html
+    assert "Testing, Inspection &amp; Certifications" in html
+    assert "Mobile/Whatsapp: +91-7303215033" in html
+    assert "Tel: +91-129-4001010" in html
+    assert "Email: cs@absoluteveritas.com" in html
+    assert "Website: https://absoluteveritas.com/" in html
+    # signature_html replaces the plain org_email contact line, same as ISI
+    assert html.count("cs@absoluteveritas.com") == 1
+
+
 def test_send_email_via_brevo_fmcs_shows_placeholder_when_product_name_missing():
     """Older FMCS rows imported before the Product Name field existed have
     no value for it -- the email should show a placeholder dash, not crash

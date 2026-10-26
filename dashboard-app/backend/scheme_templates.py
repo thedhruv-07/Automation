@@ -109,12 +109,21 @@ FOLLOWUP_ISI_INTRO = (
     "To avoid any disruption to the validity of the BIS licence, please initiate/complete the "
     "renewal process at the earliest -- or book an appointment and we will assist you."
 )
+FOLLOWUP_FMCS_SUBJECT = "Follow-up: BIS Certification Renewal {cert_name} — {company}"
+FOLLOWUP_FMCS_INTRO = (
+    "This is a follow-up to our earlier email about the certification held by "
+    "<strong>{company}</strong>. Our records show its renewal is still pending -- "
+    "please take action at the earliest to ensure compliance continuity."
+)
 
 
 def get_followup_content(scheme: str) -> tuple[str, str]:
     """(subject_template, intro_text) for the follow-up email -- same
     placeholders as get_email_content, in code (not env vars) like ISI's
     renewal wording."""
-    if scheme.upper() == "ISI":
+    scheme_key = scheme.upper()
+    if scheme_key == "ISI":
         return FOLLOWUP_ISI_SUBJECT, FOLLOWUP_ISI_INTRO
+    if scheme_key == "FMCS":
+        return FOLLOWUP_FMCS_SUBJECT, FOLLOWUP_FMCS_INTRO
     return FOLLOWUP_DEFAULT_SUBJECT, FOLLOWUP_DEFAULT_INTRO

@@ -152,3 +152,10 @@ def test_get_followup_content_other_schemes_get_a_generic_follow_up():
     assert subject_template == "Follow-up: Renew {cert_name} — {company}"
     assert "follow-up" in intro_text.lower()
     assert "{company}" in intro_text
+
+
+def test_get_followup_content_fmcs_has_its_own_subject_wording():
+    subject_template, intro_text = get_followup_content("FMCS")
+    assert subject_template == "Follow-up: BIS Certification Renewal {cert_name} — {company}"
+    assert "follow-up" in intro_text.lower()
+    assert "{company}" in intro_text
