@@ -410,6 +410,7 @@ def run_followups(
     limit: int | None = None,
     test_email: str | None = None,
     fmcs_sender: str | None = None,
+    scheme: str | None = None,
 ) -> list[dict]:
     """Sends the follow-up email to every client get_followup_eligible_clients
     returns (soonest-expiring first), recording each success immediately so a
@@ -420,9 +421,11 @@ def run_followups(
     fmcs_sender, if given, is used as the "from" address (instead of
     email_sender) for any record whose own scheme is FMCS -- both still go
     out through the same brevo_api_key/account, this only changes which
-    verified sender identity on it the email appears to come from."""
+    verified sender identity on it the email appears to come from. scheme
+    narrows the run to just that scheme (e.g. "FMCS") instead of every
+    eligible client across every scheme."""
     today = today or datetime.now().strftime("%Y-%m-%d")
-    records = get_followup_eligible_clients(db_path, today)
+    records = get_followup_eligible_clients(db_path, today, scheme=scheme)
     results = []
     sent_count = 0
 

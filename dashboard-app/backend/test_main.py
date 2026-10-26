@@ -2425,6 +2425,43 @@ def test_send_followups_uses_the_overflow_sender_for_fmcs_clients(monkeypatch, m
     assert senders_by_to == {"r@x.com": "main@x.com", "l@x.com": "marketing@absoluteveritas.com"}
 
 
+def test_send_followups_scoped_to_fmcs_leaves_other_schemes_untouched(monkeypatch, mongo_db):
+    """scheme=FMCS on /api/send-followups only processes FMCS-eligible
+    clients -- an ISI client that's also due a follow-up must be left
+    alone, not swept up just because it was eligible too."""
+    fmcs_row = ["CLT010", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
+                "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"]
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1, fmcs_row])
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "followup-key")
+    monkeypatch.setenv("OVERFLOW_EMAIL_SENDER", "marketing@absoluteveritas.com")
+    import time
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-fu"}})()
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        start = client.post("/api/send-followups?scheme=FMCS")
+        job_id = start.json()["job_id"]
+        status = None
+        for _ in range(100):
+            status = client.get(f"/api/send-followups/status/{job_id}").json()
+            if status["done"]:
+                break
+            time.sleep(0.05)
+
+    assert status["sent"] == 1
+    assert mock_post.call_args.kwargs["json"]["to"] == [{"email": "l@x.com", "name": "Lotte Chemical"}]
+    assert mock_post.call_args.kwargs["json"]["sender"]["email"] == "marketing@absoluteveritas.com"
+
+
+def test_followup_count_respects_scheme_filter(monkeypatch, mongo_db):
+    fmcs_row = ["CLT010", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
+                "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"]
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1, fmcs_row])
+
+    response = client.get("/api/followup-count?scheme=FMCS")
+
+    assert response.json()["eligible"] == 1
+
+
 def test_send_followups_does_not_resend_to_the_same_client(monkeypatch, mongo_db):
     _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1])
     _run_followup_job()

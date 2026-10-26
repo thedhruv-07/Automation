@@ -875,6 +875,24 @@ def test_followup_eligible_once_delay_has_passed(mongo_db):
     assert rows[0]["_followup_for"] == "2026-07-17"
 
 
+def test_get_followup_eligible_clients_filters_by_scheme(mongo_db):
+    rows = [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "1", "ISO 9001", "ISI", "ISO-1",
+         "01-01-2025", "24-07-2026", "https://x", "CRITICAL"),
+        ("CLT004", "Lotte Chemical", "Lotte Chemical", "l@x.com", None, "IS 7328 : 2020", "FMCS", "4100106459",
+         "01-01-2025", "03-11-2026", "https://x", "URGENT"),
+    ]
+    upsert_clients(mongo_db, rows, mode="replace")
+    _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-17")
+    _emailed(mongo_db, "CLT004", "URGENT", "2026-07-17")
+
+    fmcs_only = get_followup_eligible_clients(mongo_db, "2026-07-21", scheme="FMCS")
+    assert [r["client_id"] for r in fmcs_only] == ["CLT004"]
+
+    unfiltered = get_followup_eligible_clients(mongo_db, "2026-07-21")
+    assert {r["client_id"] for r in unfiltered} == {"CLT001", "CLT004"}
+
+
 def test_followup_not_eligible_before_delay_has_passed(mongo_db):
     _seeded_db(mongo_db)
     _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-18")

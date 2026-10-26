@@ -798,15 +798,15 @@ _followup_jobs: dict[str, dict] = {}
 
 
 @app.get("/api/followup-count")
-def followup_count():
+def followup_count(scheme: str = ""):
     return {
-        "eligible": len(get_followup_eligible_clients(DEFAULT_DB_PATH, _today_str())),
+        "eligible": len(get_followup_eligible_clients(DEFAULT_DB_PATH, _today_str(), scheme=scheme or None)),
         "separate_key": _followup_uses_separate_key(),
         "remaining_quota": _remaining_followup_quota_today(),
     }
 
 
-def _run_followup_job(job_id, brevo_api_key, email_sender, test_email, fmcs_sender):
+def _run_followup_job(job_id, brevo_api_key, email_sender, test_email, fmcs_sender, scheme):
     progress = _make_progress(
         _followup_jobs, job_id, {"sent": "sent", "skipped_no_email": "skipped_no_email", "failed": "failed"},
         fail_prefix="follow-up failed",
@@ -816,7 +816,7 @@ def _run_followup_job(job_id, brevo_api_key, email_sender, test_email, fmcs_send
         run_followups(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             on_progress=progress, limit=_remaining_followup_quota_today(), test_email=test_email,
-            fmcs_sender=fmcs_sender,
+            fmcs_sender=fmcs_sender, scheme=scheme,
         )
     except Exception as exc:
         _followup_jobs[job_id]["error"] = str(exc)
@@ -828,7 +828,7 @@ def _run_followup_job(job_id, brevo_api_key, email_sender, test_email, fmcs_send
 
 
 @app.post("/api/send-followups")
-def send_followups():
+def send_followups(scheme: str = ""):
     # Shares the bulk-email lock: when follow-ups use the main Brevo account
     # they draw on the same daily quota, so the two must not run at once.
     global _email_bulk_in_progress
@@ -853,7 +853,9 @@ def send_followups():
             "total": 0, "sent": 0, "skipped_no_email": 0, "failed": 0, "done": False, "error": None,
         }
         threading.Thread(
-            target=_run_followup_job, args=(job_id, brevo_api_key, email_sender, test_email, fmcs_sender), daemon=True,
+            target=_run_followup_job,
+            args=(job_id, brevo_api_key, email_sender, test_email, fmcs_sender, scheme or None),
+            daemon=True,
         ).start()
         return {"job_id": job_id}
     except Exception:
