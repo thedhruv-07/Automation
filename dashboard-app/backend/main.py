@@ -806,7 +806,7 @@ def followup_count():
     }
 
 
-def _run_followup_job(job_id, brevo_api_key, email_sender, test_email):
+def _run_followup_job(job_id, brevo_api_key, email_sender, test_email, fmcs_sender):
     progress = _make_progress(
         _followup_jobs, job_id, {"sent": "sent", "skipped_no_email": "skipped_no_email", "failed": "failed"},
         fail_prefix="follow-up failed",
@@ -816,6 +816,7 @@ def _run_followup_job(job_id, brevo_api_key, email_sender, test_email):
         run_followups(
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             on_progress=progress, limit=_remaining_followup_quota_today(), test_email=test_email,
+            fmcs_sender=fmcs_sender,
         )
     except Exception as exc:
         _followup_jobs[job_id]["error"] = str(exc)
@@ -844,13 +845,15 @@ def send_followups():
     try:
         brevo_api_key, email_sender = _followup_credentials()
         test_email = os.environ.get("DASHBOARD_TEST_EMAIL") or None
+        overflow = _overflow_credentials()
+        fmcs_sender = overflow[1] if overflow is not None else None
 
         job_id = str(uuid.uuid4())
         _followup_jobs[job_id] = {
             "total": 0, "sent": 0, "skipped_no_email": 0, "failed": 0, "done": False, "error": None,
         }
         threading.Thread(
-            target=_run_followup_job, args=(job_id, brevo_api_key, email_sender, test_email), daemon=True,
+            target=_run_followup_job, args=(job_id, brevo_api_key, email_sender, test_email, fmcs_sender), daemon=True,
         ).start()
         return {"job_id": job_id}
     except Exception:

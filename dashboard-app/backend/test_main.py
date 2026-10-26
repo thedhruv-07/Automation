@@ -2405,6 +2405,26 @@ def test_send_followups_uses_the_separate_key_but_the_same_sender(monkeypatch, m
     assert mock_post.call_args.kwargs["json"]["sender"]["email"] == "main@x.com"
 
 
+def test_send_followups_uses_the_overflow_sender_for_fmcs_clients(monkeypatch, mongo_db):
+    """An FMCS client's follow-up goes out with OVERFLOW_EMAIL_SENDER
+    (marketing@absoluteveritas.com) as the "from" address, by its own
+    scheme -- everyone else keeps using the regular follow-up sender."""
+    fmcs_row = ["CLT010", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
+                "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"]
+    _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1, fmcs_row])
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "followup-key")
+    monkeypatch.setenv("OVERFLOW_EMAIL_SENDER", "marketing@absoluteveritas.com")
+
+    final, mock_post = _run_followup_job()
+
+    assert final["sent"] == 2
+    senders_by_to = {
+        c.kwargs["json"]["to"][0]["email"]: c.kwargs["json"]["sender"]["email"]
+        for c in mock_post.call_args_list
+    }
+    assert senders_by_to == {"r@x.com": "main@x.com", "l@x.com": "marketing@absoluteveritas.com"}
+
+
 def test_send_followups_does_not_resend_to_the_same_client(monkeypatch, mongo_db):
     _setup_followups(monkeypatch, mongo_db, [ISI_ROW_1])
     _run_followup_job()

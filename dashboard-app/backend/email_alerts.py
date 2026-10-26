@@ -393,13 +393,18 @@ def run_followups(
     on_progress=None,
     limit: int | None = None,
     test_email: str | None = None,
+    fmcs_sender: str | None = None,
 ) -> list[dict]:
     """Sends the follow-up email to every client get_followup_eligible_clients
     returns (soonest-expiring first), recording each success immediately so a
     crash mid-run can't cause a duplicate on retry. A failed send isn't
     recorded, so it stays eligible. limit caps actual sends, like
     run_email_alerts. test_email redirects every send to that address and
-    records nothing (the dashboard's DASHBOARD_TEST_EMAIL safety override)."""
+    records nothing (the dashboard's DASHBOARD_TEST_EMAIL safety override).
+    fmcs_sender, if given, is used as the "from" address (instead of
+    email_sender) for any record whose own scheme is FMCS -- both still go
+    out through the same brevo_api_key/account, this only changes which
+    verified sender identity on it the email appears to come from."""
     today = today or datetime.now().strftime("%Y-%m-%d")
     records = get_followup_eligible_clients(db_path, today)
     results = []
@@ -410,11 +415,12 @@ def run_followups(
             break
         base = {"client_id": rec["client_id"], "name": rec["name"], "status": rec["status"]}
         to_email = test_email or rec.get("email")
+        sender = fmcs_sender if (fmcs_sender and (rec.get("scheme") or "").upper() == "FMCS") else email_sender
         if not _is_valid_email(to_email):
             result = {**base, "action": "skipped_no_email", "to": None}
         else:
             try:
-                ok, info = send_fn(rec, brevo_api_key, email_sender, org_name, to_email=to_email)
+                ok, info = send_fn(rec, brevo_api_key, sender, org_name, to_email=to_email)
             except Exception as exc:
                 ok, info = False, {"error": str(exc)}
             if ok:

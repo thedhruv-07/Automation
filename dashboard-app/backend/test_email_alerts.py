@@ -611,6 +611,26 @@ def test_run_followups_sends_and_records_each_eligible_client(mongo_db):
     assert get_followup_eligible_clients(mongo_db, "2026-07-21") == []
 
 
+def test_run_followups_uses_fmcs_sender_for_fmcs_clients_only(mongo_db):
+    """fmcs_sender routes an FMCS follow-up's "from" address separately
+    from everyone else's, by the record's OWN scheme -- same pattern as
+    run_email_alerts' per-record fmcs_credentials dispatch."""
+    _seed_emailed(
+        mongo_db, [ROW_WITH_EMAIL, ROW_FMCS],
+        [("CLT001", "CRITICAL", "2026-07-10"), ("CLT005", "URGENT", "2026-07-10")],
+    )
+    send_fn = Mock(return_value=(True, {"message_id": "fu-1"}))
+
+    results = run_followups(
+        mongo_db, "api-key", "main@x.com", "Absolute Veritas", today="2026-07-21", send_fn=send_fn,
+        fmcs_sender="marketing@absoluteveritas.com",
+    )
+
+    assert {r["client_id"]: r["action"] for r in results} == {"CLT001": "sent", "CLT005": "sent"}
+    senders_by_client = {c.args[0]["client_id"]: c.args[2] for c in send_fn.call_args_list}
+    assert senders_by_client == {"CLT001": "main@x.com", "CLT005": "marketing@absoluteveritas.com"}
+
+
 def test_run_followups_skips_clients_without_a_valid_email(mongo_db):
     _seed_emailed(mongo_db, [ROW_NO_EMAIL], [("CLT002", "URGENT", "2026-07-10")])
     send_fn = Mock()
