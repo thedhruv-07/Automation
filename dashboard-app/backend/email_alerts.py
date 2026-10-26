@@ -45,6 +45,10 @@ ISI_SIGNATURE_HTML = """
     <p style="color:#52514E;font-size:13px;margin:0;">Website: www.absoluteveritas.com</p>
 """
 FMCS_MORE_INFO_URL = "https://absoluteveritas.com/foreign-manufacturer-certification-services/"
+FMCS_MORE_INFO_TEXT = (
+    f'For more information about certification procedure please check the below link: '
+    f'<a href="{FMCS_MORE_INFO_URL}" target="_blank" rel="noopener noreferrer" style="color:#2a78d6;">{FMCS_MORE_INFO_URL}</a>'
+)
 FMCS_SIGNATURE_HTML = """
     <p style="color:#1F497D;font-size:14px;font-weight:700;margin:0 0 2px;">Absolute Veritas</p>
     <p style="color:#E36C0A;font-size:13px;font-weight:700;margin:0 0 10px;">Testing, Inspection &amp; Certifications</p>
@@ -111,6 +115,7 @@ def scheme_html_overrides(rec: dict, scheme: str) -> dict:
             ],
             "signature_html": FMCS_SIGNATURE_HTML,
             "more_info_url": FMCS_MORE_INFO_URL,
+            "more_info_text": FMCS_MORE_INFO_TEXT,
         }
     return {}
 

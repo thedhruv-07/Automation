@@ -195,3 +195,16 @@ def test_more_info_link_appears_before_the_signature_block():
         signature_html="<p>Absolute Veritas Signature</p>",
     )
     assert html.index("https://example.com/info") < html.index("Absolute Veritas Signature")
+
+
+def test_more_info_text_overrides_the_generic_click_here_wording():
+    """A scheme that wants its own sentence (not the generic "For more
+    info, click here.") can supply more_info_text instead -- the URL still
+    has to be a real link in there, not just as the raw more_info_url."""
+    html = build_email_html(
+        make_rec(5), more_info_url="https://example.com/info",
+        more_info_text='Check the below link: <a href="https://example.com/info">https://example.com/info</a>',
+    )
+    assert "Check the below link:" in html
+    assert 'href="https://example.com/info"' in html
+    assert "click here" not in html.lower()

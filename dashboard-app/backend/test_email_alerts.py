@@ -418,7 +418,9 @@ def test_send_email_via_brevo_fmcs_includes_more_info_link_and_signature_block()
 
     html = mock_post.call_args.kwargs["json"]["htmlContent"]
     assert 'href="https://absoluteveritas.com/foreign-manufacturer-certification-services/"' in html
-    assert "For more info" in html
+    # FMCS gets its own wording, not ISI's generic "For more info, click here."
+    assert "For more information about certification procedure please check the below link:" in html
+    assert "click here" not in html.lower()
     assert "Testing, Inspection &amp; Certifications" in html
     assert "Mobile/Whatsapp: +91-7303215033" in html
     assert "Tel: +91-129-4001010" in html

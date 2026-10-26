@@ -55,6 +55,7 @@ def build_email_html(
     signature_html: str = "",
     qr_src: str = "",
     more_info_url: str = "",
+    more_info_text: str = "",
 ) -> str:
     """detail_rows/expiry_label/cta_label/signature_html let a caller swap in
     a scheme-specific layout (see email_alerts.send_email_via_brevo's ISI
@@ -62,7 +63,10 @@ def build_email_html(
     itself -- detail_rows defaults to the original 2-row Certification/
     Certificate ID box, cta_label adds an optional heading above the button,
     and signature_html replaces the org_email/org_contact/org_website block
-    entirely when given."""
+    entirely when given. more_info_text overrides the generic "For more
+    info, click here." wording with a scheme-specific sentence (still
+    needs its own <a href> for the link to stay clickable) -- falls back
+    to the generic wording when only more_info_url is given."""
     label, color, message, _hero_label = _tier(rec["days_left"])
     if detail_rows is None:
         detail_rows = [("Certification", rec["cert_name"]), ("Certificate ID", rec["cert_id"])]
@@ -89,10 +93,12 @@ def build_email_html(
 
     cta_label_html = f'<p style="margin:0 0 4px;font-weight:700;">{cta_label}</p>' if cta_label else ""
 
-    more_info_html = (
-        f'<p>For more info, <a href="{more_info_url}" target="_blank" rel="noopener noreferrer" style="color:{ACCENT};">click here</a>.</p>'
-        if more_info_url else ""
-    )
+    if more_info_text:
+        more_info_html = f'<p>{more_info_text}</p>'
+    elif more_info_url:
+        more_info_html = f'<p>For more info, <a href="{more_info_url}" target="_blank" rel="noopener noreferrer" style="color:{ACCENT};">click here</a>.</p>'
+    else:
+        more_info_html = ""
 
     qr_html = (
         f'<p>For quick response, you can use the barcode below to add us to '
