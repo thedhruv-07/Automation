@@ -55,7 +55,7 @@ FMCS_SIGNATURE_HTML = """
     <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Mobile/Whatsapp: +91-7303215033</p>
     <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Tel: +91-129-4001010</p>
     <p style="color:#52514E;font-size:13px;margin:0 0 3px;">Email: cs@absoluteveritas.com</p>
-    <p style="color:#52514E;font-size:13px;margin:0;">Website: https://absoluteveritas.com/</p>
+    <p style="color:#52514E;font-size:13px;margin:0;">Website: <a href="https://absoluteveritas.com/" style="color:#2A78D6;">https://absoluteveritas.com/</a></p>
 """
 
 

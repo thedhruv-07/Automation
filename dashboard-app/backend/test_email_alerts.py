@@ -425,7 +425,8 @@ def test_send_email_via_brevo_fmcs_includes_more_info_link_and_signature_block()
     assert "Mobile/Whatsapp: +91-7303215033" in html
     assert "Tel: +91-129-4001010" in html
     assert "Email: cs@absoluteveritas.com" in html
-    assert "Website: https://absoluteveritas.com/" in html
+    assert "Website: " in html
+    assert '<a href="https://absoluteveritas.com/"' in html  # clickable, not plain text
     # signature_html replaces the plain org_email contact line, same as ISI
     assert html.count("cs@absoluteveritas.com") == 1
 
