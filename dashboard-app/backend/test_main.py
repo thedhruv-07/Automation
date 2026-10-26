@@ -2452,6 +2452,43 @@ def test_send_followups_scoped_to_fmcs_leaves_other_schemes_untouched(monkeypatc
     assert mock_post.call_args.kwargs["json"]["sender"]["email"] == "marketing@absoluteveritas.com"
 
 
+def test_send_followups_ignore_alert_status_includes_active_fmcs_clients(monkeypatch, mongo_db):
+    """FMCS's outreach campaign emails ACTIVE clients too -- ignore_alert_status
+    on Send Follow-ups lets their follow-up go out as well, not just the
+    CRITICAL/URGENT/DUE SOON/EXPIRED ones that are normally eligible."""
+    fmcs_active_row = ["CLT011", "Nippon Steel", "Nippon Steel", "n@x.com", None,
+                        "IS 1993 : 2018", "FMCS", "4100191173", "01-01-2025", "15-03-2027", "https://x", "ACTIVE"]
+    _setup_followups(monkeypatch, mongo_db, [fmcs_active_row])
+    monkeypatch.setenv("FOLLOWUP_BREVO_API_KEY", "followup-key")
+    monkeypatch.setenv("OVERFLOW_EMAIL_SENDER", "marketing@absoluteveritas.com")
+    import time
+    mock_response = type("Resp", (), {"status_code": 200, "json": lambda self: {"messageId": "brevo-fu"}})()
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        start = client.post("/api/send-followups?scheme=FMCS")
+        job_id = start.json()["job_id"]
+        status = None
+        for _ in range(100):
+            status = client.get(f"/api/send-followups/status/{job_id}").json()
+            if status["done"]:
+                break
+            time.sleep(0.05)
+    assert status["sent"] == 0  # excluded by default -- ACTIVE isn't alert-eligible
+
+    with patch("email_alerts.requests.post", return_value=mock_response) as mock_post:
+        start = client.post("/api/send-followups?scheme=FMCS&ignore_alert_status=true")
+        job_id = start.json()["job_id"]
+        status = None
+        for _ in range(100):
+            status = client.get(f"/api/send-followups/status/{job_id}").json()
+            if status["done"]:
+                break
+            time.sleep(0.05)
+
+    assert status["sent"] == 1
+    assert mock_post.call_args.kwargs["json"]["to"] == [{"email": "n@x.com", "name": "Nippon Steel"}]
+
+
 def test_followup_count_respects_scheme_filter(monkeypatch, mongo_db):
     fmcs_row = ["CLT010", "Lotte Chemical", "Lotte Chemical", "l@x.com", None,
                 "IS 7328 : 2020", "FMCS", "4100106459", "01-01-2025", "24-07-2026", "https://x", "CRITICAL"]

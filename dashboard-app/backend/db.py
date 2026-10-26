@@ -538,18 +538,25 @@ def _followup_candidates(db: Database, today: str, delay_days: int) -> dict[str,
 
 def get_followup_eligible_clients(
     db: Database, today: str, delay_days: int = FOLLOWUP_DELAY_DAYS, scheme: str | None = None,
+    ignore_alert_status: bool = False,
 ) -> list[dict]:
     """Clients still in ALERT_STATUSES (a renewed client's expiry moves out,
     dropping them to ACTIVE) whose latest renewal email is at least
     delay_days old with no follow-up yet, soonest-expiring first. Each
     record carries _followup_for (that email's date) for record_followup_sent.
     scheme narrows to just that scheme (e.g. "FMCS") -- otherwise every
-    scheme's eligible clients are returned together."""
+    scheme's eligible clients are returned together. ignore_alert_status=True
+    drops the ALERT_STATUSES restriction entirely -- for schemes like FMCS
+    whose initial send already reaches ACTIVE clients too (via the
+    expiry-month filter's own ignore_alert_status), since otherwise those
+    clients could never become follow-up eligible at all."""
     init_db(db)
     candidates = _followup_candidates(db, today, delay_days)
     if not candidates:
         return []
-    query = {"client_id": {"$in": list(candidates)}, "status": {"$in": list(ALERT_STATUSES)}}
+    query = {"client_id": {"$in": list(candidates)}}
+    if not ignore_alert_status:
+        query["status"] = {"$in": list(ALERT_STATUSES)}
     if scheme and scheme != "ALL":
         query["scheme"] = scheme
     return [

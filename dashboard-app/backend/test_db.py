@@ -893,6 +893,23 @@ def test_get_followup_eligible_clients_filters_by_scheme(mongo_db):
     assert {r["client_id"] for r in unfiltered} == {"CLT001", "CLT004"}
 
 
+def test_get_followup_eligible_clients_ignore_alert_status_includes_active_clients(mongo_db):
+    """FMCS's outreach campaign emails ACTIVE clients too (via the
+    expiry-month filter's ignore_alert_status on the initial send) -- their
+    follow-up needs the same override, or they can never get one since
+    ACTIVE is normally excluded entirely."""
+    rows = [
+        ("CLT004", "Lotte Chemical", "Lotte Chemical", "l@x.com", None, "IS 7328 : 2020", "FMCS", "4100106459",
+         "01-01-2025", "15-03-2027", "https://x", "ACTIVE"),
+    ]
+    upsert_clients(mongo_db, rows, mode="replace")
+    _emailed(mongo_db, "CLT004", "ACTIVE", "2026-07-17")
+
+    assert get_followup_eligible_clients(mongo_db, "2026-07-21") == []
+    eligible = get_followup_eligible_clients(mongo_db, "2026-07-21", ignore_alert_status=True)
+    assert [r["client_id"] for r in eligible] == ["CLT004"]
+
+
 def test_followup_not_eligible_before_delay_has_passed(mongo_db):
     _seeded_db(mongo_db)
     _emailed(mongo_db, "CLT001", "CRITICAL", "2026-07-18")

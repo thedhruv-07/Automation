@@ -411,6 +411,7 @@ def run_followups(
     test_email: str | None = None,
     fmcs_sender: str | None = None,
     scheme: str | None = None,
+    ignore_alert_status: bool = False,
 ) -> list[dict]:
     """Sends the follow-up email to every client get_followup_eligible_clients
     returns (soonest-expiring first), recording each success immediately so a
@@ -423,9 +424,10 @@ def run_followups(
     out through the same brevo_api_key/account, this only changes which
     verified sender identity on it the email appears to come from. scheme
     narrows the run to just that scheme (e.g. "FMCS") instead of every
-    eligible client across every scheme."""
+    eligible client across every scheme. ignore_alert_status=True includes
+    ACTIVE clients too -- see get_followup_eligible_clients."""
     today = today or datetime.now().strftime("%Y-%m-%d")
-    records = get_followup_eligible_clients(db_path, today, scheme=scheme)
+    records = get_followup_eligible_clients(db_path, today, scheme=scheme, ignore_alert_status=ignore_alert_status)
     results = []
     sent_count = 0
 
