@@ -412,6 +412,7 @@ def run_followups(
     fmcs_sender: str | None = None,
     scheme: str | None = None,
     ignore_alert_status: bool = False,
+    expiry_month: str | None = None,
 ) -> list[dict]:
     """Sends the follow-up email to every client get_followup_eligible_clients
     returns (soonest-expiring first), recording each success immediately so a
@@ -427,7 +428,9 @@ def run_followups(
     eligible client across every scheme. ignore_alert_status=True includes
     ACTIVE clients too -- see get_followup_eligible_clients."""
     today = today or datetime.now().strftime("%Y-%m-%d")
-    records = get_followup_eligible_clients(db_path, today, scheme=scheme, ignore_alert_status=ignore_alert_status)
+    records = get_followup_eligible_clients(
+        db_path, today, scheme=scheme, ignore_alert_status=ignore_alert_status, expiry_month=expiry_month,
+    )
     results = []
     sent_count = 0
 

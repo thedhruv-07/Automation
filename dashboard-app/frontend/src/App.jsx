@@ -352,7 +352,7 @@ export default function App() {
 
   async function loadFollowupInfo() {
     try {
-      const info = await getFollowupCount();
+      const info = await getFollowupCount({ expiryMonth });
       if (info) setFollowupInfo(info);
     } catch {
       // the button just stays disabled if the count can't be loaded
@@ -361,11 +361,11 @@ export default function App() {
 
   useEffect(() => {
     loadFollowupInfo();
-  }, []);
+  }, [expiryMonth]);
 
   async function handleConfirmSendFollowups() {
     try {
-      const { job_id: jobId } = await sendFollowups();
+      const { job_id: jobId } = await sendFollowups({ expiryMonth });
       followupPoll.start(
         { total: 0, sent: 0, skipped_no_email: 0, failed: 0, done: false },
         () => getSendFollowupsStatus(jobId),
@@ -697,6 +697,7 @@ open={bulkModalOpen}
         eligible={followupInfo.eligible}
         remainingQuota={followupInfo.remaining_quota}
         separateKey={followupInfo.separate_key}
+        expiryMonth={expiryMonth}
         job={followupPoll.job}
         onConfirm={handleConfirmSendFollowups}
         onCancel={followupPoll.job ? handleCloseFollowupsModal : () => setFollowupModalOpen(false)}

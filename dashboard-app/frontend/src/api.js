@@ -301,14 +301,18 @@ export async function getAdhocNoticeSendStatus(noticeId, jobId) {
   return res.json();
 }
 
-export async function getFollowupCount() {
-  const res = await fetch(`${API_BASE}/api/followup-count`, { credentials: "include", headers: {} });
+function followupQuery(expiryMonth) {
+  return expiryMonth ? `?expiry_month=${encodeURIComponent(expiryMonth)}` : "";
+}
+
+export async function getFollowupCount({ expiryMonth } = {}) {
+  const res = await fetch(`${API_BASE}/api/followup-count${followupQuery(expiryMonth)}`, { credentials: "include", headers: {} });
   if (!res.ok) throw new Error(`Failed to load follow-up count: ${res.status}`);
   return res.json();
 }
 
-export async function sendFollowups() {
-  const res = await fetch(`${API_BASE}/api/send-followups`, {
+export async function sendFollowups({ expiryMonth } = {}) {
+  const res = await fetch(`${API_BASE}/api/send-followups${followupQuery(expiryMonth)}`, {
     method: "POST", credentials: "include", headers: {},
   });
   const data = await res.json().catch(() => ({}));

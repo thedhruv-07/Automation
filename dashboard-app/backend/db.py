@@ -538,7 +538,7 @@ def _followup_candidates(db: Database, today: str, delay_days: int) -> dict[str,
 
 def get_followup_eligible_clients(
     db: Database, today: str, delay_days: int = FOLLOWUP_DELAY_DAYS, scheme: str | None = None,
-    ignore_alert_status: bool = False,
+    ignore_alert_status: bool = False, expiry_month: str | None = None,
 ) -> list[dict]:
     """Clients still in ALERT_STATUSES (a renewed client's expiry moves out,
     dropping them to ACTIVE) whose latest renewal email is at least
@@ -559,6 +559,8 @@ def get_followup_eligible_clients(
         query["status"] = {"$in": list(ALERT_STATUSES)}
     if scheme and scheme != "ALL":
         query["scheme"] = scheme
+    if expiry_month:  # "YYYY-MM", same filter as the renewal send
+        query["expiry_date_iso"] = {"$regex": f"^{expiry_month}"}
     return [
         {**_doc_to_dict(doc), "_followup_for": candidates[doc["client_id"]]}
         for doc in db["clients"].find(query).sort("expiry_date_iso", 1)

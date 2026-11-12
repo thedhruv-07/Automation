@@ -997,3 +997,18 @@ def test_save_email_sent_log_round_trips_the_account_tag():
     })
     assert count_overflow_sent_today(db, "2026-07-21") == 1
     assert load_email_sent_log(db)["CLT001|CRITICAL|2026-07-21"]["account"] == "followup"
+
+
+def test_get_followup_eligible_clients_filters_by_expiry_month(mongo_db):
+    rows = [
+        ("CLT001", "Rahul Sharma", "TechCorp", "r@x.com", "1", "ISO 9001", "ISI", "ISO-1",
+         "01-01-2025", "10-12-2026", "https://x", "ACTIVE"),
+        ("CLT002", "Priya", "Acme", "p@x.com", "2", "ISO 9001", "ISI", "ISO-2",
+         "01-01-2025", "10-01-2027", "https://x", "ACTIVE"),
+    ]
+    upsert_clients(mongo_db, rows, mode="replace")
+    _emailed(mongo_db, "CLT001", "ACTIVE", "2026-11-01")
+    _emailed(mongo_db, "CLT002", "ACTIVE", "2026-11-01")
+
+    dec = get_followup_eligible_clients(mongo_db, "2026-11-12", expiry_month="2026-12", ignore_alert_status=True)
+    assert [r["client_id"] for r in dec] == ["CLT001"]

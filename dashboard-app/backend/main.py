@@ -798,17 +798,22 @@ _followup_jobs: dict[str, dict] = {}
 
 
 @app.get("/api/followup-count")
-def followup_count(scheme: str = "", ignore_alert_status: bool = False):
+def followup_count(scheme: str = "", ignore_alert_status: bool = False, expiry_month: str = ""):
+    # Like /api/send-all-emails: a month filter reaches every status (the
+    # initial month send did too), so its follow-up must as well.
     return {
         "eligible": len(get_followup_eligible_clients(
-            DEFAULT_DB_PATH, _today_str(), scheme=scheme or None, ignore_alert_status=ignore_alert_status,
+            DEFAULT_DB_PATH, _today_str(), scheme=scheme or None,
+            ignore_alert_status=ignore_alert_status or bool(expiry_month), expiry_month=expiry_month or None,
         )),
         "separate_key": _followup_uses_separate_key(),
         "remaining_quota": _remaining_followup_quota_today(),
     }
 
 
-def _run_followup_job(job_id, brevo_api_key, email_sender, test_email, fmcs_sender, scheme, ignore_alert_status):
+def _run_followup_job(
+    job_id, brevo_api_key, email_sender, test_email, fmcs_sender, scheme, ignore_alert_status, expiry_month=None,
+):
     progress = _make_progress(
         _followup_jobs, job_id, {"sent": "sent", "skipped_no_email": "skipped_no_email", "failed": "failed"},
         fail_prefix="follow-up failed",
@@ -819,6 +824,7 @@ def _run_followup_job(job_id, brevo_api_key, email_sender, test_email, fmcs_send
             DEFAULT_DB_PATH, brevo_api_key, email_sender, "Absolute Veritas",
             on_progress=progress, limit=_remaining_followup_quota_today(), test_email=test_email,
             fmcs_sender=fmcs_sender, scheme=scheme, ignore_alert_status=ignore_alert_status,
+            expiry_month=expiry_month,
         )
     except Exception as exc:
         _followup_jobs[job_id]["error"] = str(exc)
@@ -830,7 +836,7 @@ def _run_followup_job(job_id, brevo_api_key, email_sender, test_email, fmcs_send
 
 
 @app.post("/api/send-followups")
-def send_followups(scheme: str = "", ignore_alert_status: bool = False):
+def send_followups(scheme: str = "", ignore_alert_status: bool = False, expiry_month: str = ""):
     # Shares the bulk-email lock: when follow-ups use the main Brevo account
     # they draw on the same daily quota, so the two must not run at once.
     global _email_bulk_in_progress
@@ -856,7 +862,10 @@ def send_followups(scheme: str = "", ignore_alert_status: bool = False):
         }
         threading.Thread(
             target=_run_followup_job,
-            args=(job_id, brevo_api_key, email_sender, test_email, fmcs_sender, scheme or None, ignore_alert_status),
+            args=(
+                job_id, brevo_api_key, email_sender, test_email, fmcs_sender, scheme or None,
+                ignore_alert_status or bool(expiry_month), expiry_month or None,
+            ),
             daemon=True,
         ).start()
         return {"job_id": job_id}

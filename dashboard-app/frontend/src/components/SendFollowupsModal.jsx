@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 export default function SendFollowupsModal({
-  open, eligible, remainingQuota, separateKey, job, onConfirm, onCancel,
+  open, eligible, remainingQuota, separateKey, expiryMonth = "", job, onConfirm, onCancel,
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -75,7 +75,8 @@ export default function SendFollowupsModal({
           <>
             <p className="text-sm text-ink-secondary mb-3">
               Send a follow-up to <strong>{eligible} client{eligible === 1 ? "" : "s"}</strong> who
-              were emailed 4+ days ago and still haven't renewed.
+              were emailed 4+ days ago and still haven't renewed
+              {expiryMonth ? <> — only certificates expiring in <strong>{expiryMonth}</strong></> : ""}.
             </p>
             {remainingQuota < eligible && (
               <p className="text-sm text-ink-secondary mb-3">
